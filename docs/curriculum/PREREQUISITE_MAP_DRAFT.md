@@ -27,7 +27,7 @@
 | math-ratios-percentages | 分数・比・割合・百分率・比率を相互変換し、丸めを説明する。 | なし（数学の橋渡し） | math-arithmetic | 比や割合を計算するため。 | 0 数学 |
 | math-powers-roots | 指数・平方根を計算し、式中の意味を説明する。 | なし（数学の橋渡し） | math-arithmetic | 指数・根の計算を四則計算とつなぐため。 | 0 数学 |
 | math-algebra-sigma | 文字式・一次式・式変形・総和記号を使って統計式を読む。 | なし（数学の橋渡し） | math-ratios-percentages; math-powers-roots | 分母・比率を含む式と二乗・平方根を正しく変形するため。 | 0 数学 |
-| math-counting | 積の法則・順列・組合せの基本を数える。 | なし（数学の橋渡し） | math-ratios-percentages | 二項確率の係数と割合の意味を理解するため。 | 0 数学 |
+| math-counting | 積の法則・順列・組合せの基本を数える。 | なし（数学の橋渡し） | math-ratios-percentages | 二項分布で組合せ係数を計算するため。 | 0 数学 |
 | data-types | 計量値・計数値、カテゴリ・数値、単位と観測単位を区別する。 | SRC-0001 | — | — | 1 データ |
 | population-sample | 母集団・標本・抽出単位・推定対象を例で区別する。 | SRC-0003 | data-types | 何を数え・測った標本かを定義しないと母集団との対応が定まらないため。 | 1 データ |
 | descriptive-statistics | 平均・範囲・分散・標準偏差を計算し、分布の中心と散らばりを説明する。 | SRC-0005 | data-types; math-ratios-percentages; math-powers-roots | 集計前にデータ型を選び、比率・平方・平方根を正しく計算するため。 | 1 データ |
@@ -35,7 +35,7 @@
 | data-transform | 変換の目的、尺度、変換前後の解釈を説明する。 | SRC-0002 | data-types; math-algebra-sigma | 適用できる変換はデータ型と式の意味に依存するため。 | 1 データ |
 | qc-seven-tools | 七つ道具を目的に応じて選び、作成・読取り・結論の限界を説明する。 | SRC-0007; SRC-0008; SRC-0009; SRC-0010; SRC-0011; SRC-0012; SRC-0013 | data-types | 何の値・分類を可視化するかを定めるため。詳細な統計量は各図の理解を助けるが、全ツールの必須条件にはしない。 | 1 データ |
 | new-qc-tools | 新QC七つ道具の用途、基本手順、読み方を説明する。 | SRC-0014; SRC-0015; SRC-0016; SRC-0017; SRC-0018; SRC-0019; SRC-0020 | — | 公式資料上は各道具の定義・基本の理解が独立目標で、統計計算を前提にしない。 | 4 QC手法 |
-| probability-foundations | 事象・確率・独立・条件付き確率の基本を計算・解釈する。 | なし（数学・統計の橋渡し単元） | math-ratios-percentages; math-counting | 確率を比として計算し、場合の数から事象確率を作るため。 | 2 確率 |
+| probability-foundations | 事象・確率・独立・条件付き確率の基本を計算・解釈する。 | なし（数学・統計の橋渡し単元） | math-ratios-percentages | 確率を比として計算し、具体的な試行例から条件付き確率を理解するため。 | 2 確率 |
 | random-variables | 離散・連続確率変数、確率分布、期待値・分散を結び付ける。 | SRC-0025 | probability-foundations; math-algebra-sigma | 確率変数の値と確率を定め、期待値・分散の和を式で表すため。 | 2 確率 |
 | normal-distribution | 正規分布を標準化し、条件を確認して確率を計算する。 | SRC-0021 | random-variables; math-powers-roots | 分布と確率変数の意味を持ち、標準偏差で尺度を変換するため。 | 2 確率 |
 | binomial-distribution | 独立・一定確率の試行回数として二項分布を扱い、確率を計算する。 | SRC-0022 | random-variables; probability-foundations; math-counting | 試行モデル、各試行の確率、組合せ数のすべてが式に現れるため。 | 2 確率 |
@@ -56,11 +56,11 @@
 | experimental-design | 因子・水準・応答・実験単位を定め、1元・2元配置を条件付きで分析する。 | SRC-0048; SRC-0049; SRC-0050 | data-types; descriptive-statistics | 実験因子と測定結果の型・要約を理解するため。分散分析を行う場合の推論前提は条件付き経路に置く。 | 4 QC手法 |
 | correlation | 相関係数の意味・計算・限界を説明する。 | SRC-0051 | data-types; descriptive-statistics | 二変数の数値とその周辺分布を正しく解釈するため。 | 4 QC手法 |
 | serial-correlation | 時系列順の相関が独立観測の前提に与える影響を説明する。 | SRC-0052 | correlation | 系列順を含む関連性を、通常の相関係数との違いで説明するため。 | 4 QC手法 |
-| simple-regression | 単回帰式・分散分析・残差検討を条件と限界を含めて扱う。 | SRC-0053; SRC-0054; SRC-0055 | correlation; math-algebra-sigma; inference-basics; sampling-distributions#common | 係数式・関連性と、標準誤差・標本分布の共通概念が必要。t/F分布節は推測統計を使う方法でのみ読む。 | 4 QC手法 |
+| simple-regression | 単回帰式と残差の基本を説明し、推論を行う場合は方法条件を確認する。 | SRC-0053; SRC-0054; SRC-0055 | correlation; math-algebra-sigma | 散布図・相関と回帰式の係数計算を理解するため。推論関連は方法別の条件付き前提に分ける。 | 4 QC手法 |
 
 ### 任意復習候補（必須前提ではない）
 
-必要な場合だけ開く補助リンクの案。各リンクは必須前提グラフの辺に含めず、設問や誤答の文脈に応じて表示する。
+必要な場合だけ開く補助リンクの案。起点と復習先はlessonId（必要ならsectionId）で示す。各リンクは必須前提グラフの辺に含めず、設問や誤答の文脈に応じて表示する。
 
 | 起点lessonId | 任意復習先 | 表示する場面 |
 |---|---|---|
@@ -71,6 +71,7 @@
 | correlation | qc-seven-tools#scatter | 相関係数の前に散布図で二変数の関係を確認する場合。 |
 | experimental-design | qc-seven-tools#graphs | 因子・応答を図で比べる例を復習する場合。 |
 | simple-regression | qc-seven-tools#scatter | 回帰式を読む前に散布図で関係・外れ値候補を確認する場合。 |
+| descriptive-statistics#variance | math-algebra-sigma#sigma | 分散式でΣを初めて使うとき。分散節でも記号の意味を説明し、必要なら総和記号の復習を開けるようにする。 |
 
 ### 前提がない項目と保留項目
 
@@ -79,8 +80,10 @@
 - SRC-0060（計測の基本）とSRC-0061（計測の管理）は本Issueの教材単元にしない。演習で測定値を使う際は単位・観測条件を設問に書く。
 - 数学の橋渡し単元にsourceItemIdがないのは、JSA項目を装っていないためである。
 
-sourceItemId欄・前提欄・条件付き経路に記したsection anchorは次の固定IDとする。設問・誤答から該当節を直接開けるようにする。
+sourceItemId欄・前提欄・条件付き経路・任意復習に記したsection anchorは次の固定IDとする。設問・誤答から該当節を直接開けるようにする。
 
+- math-algebra-sigma: sigma
+- descriptive-statistics: variance
 - sampling: error, design
 - qc-seven-tools: pareto, cause-effect, check-sheet, histogram, scatter, graphs, stratification
 - new-qc-tools: affinity, relations, tree, matrix, arrow, pdpc, matrix-data
@@ -89,35 +92,45 @@ sourceItemId欄・前提欄・条件付き経路に記したsection anchorは次
 - sampling-inspection: purpose, types, attribute, variable
 - experimental-design: one-factor, two-factor
 - simple-regression: anova, residuals
+- mean-inference: z, t, large-sample
+- variance-inference: chi-square
+- variance-ratio-inference: f
+- mean-difference-inference: pooled-t, welch, large-sample
+- paired-inference: t, large-sample
+- proportion-count-inference: rate, count
+- contingency-tests: pearson
+- process-capability: capability
 
 ## 3. 条件付きの方法別前提
 
 以下は該当する方法を選んだときだけ必要な知識であり、単元全体の共通必須前提に一括追加しない。各条件付き辺も、その方法の中では必須となる。
 
-前提一覧の `sampling-distributions#common` は標本分布・標準誤差の共通基礎だけを指す。`#t`・`#chi-square`・`#f` は各行の方法を選ぶ場合に限る条件付き前提であり、3分布の全節を一律に学ぶ必要はない。DAGの頂点はlessonId単位で検査するが、節指定により必要範囲を限定する。
+前提一覧の `sampling-distributions#common` は標本分布・標準誤差の共通基礎だけを指す。`#t`・`#chi-square`・`#f` は各行の方法を選ぶ場合に限る条件付き前提であり、3分布の全節を一律に学ぶ必要はない。対象項目・section欄には方法別に開く単元節も記し、条件付きの復習先を特定する。DAGの頂点はlessonId単位で検査するが、節指定により必要範囲を限定する。
 
 | 対象項目・section | 方法・条件 | 追加で必要な前提 | 教材で明示する判断点 |
 |---|---|---|---|
-| SRC-0028: 母平均 | 母標準偏差既知かつ正規母集団を仮定するz法 | normal-distribution | 母標準偏差が既知かを確認する。既知を実例で当然視しない。 |
-| SRC-0028: 母平均 | 母標準偏差未知のt法 | sampling-distributions#t; 小標本ではnormal-distribution（母集団の正規性） | 自由度と仮定を表示する。正規性なしに小標本t法を一般化しない。 |
-| SRC-0028・SRC-0031・SRC-0032: 平均 | 大標本近似を使う場合 | law-large-numbers-clt | 近似条件・標本サイズの判断を示し、万能な閾値を作らない。 |
-| SRC-0029: 母分散 | 正規母集団を前提とするカイ二乗法 | sampling-distributions#chi-square; normal-distribution | 分散推論で正規性が重要なことを明示する。 |
-| SRC-0030: 分散比 | 独立な正規母集団のF法 | sampling-distributions#f; normal-distribution | 独立性・正規性の条件を示す。 |
-| SRC-0031: 2母平均差 | 等分散を仮定するpooled t法 | sampling-distributions#t; 小標本ではnormal-distribution（各母集団の正規性） | 等分散仮定を確認してから選ぶ。 |
-| SRC-0031: 2母平均差 | 等分散を置かないWelch法 | sampling-distributions#t; 小標本ではnormal-distribution（各母集団の正規性） | pooled法と自由度・標準誤差が異なることを説明する。 |
-| SRC-0032: 対応データ | 対応差に対するt法 | sampling-distributions#t; 小標本ではnormal-distribution（差の正規性） | 元データではなく対応差を分析し、その分布条件を調べる。 |
-| SRC-0033・SRC-0034: 不適合品率 | 二項法または正規近似 | 二項法ではbinomial-distribution; 正規近似ではnormal-distributionと期待成功・失敗数の条件 | 近似条件を記載し、条件不足時に正規近似を自動選択しない。 |
-| SRC-0035・SRC-0036: 不適合数 | 一定曝露量あたりのPoisson法 | poisson-distribution; 曝露量・独立性等の計数モデル条件 | 欠陥数と不適合品率を混同しない。2群比較では曝露量を揃える/調整する。 |
-| SRC-0037: 分割表 | Pearsonのカイ二乗検定 | sampling-distributions#chi-square | 観測の独立性と期待度数の条件を確認する。 |
-| SRC-0039・SRC-0040・SRC-0041: 計量値管理図 | Xbar-R、Xbar-s、X-Rsを用いる場合 | normal-distribution（標準的な限界係数と確率解釈を扱う場合） | subgroupの作り方、安定工程、係数表の前提を示す。 |
-| SRC-0042: p/np管理図 | 不適合品率を二項計数で扱う場合 | binomial-distribution | npは標本サイズ一定、pは標本サイズ変動を扱えることを確認する。 |
-| SRC-0043: u/c管理図 | 単位あたり不適合数をPoisson計数で扱う場合 | poisson-distribution | 検査単位・機会数と均一な発生率を確認する。 |
-| SRC-0044: 工程能力指数 | 安定した正規工程にCp/Cpkを適用する場合 | normal-distribution; sampling | 規格幅と工程の自然なばらつきを区別し、安定性を前提に置く。 |
-| SRC-0046: 計数規準型抜取検査 | 計数結果でロットを判定する方法 | binomial-distribution（採用する計画のモデルに応じて） | 抽出条件・判定基準・生産者/消費者リスクを明示する。 |
-| SRC-0047: 計量規準型抜取検査 | 計量値からロットを判定する方法 | normal-distribution（採用する計画のモデルに応じて） | 分布・標本抽出・判定条件を明示する。 |
-| SRC-0049: 一元配置 | 群平均を分散分析で比較する場合 | inference-basics; sampling-distributions#f; 残差の独立性・分散・分布条件 | 有意差は全ての群の差を特定しない。 |
-| SRC-0050: 二元配置 | 主効果と交互作用を調べる場合 | inference-basics; sampling-distributions#f; 実験配置と誤差の条件 | 交互作用の有無と反復の有無に応じた分析範囲を区別する。 |
-| SRC-0054・SRC-0055: 単回帰 | 回帰係数・モデルを推測統計で扱う場合 | sampling-distributions#t; sampling-distributions#f; 残差仮定 | 回帰式の推定だけで因果や範囲外予測を主張しない。 |
+| SRC-0028: mean-inference#z | 母標準偏差既知かつ正規母集団を仮定するz法 | normal-distribution | 母標準偏差が既知かを確認する。既知を実例で当然視しない。 |
+| SRC-0028: mean-inference#t | 母標準偏差未知のt法 | sampling-distributions#t; 小標本ではnormal-distribution（母集団の正規性） | 自由度と仮定を表示する。正規性なしに小標本t法を一般化しない。 |
+| SRC-0028: mean-inference#large-sample; SRC-0031: mean-difference-inference#large-sample; SRC-0032: paired-inference#large-sample | 大標本近似を使う場合 | law-large-numbers-clt | 近似条件・標本サイズの判断を示し、万能な閾値を作らない。 |
+| SRC-0029: variance-inference#chi-square | 正規母集団を前提とするカイ二乗法 | sampling-distributions#chi-square; normal-distribution | 分散推論で正規性が重要なことを明示する。 |
+| SRC-0030: variance-ratio-inference#f | 独立な正規母集団のF法 | sampling-distributions#f; normal-distribution | 独立性・正規性の条件を示す。 |
+| SRC-0031: mean-difference-inference#pooled-t | 等分散を仮定するpooled t法 | sampling-distributions#t; 小標本ではnormal-distribution（各母集団の正規性） | 等分散仮定を確認してから選ぶ。 |
+| SRC-0031: mean-difference-inference#welch | 等分散を置かないWelch法 | sampling-distributions#t; 小標本ではnormal-distribution（各母集団の正規性） | pooled法と自由度・標準誤差が異なることを説明する。 |
+| SRC-0032: paired-inference#t | 対応差に対するt法 | sampling-distributions#t; 小標本ではnormal-distribution（差の正規性） | 元データではなく対応差を分析し、その分布条件を調べる。 |
+| SRC-0033・SRC-0034: proportion-count-inference#rate | 二項法または正規近似 | 二項法ではbinomial-distribution; 正規近似ではnormal-distributionと期待成功・失敗数の条件 | 近似条件を記載し、条件不足時に正規近似を自動選択しない。 |
+| SRC-0035・SRC-0036: proportion-count-inference#count | 一定曝露量あたりのPoisson法 | poisson-distribution; 曝露量・独立性等の計数モデル条件 | 欠陥数と不適合品率を混同しない。2群比較では曝露量を揃える/調整する。 |
+| SRC-0037: contingency-tests#pearson | Pearsonのカイ二乗検定 | sampling-distributions#chi-square | 観測の独立性と期待度数の条件を確認する。 |
+| SRC-0039: control-charts#xbar-r; SRC-0040: control-charts#xbar-s; SRC-0041: control-charts#x-rs | Xbar-R、Xbar-s、X-Rsを用いる場合 | normal-distribution（標準的な限界係数と確率解釈を扱う場合） | subgroupの作り方、安定工程、係数表の前提を示す。 |
+| SRC-0042: control-charts#p-np | 不適合品率を二項計数で扱う場合 | binomial-distribution | npは標本サイズ一定、pは標本サイズ変動を扱えることを確認する。 |
+| SRC-0043: control-charts#u-c | 単位あたり不適合数をPoisson計数で扱う場合 | poisson-distribution | 検査単位・機会数と均一な発生率を確認する。 |
+| SRC-0044: process-capability#capability | 安定した正規工程にCp/Cpkを適用する場合 | normal-distribution; sampling | 規格幅と工程の自然なばらつきを区別し、安定性を前提に置く。 |
+| SRC-0046: sampling-inspection#attribute | 計数結果でロットを判定する方法 | binomial-distribution（採用する計画のモデルに応じて） | 抽出条件・判定基準・生産者/消費者リスクを明示する。 |
+| SRC-0047: sampling-inspection#variable | 計量値からロットを判定する方法 | normal-distribution（採用する計画のモデルに応じて） | 分布・標本抽出・判定条件を明示する。 |
+| SRC-0049: experimental-design#one-factor | 群平均を分散分析で比較する場合 | inference-basics; sampling-distributions#f; 残差の独立性・分散・分布条件 | 有意差は全ての群の差を特定しない。 |
+| SRC-0050: experimental-design#two-factor | 主効果と交互作用を調べる場合 | inference-basics; sampling-distributions#f; 実験配置と誤差の条件 | 交互作用の有無と反復の有無に応じた分析範囲を区別する。 |
+| SRC-0054: simple-regression#anova | 回帰の推論を行う場合（共通） | inference-basics; sampling-distributions#common | 推論なしの最小二乗導入や残差図の基本には要求しない。 |
+| SRC-0054: simple-regression#anova | 回帰係数の区間推定・t検定 | sampling-distributions#t; 残差の条件 | 係数にt法を選ぶ場合だけ適用し、モデル全体のF検定を必須にしない。 |
+| SRC-0054: simple-regression#anova | モデル全体のF検定 | sampling-distributions#f; 残差の条件 | F検定を選ぶ場合だけ適用し、係数のt推論を必須にしない。 |
 
 ## 4. 学習順の例
 
@@ -131,14 +144,15 @@ math-arithmetic → math-powers-roots ──────────────
 data-types ──────────────────────────────────────────┘
 ```
 
+分散節ではΣの意味をその場で説明し、必要なら `math-algebra-sigma#sigma` を開ける復習リンクを式の近くに置く。これは記述統計全体の必須前提ではない。
+
 母集団と標本の意味が必要な場合は、population-sample → samplingを任意に先行する。記述統計の前提ではないため、全員に必修化しない。
 
 ### 母平均の推定
 
 ```text
 math-ratios-percentages + math-powers-roots → math-algebra-sigma
-math-ratios-percentages → math-counting
-math-ratios-percentages + math-counting → probability-foundations
+math-ratios-percentages → probability-foundations
 population-sample + probability-foundations → inference-basics（SRC-0027）
 probability-foundations + math-algebra-sigma → random-variables
 population-sample + descriptive-statistics + random-variables → sampling-distributions#common
