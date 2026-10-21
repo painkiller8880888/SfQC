@@ -1,0 +1,28 @@
+# .codex/config.toml
+
+# ---------------------------------------------------------
+# Root orchestrator
+# ---------------------------------------------------------
+
+model = "gpt-6.1-sol"
+model_reasoning_effort = "xhigh"
+model_verbosity = "low"
+
+[features]
+multi_agent = true
+
+# ---------------------------------------------------------
+# Multi-agent
+# ---------------------------------------------------------
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 10
+
+[agents.worker]
+description = "リポジトリの調査、Git操作、実装、テストなどの実作業を担当するエージェント。"
+config_file = "./agents/worker.toml"
+
+[agents.plan_reviewer]
+description = "実装開始前に、Orchestrator が作成した計画を独立した視点からレビューするエージェント。"
+config_file = "./agents/plan_reviewer.toml"
