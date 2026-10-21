@@ -1,0 +1,78 @@
+:root {
+  font-family: Inter, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  color: #18392f;
+  background: #f3f7f3;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.page {
+  display: grid;
+  min-height: 100vh;
+  padding: clamp(1.25rem, 5vw, 4rem);
+  place-items: center;
+}
+
+.welcome {
+  width: min(100%, 48rem);
+  padding: clamp(2rem, 7vw, 5rem);
+  border: 1px solid #dbe5dc;
+  border-radius: 1.5rem;
+  background: #fff;
+  box-shadow: 0 1.5rem 4rem rgb(26 58 45 / 8%);
+}
+
+.brand {
+  margin: 0 0 1.5rem;
+  color: #43775e;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+h1 {
+  max-width: 14ch;
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  line-height: 1.35;
+  letter-spacing: 0.015em;
+}
+
+.description {
+  max-width: 38rem;
+  margin: 1.5rem 0 0;
+  color: #50635a;
+  font-size: 1rem;
+  line-height: 1.9;
+}
+
+.footer {
+  margin-top: 2rem;
+  font-size: 0.875rem;
+}
+
+a {
+  color: #34684e;
+  text-underline-offset: 0.2em;
+}
+
+a:focus-visible {
+  outline: 3px solid #7ab69b;
+  outline-offset: 3px;
+}
