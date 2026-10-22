@@ -1,5 +1,5 @@
 // @ts-check
-import { createQuestionInstance } from '../src/question-contract.mjs'
+import { createQuestionInstance, restoreQuestionInstance } from '../src/question-contract.mjs'
 
 /** @type {import('../src/question-contract.mjs').FixedQuestionDefinition} */
 export const fixedDefinition = {
@@ -102,3 +102,25 @@ export const generatedInstance = createQuestionInstance(generatedDefinition, {
   content: generatedContent,
   seed: ' seed-1 ',
 })
+
+export function assertReadonlyInstanceTypes() {
+  const fixed = createQuestionInstance(fixedDefinition, { instanceId: 'type-check' })
+  // @ts-expect-error returned snapshots are deeply readonly
+  fixed.questionDefinitionSnapshot.content.choices[0].label = '変更'
+  // @ts-expect-error returned arrays are readonly
+  fixed.questionDefinitionSnapshot.content.choices.push({ id: 'D', label: '追加' })
+
+  const generated = createQuestionInstance(generatedDefinition, {
+    instanceId: 'type-check',
+    content: generatedContent,
+    seed: 's',
+  })
+  if (generated.questionDefinitionSnapshot.content.format === 'numeric') {
+    // @ts-expect-error nested generated content is readonly too
+    generated.questionDefinitionSnapshot.content.grading.unit = '変更'
+  }
+
+  const restored = restoreQuestionInstance(fixedInstance)
+  // @ts-expect-error restored snapshot arrays are readonly
+  restored.questionDefinitionSnapshot.lessonRefs.push('descriptive-statistics#mean')
+}

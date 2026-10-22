@@ -143,15 +143,24 @@ export type GeneratedQuestionInstance = {
 
 export type QuestionInstance = FixedQuestionInstance | GeneratedQuestionInstance
 
+type DeepReadonly<T> = T extends readonly (infer U)[]
+  ? readonly DeepReadonly<U>[]
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T
+
+export type ReadonlyQuestionInstance = DeepReadonly<QuestionInstance>
+
 export declare function validateQuestionContent(value: unknown): value is QuestionContent
 export declare function validateQuestionDefinition(value: unknown): value is QuestionDefinition
 export declare function validateQuestionInstance(value: unknown): value is QuestionInstance
+export declare function restoreQuestionInstance(value: unknown): ReadonlyQuestionInstance
 
 export declare function createQuestionInstance(
   definition: FixedQuestionDefinition,
   options: { instanceId: string },
-): FixedQuestionInstance
+): DeepReadonly<FixedQuestionInstance>
 export declare function createQuestionInstance(
   definition: GeneratedQuestionDefinition,
   options: { instanceId: string; content: QuestionContent; seed: string },
-): GeneratedQuestionInstance
+): DeepReadonly<GeneratedQuestionInstance>

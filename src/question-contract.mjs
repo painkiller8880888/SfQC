@@ -111,14 +111,20 @@ function isUniqueChoiceSet(choices, labelField) {
   return true
 }
 
-function isSingleChoiceFeedbackRules(value, choiceIds, textField) {
-  return isArray(value) && value.length > 0 && value.every((rule) => {
-    if (!hasOnlyKeys(rule, ['choiceId', textField, 'lessonRef'])) return false
-    return hasKeys(rule, ['choiceId', textField, 'lessonRef'])
-      && choiceIds.has(rule.choiceId)
-      && isText(rule[textField])
-      && isLessonRef(rule.lessonRef)
-  })
+function isSingleChoiceFeedbackRules(value, choiceIds, correctAnswer, textField) {
+  if (!isArray(value) || value.length === 0) return false
+  const seenChoiceIds = new Set()
+  for (const rule of value) {
+    if (!hasOnlyKeys(rule, ['choiceId', textField, 'lessonRef'])
+      || !hasKeys(rule, ['choiceId', textField, 'lessonRef'])
+      || !choiceIds.has(rule.choiceId)
+      || rule.choiceId === correctAnswer
+      || seenChoiceIds.has(rule.choiceId)
+      || !isText(rule[textField])
+      || !isLessonRef(rule.lessonRef)) return false
+    seenChoiceIds.add(rule.choiceId)
+  }
+  return true
 }
 
 function isNumericFeedbackRules(value, textField, answerField = 'answer', answerCheck = isDecimal) {
@@ -157,7 +163,7 @@ function isQuestionContent(value) {
       && hasOnlyKeys(value.grading, ['type'])
       && hasKeys(value.grading, ['type'])
       && value.grading.type === 'single-choice'
-      && isSingleChoiceFeedbackRules(value.feedbackRules, choiceIds, 'explanation')
+      && isSingleChoiceFeedbackRules(value.feedbackRules, choiceIds, value.correctAnswer, 'explanation')
   }
 
   if (value.format === 'numeric') {
@@ -166,7 +172,7 @@ function isQuestionContent(value) {
     return isDecimal(value.correctAnswer)
       && isNumericGrading(value.grading)
       && (!isDecimalZero(value.correctAnswer)
-        || (Object.hasOwn(value.grading, 'absoluteTolerance') && !Object.hasOwn(value.grading, 'relativeTolerance')))
+        || Object.hasOwn(value.grading, 'absoluteTolerance'))
       && isNumericFeedbackRules(value.feedbackRules, 'explanation')
   }
 
@@ -236,7 +242,7 @@ function isTemplate(value) {
     const choiceIds = new Set(value.choicesTemplate.map((choice) => choice.id))
     return isText(value.correctAnswerTemplate)
       && choiceIds.has(value.correctAnswerTemplate)
-      && isSingleChoiceFeedbackRules(value.feedbackRulesTemplate, choiceIds, 'explanationTemplate')
+      && isSingleChoiceFeedbackRules(value.feedbackRulesTemplate, choiceIds, value.correctAnswerTemplate, 'explanationTemplate')
   }
 
   if (value.format === 'numeric') {
@@ -345,6 +351,24 @@ export function validateQuestionInstance(value) {
   }
 }
 
+function freezeJson(value) {
+  if (value !== null && typeof value === 'object') {
+    for (const child of Object.values(value)) freezeJson(child)
+    Object.freeze(value)
+  }
+  return value
+}
+
+export function restoreQuestionInstance(value) {
+  try {
+    if (!isQuestionInstance(value)) throw new TypeError('Invalid question instance')
+    return freezeJson(JSON.parse(JSON.stringify(value)))
+  } catch (error) {
+    if (error instanceof TypeError) throw error
+    throw new TypeError('Invalid question instance')
+  }
+}
+
 export function createQuestionInstance(definition, options) {
   try {
     if (!isQuestionDefinition(definition) || !isRecord(options) || !isText(options.instanceId)) {
@@ -397,7 +421,7 @@ export function createQuestionInstance(definition, options) {
       }
     }
 
-    return JSON.parse(JSON.stringify(instance))
+    return freezeJson(JSON.parse(JSON.stringify(instance)))
   } catch (error) {
     if (error instanceof TypeError) throw error
     throw new TypeError('Invalid question definition or instance options')

@@ -108,7 +108,7 @@ Issue #8の機械可読契約では、`QuestionDefinition.kind`を`fixed`また�
 
 契約オブジェクトは列挙したキーだけを受け入れ、未知キー、`undefined`、非有限数、区分に合わない項目、不正な整数・十進文字列を拒否する。選択肢表示は`label.trim().replace(/\s+/gu, " ")`で比較し、正規化後の空欄・重複を拒否する。保存するラベル原文は変更しない。lesson/section参照はIDの構造を検査するが、機械可読カタログとの存在照合は後続課題とする。
 
-数値採点の共通仕様は、期待値と回答を指定桁数に丸めた後で比較し、中間値は絶対値が大きくなる方向へ丸める。絶対・相対許容誤差は非負の十進文字列で表し、いずれかの境界を含む条件を満たせば正答とする。期待値が0なら絶対許容誤差だけを使う。今回の型・validatorはこの採点規則を検証するが、丸め・誤差計算・回答採点は実行しない。
+数値採点の共通仕様は、期待値と回答を指定桁数に丸めた後で比較し、中間値は絶対値が大きくなる方向へ丸める。絶対・相対許容誤差は非負の十進文字列で表し、いずれかの境界を含む条件を満たせば正答とする。期待値が0なら絶対許容誤差が必須で、相対許容誤差を併記しても判定には使わない。今回の型・validatorはこの採点規則を検証するが、丸め・誤差計算・回答採点は実行しない。
 
 ### 4.2 数値入力の採点規則
 
@@ -193,7 +193,7 @@ s^2=\frac{152/75}{3-1}=\frac{76}{75}=1.0133\ldots\ \mathrm{mm^2}
 
 ### 4.5 誤答フィードバック
 
-選択肢ごとに説明と復習節を指定できる。数値入力では、除数を`n`にした、偏差の二乗を忘れたなど、答案から一意に確認できる規則だけを分類する。既知の誤解に該当しない場合は次の共通フィードバックを使う。
+単一選択では誤答に個別の説明と復習節を指定できる。各`choiceId`は正答IDと異なり、feedback規則間で一意にする。数値入力では、除数を`n`にした、偏差の二乗を忘れたなど、答案から一意に確認できる規則だけを分類する。既知の誤解に該当しない場合は次の共通フィードバックを使う。
 
 > この値だけでは誤りの原因を特定できません。標本分散の式、偏差平方和、除数`n−1`、丸める位置、入力欄の単位を順に確認し、途中計算と見比べてください。解説の「分散」節を開いてから、同じ出題に戻って再入力できます。
 
@@ -206,7 +206,7 @@ s^2=\frac{152/75}{3-1}=\frac{76}{75}=1.0133\ldots\ \mathrm{mm^2}
 | 概念 | 必須の情報 | 目的 |
 |---|---|---|
 | 問題定義 (`QuestionDefinition`) | 固定定義は`kind="fixed"`と確定済み`QuestionContent`、生成定義は`kind="generated"`と生成規則・未展開テンプレートを持つ。共通項目は`questionId`、`revision`、`lessonRefs`、`difficulty`、`sources`。 | 何をどう生成・採点する問題かを定義する。 |
-| 出題インスタンス (`QuestionInstance`) | `instanceId`、`questionId`、`questionDefinitionRevision`、`kind`、不変コピーの`questionDefinitionSnapshot`。生成問題のみseedと`generationRuleVersion`を持つ。 | 学習者に実際に出した内容と条件を固定し、後で同じ問題を表示・採点できるようにする。seedだけでの再現に依存しない。 |
+| 出題インスタンス (`QuestionInstance`) | `instanceId`、`questionId`、`questionDefinitionRevision`、`kind`、深く不変なコピーの`questionDefinitionSnapshot`。生成問題のみseedと`generationRuleVersion`を持つ。 | 学習者に実際に出した内容と条件を固定し、後で同じ問題を表示・採点できるようにする。seedだけでの再現に依存しない。 |
 | 解答試行 (`AnswerAttempt`) | 対応する出題インスタンス、入力値、採点結果、該当するフィードバック規則または共通フィードバック。 | その出題に対する一回の回答と判定を対応づける。再回答は同じインスタンスに別の試行として追加できる。 |
 
 生成された確定パラメータの再現性キーは`(questionId, generationRuleVersion, seed)`とする。`generationRuleVersion`は同じ`questionId`内で管理し、異なる問題ID間で同じ版とseedが同じ値を示す必要はない。入力範囲・パラメータ制約・乱数アルゴリズム・確定手順を規則版に紐づけ、確定値に影響する変更では版を上げる。設問文や解説だけの変更は、確定値が変わらない限り規則版を変えない。再現性キーは確定パラメータを識別し、当時の表示・採点内容は保存済みsnapshotが保持する。
@@ -215,9 +215,11 @@ s^2=\frac{152/75}{3-1}=\frac{76}{75}=1.0133\ldots\ \mathrm{mm^2}
 
 snapshot validatorは保存済み構造だけを検査し、現行`QuestionDefinition`の存在を要求しない。出題作成時は定義・生成規則と確定内容を照合し、宣言済みパラメータ名・整数範囲・形式・テンプレートで固定した採点条件・feedbackルールの件数と復習先を確認してから独立コピーを作る。単一選択feedbackは分岐IDも照合する。feedbackの説明文などの補間とseedから内容を再生成して一致を証明する処理は生成器の責務とする。
 
+`createQuestionInstance`は独立したJSONコピー全体を再帰的にfreezeして返す。JSON.parse後の値は`restoreQuestionInstance`へ渡し、保存済み構造を検査してから独立コピーを再帰freezeする。`validateQuestionInstance`は構造を確認するだけで、入力をfreezeしない。
+
 新規出題時に呼出側が一意な`instanceId`を発行し、作成処理へ渡す。同じ問題・版・seed・確定値でも別出題には別IDを使い、再開・再回答では保存済みIDを維持する。IDを再現性キーから導出しない。保存データ全体のJSON構造版は、後続の保存機能が管理する`schemaVersion`に置く。`revision`は問題内容、`generationRuleVersion`は生成挙動の改訂を表し、いずれも保存構造の版には使わない。
 
-後続の#9は`QuestionInstance`の保存・復元、保存集合内での`instanceId`重複検査、全体`schemaVersion`の検査を担当する。`AnswerAttempt`の保存、出題IDとの関連付け、回答履歴の参照整合性検査は学習履歴機能で扱う。
+後続の#9は`QuestionInstance`の保存・復元、保存集合内での`instanceId`重複検査、全体`schemaVersion`の検査を担当する。保存集合全体のschemaとIDを検査した後、各instanceを`restoreQuestionInstance`へ渡し、全件の復元が成功してから保存内容へ反映する。`AnswerAttempt`の保存、出題IDとの関連付け、回答履歴の参照整合性検査は学習履歴機能で扱う。
 
 数値例の`QuestionInstance`は`instanceId`、`questionId=q-desc-var-num-001`、`questionDefinitionRevision=1`、snapshot、固定値`1.000, 2.200, 3.000 mm`とする。これらの確定値と「標本分散・分母`n−1`・小数第3位・mm²」の計算条件は、snapshot内の`content`だけに置く。たとえば回答`1.030`は、入力欄の単位mm²で丸め後も`1.030`、判定は誤答となり、既知の誤り規則に一致しなければ§4.5の共通フィードバックを使う。これは一つの`AnswerAttempt`として同じ出題インスタンスに紐づく。
 
