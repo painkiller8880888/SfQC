@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check": "tsc -b",
+    "check": "tsc -b && node --test scripts/resolve-screen.test.mjs",
     "build": "npm run check && vite build && node scripts/check-build.mjs",
     "preview": "vite preview"
   },

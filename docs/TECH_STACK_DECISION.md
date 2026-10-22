@@ -45,6 +45,31 @@ Issue本文の受入条件は、技術判断・ライセンス・bundle・`/SfQC
 
 Service WorkerやPWAは導入していないため、ブラウザに読み込み済みの画面が表示されるかと、offlineでの初回表示・再読み込みは分けて記録する。GitHub Pagesへの実デプロイはIssue #6の範囲である。
 
+## 画面遷移と未知URL（Issue #7）
+
+画面の切り替えにはURLのhash（`#/...`）を使う。GitHub Pagesでは6画面とも同じ`/SfQC/`のHTMLを読み込み、画面種別はブラウザ内で決めるため、サーバー側のroute rewriteや追加router依存がいらない。通常の`<a>`リンクでhashを変えるので、戻る・進むもブラウザ履歴に沿って動く。
+
+| 画面 | ローカル／公開URL |
+| --- | --- |
+| 学習マップ | `/SfQC/#/map` |
+| 単元解説 | `/SfQC/#/lesson` |
+| 演習 | `/SfQC/#/practice` |
+| 解答・フィードバック | `/SfQC/#/feedback` |
+| 進捗 | `/SfQC/#/progress` |
+| データ管理 | `/SfQC/#/data` |
+
+空hashと`#/`は学習マップを表示する。既知の6 route以外のhashは「画面が見つかりません」として学習マップへのリンクを出す。未知HTTPパス（例：`/SfQC/unknown`）には静的な`404.html`を使い、同じ学習マップURLへ戻るリンクを置く。HTMLを再利用する場合に教材ID・問題ID・queryを解釈する仕組みはまだ設けない。`ScreenKind`は画面種別を表し、`lessonId`・`sectionId`は教材内の参照を表す。既存の`lessonId#sectionId`はURL routeではなく教材内参照表記として維持する。将来のroute例は`/SfQC/#/lesson/descriptive-statistics/variance`で、resolverが画面種別に加えて教材ID・節IDを返す形を検討できるが、今回は実装しない。
+
+画面遷移は通常のhashリンクと`hashchange`で扱う。`history.pushState()`を導入する場合は`hashchange`が発火しないため、履歴イベントの購読も含めて遷移処理を再設計する。
+
+通常のhashリンクで画面種別が変わる現在のP1骨格では、見出しにフォーカスしてからページ先頭へ移動する。これは画面単位の仮の動作であり、将来の教材内移動や復習からの復帰に一律で適用しない。履歴スクロール回帰は2026-10-22にproduction previewのChatGPT IAB、Windows NT 10.0.26300.0 x64、320×480 CSS viewportで確認した。IABの正確なブラウザーbuild versionは取得できなかった。地図と解説は自然にスクロールでき、各操作前にwheel入力で地図scrollY=264（scrollHeight=744）、解説scrollY=325（scrollHeight=805）にした。修正前の2 cycles・8遷移ではlate測定で5件が失敗し、最後のBack失敗はlate測定から43.4秒後もh1が画面外だった。画面切替時のh1 focusは保ち、次のtimer turnで`scrollTo(0, 0)`する局所修正を加えた。最終10 cycles（地図の実リンク→Back→Forward→Back）40遷移では、各遷移後のactiveElementはh1だった。遷移先hashとh1文言が一致した最初の読み取り専用poll（5ms間隔、操作開始から8–82ms）では、通常リンク遷移10件に保存位置が残り、scrollY=264、h1 top=-41.44pxだった。約500ms後（実測500–516ms）のlate sampleは40/40でscrollY=0、h1 top=222.56px、bottom=261.44pxとなり、viewport内に収まった。IABの読み取り専用評価環境ではrequestAnimationFrameを利用できないため、early sampleは最初に一致を観測したpollであり、最初のpaintそのものや厳密な「2rAF+500ms」ではない。教材内の`lessonId#sectionId`、本文の読書位置、設問入力と復習前の学習状態を復元する制御は、後続課題で別途設計する。
+
+ローカルでは`npm run dev`または`npm run preview -- --host 127.0.0.1`を起動し、上記6 URLを直接開く。`npm run check`はURL解決のNode標準テストも実行し、`npm run build`は`dist/404.html`と復帰リンクの存在も検査する。Vite previewでunknown HTTP pathがどのHTMLを返すかはGitHub Pagesの404挙動を保証しないため、公開後に`/SfQC/unknown`を直接開いて確認する。Issue #7はPR本文に`Refs #7`を記し、自動closeキーワードは使わず、公開確認と結果記録後に手動で閉じる。
+
+実装時のローカル確認（2026-10-22）では、devとproduction previewの両方で6画面を直接開き、再読み込み後も見出しとタイトルがURLに一致することを確認した。devのReact StrictMode初回表示では、ロード直後と750ms後のactiveElementがBODYで、focusを奪わなかった。画面遷移時は見出しへフォーカスし、ページ先頭へ戻る。リンク操作での遷移、戻る・進む、Enterキーでのリンク操作と可視フォーカス、未知hashからの学習マップ復帰も確認した。静的`404.html`自体はpreviewで直接表示し、復帰リンクの遷移を確認した。6画面と404ページは320 CSS px幅で横方向にoverflowしない。公開サイトの未知HTTPパスはまだ確認していないため、deploy後に別途確認する。確認環境はNode.js 24.18.0、npm 12.0.2で、`npm run build`は型検査・URL resolverテスト・404出力検査を含め成功した。
+
+フォーカス受入確認では、初回表示時にfocusを奪わないこと、画面遷移後に`h1:focus`の輪郭線が見えること、スクロール位置がフォーカスと独立して先頭になることを確認する。production previewのIAB、320×480 viewportで、初回表示のactiveElementが`BODY`の状態から最初のTabで`本文へ移動`ボタンが可視focusになった。EnterとSpaceはいずれもhashを変えずにh1へフォーカスし、3pxの輪郭を表示して見出しへスクロールした。続くTabはヘッダーに戻らず本文の`単元解説へ`リンクへ進んだ。ボタンにはhrefがなく、未知hashを新しいタブで開くリンクにはならない。React StrictMode初回focusの確認はproduction previewと分け、devで行った。演習では問題文と回答入力の枠が別の見出し・領域として識別できることも確認する。
+
 ## production bundleサイズ
 
 `dist/assets`のproduction JavaScript・CSSについて、各ファイルのraw byte数とNode.js標準`zlib.gzipSync()`（既定圧縮設定）によるgzip byte数を測定した。合計のgzip値は各ファイルを個別に圧縮した値の和であり、一つのgzip streamに結合した場合のサイズではない。Vite buildログの圧縮サイズ表示とは別に、この方法で記録する。
