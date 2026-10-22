@@ -9,6 +9,14 @@ React、TypeScript、Vite、npmを採用する。Reactは後続Issueで定義す
 
 vanilla TypeScriptは初期表示が小さく、実行時依存もない。一方で、このプロジェクトでは複数画面と共通UIを後から整備するため、Reactの構成を採用する。Issue #5では画面導線や教材機能は作らない。
 
+## 学習データの保存とJSONバックアップ（Issue #9）
+
+P1の`QuestionInstance`集合は、アプリ専用のlocalStorage固定キー`sfqc:local-data`に保存する。保存値とJSONバックアップは`{ "schemaVersion": 1, "questionInstances": [...] }`の同じ形式とし、1回の保存・復元は最大500件、JSONはUTF-8で最大1 MiBとする。`instanceId`は集合内で重複させず、snapshotの検証と復元には`restoreQuestionInstance`を使う。`AnswerAttempt`は含めない。version 1以外は拒否し、自動migrationはしない。
+
+Issue #9の対象は少量の出題snapshotだけなので、ブラウザ標準APIで同期的に扱え、依存追加や非同期DB管理を必要としないlocalStorageを選んだ。1 MiB/500件の上限で1回に扱うデータ量を制限する。localStorageは利用者のブラウザ操作や設定で消去される場合があるため、長期保持には利用者がJSONバックアップを保管する。保存領域はoriginごとに分かれ、複数タブ間の厳密な排他制御は行わない。回答履歴などP2でデータ量が増えるときはIndexedDBを再評価する。
+
+Issue #9のproduction previewを2026-10-22にWindows版Vivaldiのプライベートウィンドウで確認した。fixtureのJSONを読み込み、再読み込み後も2件が残ること、書き出した1,917 bytesのJSONがfixtureと一致すること、書き出しJSONの再読込で置換確認が出ることを確認した。保存状態異常の検証にはproduction previewの`dist/`にコミットしない一時fixtureページを置き、同一originのプライベートプロファイルだけに試験値を作成した。不正JSONと`schemaVersion: 2`の各ケースで、起動時の警告・件数エラー・通常のexport無効化、fixtureから有効JSONを選んだ際の専用置換確認、Escapeによるキャンセル通知を確認した。両ケースともキャンセル後に起動時警告と件数エラーが残り、fixtureページで読み出した生の保存文字列も投入時と完全一致した。さらにversion 2の状態から有効fixtureを確認後に復元し、成功通知・2件表示・再読み込み後の2件維持まで確認した。一時fixtureページとJSONは検証後に削除した。ライブ領域は画面上に常設され、空状態で余白が出ず、キャンセル・復元後の通知が表示されることを確認したが、実スクリーンリーダーでの音声読み上げは確認していない。ズーム300%（約310–320 CSS px相当）でもデータ操作パネルの横はみ出しがなく、アプリ起因の外部通信もなかった。
+
 Viteの公式`react-ts`テンプレート（create-vite 9.3.1）から、起動に必要な構成を使った。デモ画面、生成ロゴ・画像、テンプレートのfaviconファイル、Oxlint設定と依存は削除した。依存の確定バージョンは`package-lock.json`に固定する。
 
 ## 実行環境と主要依存

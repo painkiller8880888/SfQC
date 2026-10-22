@@ -1,5 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { resolveScreen, type ScreenKind } from './resolve-screen.mjs'
+import {
+  exportLocalData,
+  importLocalData,
+  LocalDataError,
+  readLocalData,
+} from './local-data.mjs'
 
 const navigation = [
   { label: '学習マップ', href: '#/map', screen: 'map' },
@@ -54,8 +60,8 @@ const screens: Record<ScreenKind, {
   },
   data: {
     title: 'データ管理',
-    description: 'ブラウザ内の学習記録を管理する画面です。',
-    placeholder: '学習記録の書き出し・読み込みは準備中です。',
+    description: 'ブラウザ内の出題snapshotを管理する画面です。',
+    placeholder: '出題snapshotの件数を確認し、JSONで書き出し・読み込みできます。',
     links: [{ label: '進捗を見る', href: '#/progress' }],
   },
   'not-found': {
@@ -68,9 +74,71 @@ const screens: Record<ScreenKind, {
 
 function App() {
   const [screen, setScreen] = useState(() => resolveScreen(window.location.hash))
+  const [storedData, setStoredData] = useState(readLocalData)
+  const [dataMessage, setDataMessage] = useState('')
+  const [busy, setBusy] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const busyRef = useRef(false)
   const previousScreenRef = useRef<ScreenKind>(screen)
   const current = screens[screen]
+  const storageError = storedData.status === 'invalid' || storedData.status === 'unreadable'
+
+  const handleExport = () => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    setDataMessage('')
+    try {
+      const json = exportLocalData()
+      const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'sfqc-backup.json'
+      link.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+      setStoredData(readLocalData())
+      setDataMessage('JSONファイルの書き出しを開始しました。')
+    } catch (error) {
+      setDataMessage(error instanceof LocalDataError ? error.message : '書き出しに失敗しました。')
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
+  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    if (!file) return
+    if (busyRef.current) {
+      input.value = ''
+      return
+    }
+
+    busyRef.current = true
+    setBusy(true)
+    setDataMessage('')
+    try {
+      const result = await importLocalData(file, ({ damaged }) => window.confirm(damaged
+        ? '現在の保存データは破損しているか、このアプリでは対応していない形式のため、通常の方法で読み出し・バックアップできません。置き換えると元の保存データは失われ、元に戻せません。選択したファイルで置き換えますか？'
+        : '既存の保存データを選択したファイルで置き換えます。続行しますか？'))
+      if (result.status === 'cancelled') {
+        setDataMessage('復元をキャンセルしました。保存データは変更されていません。')
+      } else {
+        setStoredData({ status: 'ok', raw: result.raw, data: result.data })
+        setDataMessage(`${result.data.questionInstances.length}件の出題snapshotを復元しました。`)
+      }
+    } catch (error) {
+      setDataMessage(error instanceof LocalDataError ? error.message : '復元に失敗しました。')
+      if (error instanceof LocalDataError && error.code === 'storage-changed') {
+        setStoredData(readLocalData())
+      }
+    } finally {
+      input.value = ''
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     const updateScreen = () => setScreen(resolveScreen(window.location.hash))
@@ -119,11 +187,41 @@ function App() {
       </header>
 
       <main className="page-content">
+        {storageError && (
+          <p className="storage-alert" role="alert">
+            {storedData.error.message} 保存データを空として扱ったり、自動で上書きしたりしません。データ管理画面で確認してください。
+          </p>
+        )}
         <article className="screen">
           <h1 id="page-title" ref={headingRef} tabIndex={-1}>{current.title}</h1>
           <p className="description">{current.description}</p>
 
-          {screen === 'practice' ? (
+          {screen === 'data' ? (
+            <section className="data-panel" aria-labelledby="data-title">
+              <h2 id="data-title">保存データ</h2>
+              <p>
+                出題snapshot：{storedData.status === 'missing' || storedData.status === 'ok'
+                  ? `${storedData.data.questionInstances.length}件`
+                  : '読み込みエラー'}
+              </p>
+              <p>このデータはこのブラウザ内に保存され、サーバーへ送信されません。バックアップは安全な場所に保管してください。</p>
+              <div className="data-actions">
+                <button type="button" onClick={handleExport} disabled={busy || storageError}>
+                  JSONを書き出す
+                </button>
+                <label htmlFor="backup-file">JSONを読み込む</label>
+                <input
+                  id="backup-file"
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={handleImport}
+                  disabled={busy}
+                />
+              </div>
+              <p className="data-limit">schemaVersion 1 · 最大500件 · JSON 1 MiBまで</p>
+              <p className="data-message" role="status" aria-live="polite">{dataMessage}</p>
+            </section>
+          ) : screen === 'practice' ? (
             <>
               <section className="placeholder" aria-labelledby="question-title">
                 <h2 id="question-title">問題</h2>

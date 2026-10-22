@@ -28,7 +28,7 @@ npm run build
 npm run preview -- --host 127.0.0.1
 ```
 
-previewは `http://127.0.0.1:4173/SfQC/` で確認できます。`check`はTypeScriptの型検査と画面URL解決のテスト、`build`は`check`・production build・生成HTML/404ページの検査を実行します。技術選定と検証結果は[技術選定記録](docs/TECH_STACK_DECISION.md)を参照してください。
+previewは `http://127.0.0.1:4173/SfQC/` で確認できます。`check`はTypeScriptの型検査、画面URL解決・問題契約・ブラウザ内データ保存とJSON復元のテストを実行し、`build`は`check`・production build・生成HTML/404ページの検査を実行します。技術選定と検証結果は[技術選定記録](docs/TECH_STACK_DECISION.md)を参照してください。
 
 ## CI と GitHub Pages
 
