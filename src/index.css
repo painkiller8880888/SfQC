@@ -28,12 +28,14 @@ a {
 }
 
 a:focus-visible,
+.skip-link:focus-visible,
 h1:focus {
   outline: 3px solid #7ab69b;
   outline-offset: 4px;
 }
 
 .skip-link {
+  appearance: none;
   position: fixed;
   z-index: 1;
   top: 0.5rem;
@@ -42,6 +44,10 @@ h1:focus {
   border: 1px solid #c8d9ce;
   border-radius: 0.5rem;
   background: #fff;
+  color: #34684e;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
   transform: translate(-50%, calc(-100% - 0.75rem));
 }
 

@@ -82,24 +82,27 @@ function App() {
     document.title = `${current.title} | SfQC`
     if (previousScreenRef.current !== screen) {
       headingRef.current?.focus({ preventScroll: true })
-      window.scrollTo(0, 0)
+      const scrollTimeout = window.setTimeout(() => window.scrollTo(0, 0), 0)
       previousScreenRef.current = screen
+
+      return () => {
+        window.clearTimeout(scrollTimeout)
+      }
     }
   }, [current.title, screen])
 
   return (
     <div className="app-shell">
-      <a
+      <button
+        type="button"
         className="skip-link"
-        href="#page-title"
-        onClick={(event) => {
-          event.preventDefault()
+        onClick={() => {
           headingRef.current?.focus({ preventScroll: true })
           headingRef.current?.scrollIntoView()
         }}
       >
         本文へ移動
-      </a>
+      </button>
       <header className="site-header">
         <a className="site-brand" href="#/map">SfQC</a>
         <nav className="primary-nav" aria-label="メイン">
