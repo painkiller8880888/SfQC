@@ -31,7 +31,7 @@ const screens: Record<ScreenKind, {
   practice: {
     title: '演習',
     description: '学んだ内容を問題で確認する画面です。',
-    placeholder: '問題表示、回答入力、同じ問題の再開は準備中です。',
+    placeholder: '回答入力、同じ問題の再開は準備中です。',
     links: [{ label: '解答・フィードバックへ', href: '#/feedback' }],
   },
   feedback: {
@@ -81,7 +81,7 @@ function App() {
   useEffect(() => {
     document.title = `${current.title} | SfQC`
     if (previousScreenRef.current !== screen) {
-      headingRef.current?.focus()
+      headingRef.current?.focus({ preventScroll: true })
       window.scrollTo(0, 0)
       previousScreenRef.current = screen
     }
@@ -89,6 +89,17 @@ function App() {
 
   return (
     <div className="app-shell">
+      <a
+        className="skip-link"
+        href="#page-title"
+        onClick={(event) => {
+          event.preventDefault()
+          headingRef.current?.focus({ preventScroll: true })
+          headingRef.current?.scrollIntoView()
+        }}
+      >
+        本文へ移動
+      </a>
       <header className="site-header">
         <a className="site-brand" href="#/map">SfQC</a>
         <nav className="primary-nav" aria-label="メイン">
@@ -106,13 +117,26 @@ function App() {
 
       <main className="page-content">
         <article className="screen">
-          <h1 ref={headingRef} tabIndex={-1}>{current.title}</h1>
+          <h1 id="page-title" ref={headingRef} tabIndex={-1}>{current.title}</h1>
           <p className="description">{current.description}</p>
 
-          <section className="placeholder" aria-labelledby="placeholder-title">
-            <h2 id="placeholder-title">この画面でできること</h2>
-            <p>{current.placeholder}</p>
-          </section>
+          {screen === 'practice' ? (
+            <>
+              <section className="placeholder" aria-labelledby="question-title">
+                <h2 id="question-title">問題</h2>
+                <p>問題文と条件は準備中です。</p>
+              </section>
+              <section className="placeholder" aria-labelledby="answer-title">
+                <h2 id="answer-title">回答入力</h2>
+                <p>{current.placeholder}</p>
+              </section>
+            </>
+          ) : (
+            <section className="placeholder" aria-labelledby="placeholder-title">
+              <h2 id="placeholder-title">この画面でできること</h2>
+              <p>{current.placeholder}</p>
+            </section>
+          )}
 
           <nav className="screen-navigation" aria-label="この画面から移動">
             <ul>

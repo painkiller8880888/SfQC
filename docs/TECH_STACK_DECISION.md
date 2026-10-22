@@ -58,11 +58,17 @@ Service WorkerやPWAは導入していないため、ブラウザに読み込み
 | 進捗 | `/SfQC/#/progress` |
 | データ管理 | `/SfQC/#/data` |
 
-空hashと`#/`は学習マップを表示する。既知の6 route以外のhashは「画面が見つかりません」として学習マップへのリンクを出す。未知HTTPパス（例：`/SfQC/unknown`）には静的な`404.html`を使い、同じ学習マップURLへ戻るリンクを置く。HTMLを再利用する場合に教材ID・問題ID・queryを解釈する仕組みはまだ設けない。既存の`lessonId#sectionId`は教材内の参照表記として維持する。
+空hashと`#/`は学習マップを表示する。既知の6 route以外のhashは「画面が見つかりません」として学習マップへのリンクを出す。未知HTTPパス（例：`/SfQC/unknown`）には静的な`404.html`を使い、同じ学習マップURLへ戻るリンクを置く。HTMLを再利用する場合に教材ID・問題ID・queryを解釈する仕組みはまだ設けない。`ScreenKind`は画面種別を表し、`lessonId`・`sectionId`は教材内の参照を表す。既存の`lessonId#sectionId`はURL routeではなく教材内参照表記として維持する。将来のroute例は`/SfQC/#/lesson/descriptive-statistics/variance`で、resolverが画面種別に加えて教材ID・節IDを返す形を検討できるが、今回は実装しない。
+
+画面遷移は通常のhashリンクと`hashchange`で扱う。`history.pushState()`を導入する場合は`hashchange`が発火しないため、履歴イベントの購読も含めて遷移処理を再設計する。
+
+通常のhashリンクで画面種別が変わる現在のP1骨格では、見出しにスクロールを伴わずフォーカスしてからページ先頭へ移動する。これは画面単位の仮の動作であり、将来の教材内移動や復習からの復帰に一律で適用しない。以前のChrome戻る／進む計測ではh1が画面外に残る場合が報告されたが、2026-10-22の再計測（Chrome IAB、320×480）では再現しなかった。scrollY=264からの通常遷移と、保存位置scrollY=325がある履歴への戻る・進むの後はいずれも最終scrollY=0で、h1はフォーカスされ輪郭が表示され、viewport内（top=222.56px、bottom=261.44px）にあった。教材内の`lessonId#sectionId`、本文の読書位置、設問入力と復習前の学習状態を復元する制御は、後続課題で別途設計する。
 
 ローカルでは`npm run dev`または`npm run preview -- --host 127.0.0.1`を起動し、上記6 URLを直接開く。`npm run check`はURL解決のNode標準テストも実行し、`npm run build`は`dist/404.html`と復帰リンクの存在も検査する。Vite previewでunknown HTTP pathがどのHTMLを返すかはGitHub Pagesの404挙動を保証しないため、公開後に`/SfQC/unknown`を直接開いて確認する。Issue #7はPR本文に`Refs #7`を記し、自動closeキーワードは使わず、公開確認と結果記録後に手動で閉じる。
 
 実装時のローカル確認（2026-10-22）では、devとproduction previewの両方で6画面を直接開き、再読み込み後も見出しとタイトルがURLに一致することを確認した。devの初回表示はReact StrictModeでも見出しへフォーカスを移さず、画面遷移時は見出しへフォーカスし、ページ先頭へ戻る。リンク操作での遷移、戻る・進む、Enterキーでのリンク操作と可視フォーカス、未知hashからの学習マップ復帰も確認した。静的`404.html`自体はpreviewで直接表示し、復帰リンクの遷移を確認した。6画面と404ページは320 CSS px幅で横方向にoverflowしない。公開サイトの未知HTTPパスはまだ確認していないため、deploy後に別途確認する。確認環境はNode.js 24.18.0、npm 12.0.2で、`npm run build`は型検査・URL resolverテスト・404出力検査を含め成功した。
+
+フォーカス受入確認では、初回表示時にfocusを奪わないこと、画面遷移後に`h1:focus`の輪郭線が見えること、スクロール位置がフォーカスと独立して先頭になることを確認する。Chrome IABの320×480 viewportで、初回のactiveElementが`BODY`の状態からTabを押すと本文スキップリンクが表示され、Enter後はURL hashを保ったままh1にフォーカスし輪郭を表示した。続くTabではヘッダーへ戻らず画面内の最初のリンクへ進んだ。演習では問題文と回答入力の枠が別の見出し・領域として識別できることも確認する。
 
 ## production bundleサイズ
 
