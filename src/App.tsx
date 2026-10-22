@@ -219,7 +219,7 @@ function App() {
                 />
               </div>
               <p className="data-limit">schemaVersion 1 · 最大500件 · JSON 1 MiBまで</p>
-              {dataMessage && <p className="data-message" role="status" aria-live="polite">{dataMessage}</p>}
+              <p className="data-message" role="status" aria-live="polite">{dataMessage}</p>
             </section>
           ) : screen === 'practice' ? (
             <>

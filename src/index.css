@@ -228,6 +228,19 @@ h1 {
   font-size: 0.875rem;
 }
 
+.data-panel .data-message:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .data-panel .data-message {
   margin-top: 1rem;
   padding: 0.75rem;
