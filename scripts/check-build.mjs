@@ -4,6 +4,10 @@ import { access, readFile } from 'node:fs/promises'
 const html = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8')
 assert.match(html, /lang="ja"/, 'production HTML should declare Japanese')
 
+const notFoundHtml = await readFile(new URL('../dist/404.html', import.meta.url), 'utf8')
+assert.match(notFoundHtml, /<html lang="ja">/, '404 page should declare Japanese')
+assert.match(notFoundHtml, /href="\/SfQC\/#\/map"/, '404 page should link back to the learning map')
+
 const assets = [...html.matchAll(/(?:src|href)="(\/SfQC\/assets\/[^"]+)"/g)]
   .map(([, url]) => url)
 

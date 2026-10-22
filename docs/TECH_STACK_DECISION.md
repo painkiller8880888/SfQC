@@ -45,6 +45,25 @@ Issue本文の受入条件は、技術判断・ライセンス・bundle・`/SfQC
 
 Service WorkerやPWAは導入していないため、ブラウザに読み込み済みの画面が表示されるかと、offlineでの初回表示・再読み込みは分けて記録する。GitHub Pagesへの実デプロイはIssue #6の範囲である。
 
+## 画面遷移と未知URL（Issue #7）
+
+画面の切り替えにはURLのhash（`#/...`）を使う。GitHub Pagesでは6画面とも同じ`/SfQC/`のHTMLを読み込み、画面種別はブラウザ内で決めるため、サーバー側のroute rewriteや追加router依存がいらない。通常の`<a>`リンクでhashを変えるので、戻る・進むもブラウザ履歴に沿って動く。
+
+| 画面 | ローカル／公開URL |
+| --- | --- |
+| 学習マップ | `/SfQC/#/map` |
+| 単元解説 | `/SfQC/#/lesson` |
+| 演習 | `/SfQC/#/practice` |
+| 解答・フィードバック | `/SfQC/#/feedback` |
+| 進捗 | `/SfQC/#/progress` |
+| データ管理 | `/SfQC/#/data` |
+
+空hashと`#/`は学習マップを表示する。既知の6 route以外のhashは「画面が見つかりません」として学習マップへのリンクを出す。未知HTTPパス（例：`/SfQC/unknown`）には静的な`404.html`を使い、同じ学習マップURLへ戻るリンクを置く。HTMLを再利用する場合に教材ID・問題ID・queryを解釈する仕組みはまだ設けない。既存の`lessonId#sectionId`は教材内の参照表記として維持する。
+
+ローカルでは`npm run dev`または`npm run preview -- --host 127.0.0.1`を起動し、上記6 URLを直接開く。`npm run check`はURL解決のNode標準テストも実行し、`npm run build`は`dist/404.html`と復帰リンクの存在も検査する。Vite previewでunknown HTTP pathがどのHTMLを返すかはGitHub Pagesの404挙動を保証しないため、公開後に`/SfQC/unknown`を直接開いて確認する。Issue #7はPR本文に`Refs #7`を記し、自動closeキーワードは使わず、公開確認と結果記録後に手動で閉じる。
+
+実装時のローカル確認（2026-10-22）では、devとproduction previewの両方で6画面を直接開き、再読み込み後も見出しとタイトルがURLに一致することを確認した。devの初回表示はReact StrictModeでも見出しへフォーカスを移さず、画面遷移時は見出しへフォーカスし、ページ先頭へ戻る。リンク操作での遷移、戻る・進む、Enterキーでのリンク操作と可視フォーカス、未知hashからの学習マップ復帰も確認した。静的`404.html`自体はpreviewで直接表示し、復帰リンクの遷移を確認した。6画面と404ページは320 CSS px幅で横方向にoverflowしない。公開サイトの未知HTTPパスはまだ確認していないため、deploy後に別途確認する。確認環境はNode.js 24.18.0、npm 12.0.2で、`npm run build`は型検査・URL resolverテスト・404出力検査を含め成功した。
+
 ## production bundleサイズ
 
 `dist/assets`のproduction JavaScript・CSSについて、各ファイルのraw byte数とNode.js標準`zlib.gzipSync()`（既定圧縮設定）によるgzip byte数を測定した。合計のgzip値は各ファイルを個別に圧縮した値の和であり、一つのgzip streamに結合した場合のサイズではない。Vite buildログの圧縮サイズ表示とは別に、この方法で記録する。
