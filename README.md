@@ -29,3 +29,9 @@ npm run preview -- --host 127.0.0.1
 ```
 
 previewは `http://127.0.0.1:4173/SfQC/` で確認できます。`check`はTypeScriptの型検査、`build`は型検査・production build・生成HTMLのasset検査を実行します。技術選定と検証結果は[技術選定記録](docs/TECH_STACK_DECISION.md)を参照してください。
+
+## CI と GitHub Pages
+
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) は `main` 向けPRで `npm ci` と `npm run build` を実行し、`main` へのpushで同じ検査の後に `dist/` をGitHub Pagesへdeployします。PRからはdeployしません。Actionsタブで各workflowの結果を確認できます。初回deploy後の公開先は [https://painkiller8880888.github.io/SfQC/](https://painkiller8880888.github.io/SfQC/) を予定しています。
+
+初回公開前に、Repository Settings > PagesのSourceをGitHub Actionsにし、`github-pages` environmentを作成してdeploy対象を`main`に制限してください。Settings > Actions > GeneralでActionsが無効化されておらず、workflowが使用するActionsが許可されていることも確認してください。設定変更はrepository admin/maintainerが行い、PagesのURLとdeploy成功をActionsタブで確認します。
