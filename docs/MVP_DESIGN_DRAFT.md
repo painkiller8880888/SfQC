@@ -96,7 +96,19 @@
 | `feedbackRules` | 必須。1件以上。既知の誤解に当たる条件または選択肢、理由、復習先を記す。 | 復習先は定義済みの`lessonId#sectionId`。 |
 | `defaultFeedback` | 必須。特定の誤解と判定できない誤答への共通説明。 | 数値誤答を根拠なく誤解タグへ分類しない。 |
 | `sources` | 必須の欄。0件以上。外部出典を使う場合は資料名、URL、版、確認日、位置、利用目的を記録する。 | 公式資料は範囲確認に使い、本文・設問は独自に作る。 |
-| `revision` | 必須。1以上の整数。問題定義を変更したら増やす。 | インスタンス再現時にも参照する。 |
+| `revision` | 必須。1以上の安全整数。問題定義を変更したら増やす。 | インスタンス再現時にも参照する。 |
+
+Issue #8の機械可読契約では、`QuestionDefinition.kind`を`fixed`または`generated`とする。固定定義は確定済みの`content: QuestionContent`を持ち、生成定義は`generator`と未展開の`contentTemplate`を持つ。生成前のテンプレートに確定済み正答・選択肢・途中計算を空値やダミー値として置かない。P2の生成処理が確定した`QuestionContent`を作り、今回追加する契約処理はその検証と出題snapshotへのコピーを担う。テンプレートの展開、乱数生成、採点は行わない。
+
+型への割当は次のとおりとする。`QuestionDefinition`の共通項目は`questionId`、`revision`、`lessonRefs`、`difficulty`、`sources`。`QuestionContent`は`format`、`prompt`、`conditions`、`parameters`、形式に応じた`choices`、`correctAnswer`、`grading`、`solution`、`feedbackRules`、`defaultFeedback`を持つ。`QuestionContentTemplate`は`format`と、`promptTemplate`、`conditionsTemplate`、形式に応じた選択肢・採点条件、`correctAnswerTemplate`、`solutionTemplate`、`feedbackRulesTemplate`、`defaultFeedbackTemplate`を持つ。生成定義の`generator`は正の安全整数`generationRuleVersion`と、名前付き整数パラメータの包含`min`・`max`範囲を持つ。
+
+`QuestionContent`は形式別の判別可能な型とし、確定した設問、条件、パラメータ、正答、採点規則、解法、feedbackを保持する。単一選択にはID付きの選択肢を必須とし、数値入力には選択肢を認めない。パラメータmapの名前は小文字・数字・ハイフンのIDとし、値は安全整数または十進文字列に限る。生成パラメータは安全整数の`min`・`max`を含む整数範囲だけを扱い、範囲境界は含む。任意の式、制約言語、十進演算器は扱わない。
+
+数値・許容差・確定した十進パラメータは十進文字列で保存し、`Number`に変換して比較しない。文字列は任意の負号を付けた整数または小数とし、指数表記、先頭の不要な0、非有限値は許可しない。小数部の末尾の0は表示桁を保つため許可する。数値採点の`roundingDigits`は0以上の安全整数とする。seedは空白だけではない文字列を受け取り、その文字列を正規化せず出題インスタンスに保存する。生成規則版は正の安全整数とする。
+
+契約オブジェクトは列挙したキーだけを受け入れ、未知キー、`undefined`、非有限数、区分に合わない項目、不正な整数・十進文字列を拒否する。選択肢表示は`label.trim().replace(/\s+/gu, " ")`で比較し、正規化後の空欄・重複を拒否する。保存するラベル原文は変更しない。lesson/section参照はIDの構造を検査するが、機械可読カタログとの存在照合は後続課題とする。
+
+数値採点の共通仕様は、期待値と回答を指定桁数に丸めた後で比較し、中間値は絶対値が大きくなる方向へ丸める。絶対・相対許容誤差は非負の十進文字列で表し、いずれかの境界を含む条件を満たせば正答とする。期待値が0なら絶対許容誤差だけを使う。今回の型・validatorはこの採点規則を検証するが、丸め・誤差計算・回答採点は実行しない。
 
 ### 4.2 数値入力の採点規則
 
@@ -189,19 +201,25 @@ s^2=\frac{152/75}{3-1}=\frac{76}{75}=1.0133\ldots\ \mathrm{mm^2}
 
 ## 5. 問題定義・出題インスタンス・解答試行
 
-3つは概念上の責務を分ける。データの保存構造やIDの採番方式は確定しない。
+3つは概念上の責務を分ける。データの保存全体の版とID採番方式は確定しない。Issue #8の型は`src/question-contract.mjs`と対応する型宣言で提供する。
 
 | 概念 | 必須の情報 | 目的 |
 |---|---|---|
-| 問題定義 (`QuestionDefinition`) | `questionId`、`revision`、設問・生成規則・採点規則・正答・解法・フィードバック。 | 何をどう生成・採点する問題かを定義する。 |
-| 出題インスタンス (`QuestionInstance`) | `questionId`と`questionDefinitionRevision`、不変の`questionDefinitionSnapshot`、確定した全パラメータ、単位・計算条件。生成問題はseedと`generationRuleVersion`も記録する。固定問題はseed・生成規則版を持たず、固定条件を記録する。 | 学習者に実際に出した内容と条件を固定し、後で同じ問題を表示・採点できるようにする。seedだけでの再現に依存しない。 |
+| 問題定義 (`QuestionDefinition`) | 固定定義は`kind="fixed"`と確定済み`QuestionContent`、生成定義は`kind="generated"`と生成規則・未展開テンプレートを持つ。共通項目は`questionId`、`revision`、`lessonRefs`、`difficulty`、`sources`。 | 何をどう生成・採点する問題かを定義する。 |
+| 出題インスタンス (`QuestionInstance`) | `instanceId`、`questionId`、`questionDefinitionRevision`、`kind`、不変コピーの`questionDefinitionSnapshot`。生成問題のみseedと`generationRuleVersion`を持つ。 | 学習者に実際に出した内容と条件を固定し、後で同じ問題を表示・採点できるようにする。seedだけでの再現に依存しない。 |
 | 解答試行 (`AnswerAttempt`) | 対応する出題インスタンス、入力値、採点結果、該当するフィードバック規則または共通フィードバック。 | その出題に対する一回の回答と判定を対応づける。再回答は同じインスタンスに別の試行として追加できる。 |
 
-乱数生成の再現条件は、問題定義の改訂版・生成規則の版・seed・確定パラメータ・計算条件の組である。ルール改訂で同じseedの出力が変わっても、保存した確定パラメータから当時の条件を表示できる。
+生成された確定パラメータの再現性キーは`(questionId, generationRuleVersion, seed)`とする。`generationRuleVersion`は同じ`questionId`内で管理し、異なる問題ID間で同じ版とseedが同じ値を示す必要はない。入力範囲・パラメータ制約・乱数アルゴリズム・確定手順を規則版に紐づけ、確定値に影響する変更では版を上げる。設問文や解説だけの変更は、確定値が変わらない限り規則版を変えない。再現性キーは確定パラメータを識別し、当時の表示・採点内容は保存済みsnapshotが保持する。
 
-出題時の`questionDefinitionSnapshot`は不変とし、元の設問文・選択肢・確定条件・正答・採点規則（丸め・絶対／相対許容誤差・単位を含む）・解法・フィードバックを表示・再採点できる内容を含める。`questionDefinitionRevision`は当時の定義の識別に使い、スナップショットの代わりにはならない。アプリ更新後もこの情報と当時の解答結果を参照できるものとし、旧内容が利用できないとき現行定義へ黙って置き換えない。保存形式は定めない。
+`questionDefinitionSnapshot`は`questionId`、当時の定義`revision`、`kind`、必要な教材参照・難易度・出典と、確定済み`content`を含む独立コピーとする。`content`には設問・選択肢・確定パラメータ・条件・単位・正答・採点規則・解法・feedbackを含める。確定パラメータ・単位・条件は`questionDefinitionSnapshot.content`を唯一の正本とし、インスタンス外側やsnapshot内の別フィールドに重複させない。生成snapshotは`generationRuleVersion`を含み、インスタンス側の値との一致を検証する。`questionDefinitionRevision`は当時の定義の識別に使い、スナップショットの代わりにはならない。アプリ更新後も保存snapshotを復元に使い、現行定義への自動置換や再生成はしない。
 
-数値例のインスタンスは`questionId=q-desc-var-num-001`、`questionDefinitionRevision=1`、出題時の`questionDefinitionSnapshot`、固定値`1.000, 2.200, 3.000 mm`、計算条件「標本分散・分母`n−1`・小数第3位・mm²」である。たとえば回答`1.030`は、入力欄の単位mm²で丸め後も`1.030`、判定は誤答となり、既知の誤り規則に一致しなければ§4.5の共通フィードバックを使う。これは一つの`AnswerAttempt`として同じ出題インスタンスに紐づく。
+snapshot validatorは保存済み構造だけを検査し、現行`QuestionDefinition`の存在を要求しない。出題作成時は定義・生成規則と確定内容を照合し、宣言済みパラメータ名・整数範囲・形式・テンプレートで固定した採点条件・feedbackルールの件数と復習先を確認してから独立コピーを作る。単一選択feedbackは分岐IDも照合する。feedbackの説明文などの補間とseedから内容を再生成して一致を証明する処理は生成器の責務とする。
+
+新規出題時に呼出側が一意な`instanceId`を発行し、作成処理へ渡す。同じ問題・版・seed・確定値でも別出題には別IDを使い、再開・再回答では保存済みIDを維持する。IDを再現性キーから導出しない。保存データ全体のJSON構造版は、後続の保存機能が管理する`schemaVersion`に置く。`revision`は問題内容、`generationRuleVersion`は生成挙動の改訂を表し、いずれも保存構造の版には使わない。
+
+後続の#9は`QuestionInstance`の保存・復元、保存集合内での`instanceId`重複検査、全体`schemaVersion`の検査を担当する。`AnswerAttempt`の保存、出題IDとの関連付け、回答履歴の参照整合性検査は学習履歴機能で扱う。
+
+数値例の`QuestionInstance`は`instanceId`、`questionId=q-desc-var-num-001`、`questionDefinitionRevision=1`、snapshot、固定値`1.000, 2.200, 3.000 mm`とする。これらの確定値と「標本分散・分母`n−1`・小数第3位・mm²」の計算条件は、snapshot内の`content`だけに置く。たとえば回答`1.030`は、入力欄の単位mm²で丸め後も`1.030`、判定は誤答となり、既知の誤り規則に一致しなければ§4.5の共通フィードバックを使う。これは一つの`AnswerAttempt`として同じ出題インスタンスに紐づく。
 
 | 学習者の操作 | 扱うもの |
 |---|---|
@@ -272,6 +290,6 @@ s^2=\frac{152/75}{3-1}=\frac{76}{75}=1.0133\ldots\ \mathrm{mm^2}
 
 ## 11. 未決定事項
 
-- 実装時の機械可読スキーマ、保存方式、画面遷移方式、数値計算のライブラリと精度管理。
+- 保存データ全体の形式・`schemaVersion`、保存方式、画面遷移方式、数値計算のライブラリと精度管理。
 - 初期例以外の問題形式、全カリキュラムの教材・問題、学習習熟度や復習間隔の判定。
 - 公式資料にない教材内容の引用範囲や、公開ライセンスの詳細は既存の基本方針・今後のIssueで決める。
