@@ -60,8 +60,11 @@ function isNonNegativeDecimal(value) {
   return isDecimal(value) && !value.startsWith('-')
 }
 
-function isDecimalZero(value) {
-  return /^-?0(?:\.0+)?$/u.test(value)
+function isDecimalZeroAfterRounding(value, roundingDigits) {
+  const [integerPart, fractionalPart = ''] = value.replace(/^-/, '').split('.')
+  return integerPart === '0'
+    && !/[1-9]/u.test(fractionalPart.slice(0, roundingDigits))
+    && !/[5-9]/u.test(fractionalPart[roundingDigits] ?? '')
 }
 
 function isParameterRecord(value) {
@@ -171,7 +174,7 @@ function isQuestionContent(value) {
     if (!hasKeys(value, ['format', 'prompt', 'conditions', 'parameters', 'correctAnswer', 'grading', 'solution', 'feedbackRules', 'defaultFeedback'])) return false
     return isDecimal(value.correctAnswer)
       && isNumericGrading(value.grading)
-      && (!isDecimalZero(value.correctAnswer)
+      && (!isDecimalZeroAfterRounding(value.correctAnswer, value.grading.roundingDigits)
         || Object.hasOwn(value.grading, 'absoluteTolerance'))
       && isNumericFeedbackRules(value.feedbackRules, 'explanation')
   }

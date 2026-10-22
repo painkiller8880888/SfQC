@@ -77,6 +77,39 @@ test('numeric contracts preserve decimal strings and reject unsupported notation
   assert.equal(validateQuestionContent({ ...copy(numericDefinition.content), correctAnswer: '-0.000' }), true)
 })
 
+test('numeric relative tolerance checks whether the rounded expected value is zero', () => {
+  const contentFor = (correctAnswer, roundingDigits) => ({
+    ...copy(numericDefinition.content),
+    correctAnswer,
+    grading: { type: 'numeric', unit: 'mm²', roundingDigits, relativeTolerance: '0.005' },
+  })
+
+  for (const answer of ['0.004', '-0.004']) assert.equal(validateQuestionContent(contentFor(answer, 2)), false)
+  for (const answer of ['0.005', '-0.005']) assert.equal(validateQuestionContent(contentFor(answer, 2)), true)
+  assert.equal(validateQuestionContent(contentFor('0.4', 2)), true)
+  assert.equal(validateQuestionContent(contentFor('0.4', 0)), false)
+  assert.equal(validateQuestionContent(contentFor('0.5', 0)), true)
+  assert.equal(validateQuestionContent(contentFor(`0.4${'9'.repeat(80)}`, 0)), false)
+  assert.equal(validateQuestionContent(contentFor('0', Number.MAX_SAFE_INTEGER)), false)
+  assert.equal(validateQuestionContent(contentFor('0.004', Number.MAX_SAFE_INTEGER)), true)
+  assert.equal(validateQuestionContent({
+    ...contentFor('0.004', 2),
+    grading: { ...contentFor('0.004', 2).grading, absoluteTolerance: '0.002' },
+  }), true)
+
+  const definition = copy(numericDefinition)
+  definition.content.correctAnswer = '0.005'
+  definition.content.grading = contentFor('0.005', 2).grading
+  const saved = copy(createQuestionInstance(definition, { instanceId: 'rounded-zero-restore' }))
+  saved.questionDefinitionSnapshot.content.correctAnswer = '0.004'
+  assert.equal(validateQuestionInstance(saved), false)
+  assert.throws(() => restoreQuestionInstance(saved), TypeError)
+
+  definition.content.correctAnswer = '0.004'
+  assert.equal(validateQuestionDefinition(definition), false)
+  assert.throws(() => createQuestionInstance(definition, { instanceId: 'rounded-zero-create' }), TypeError)
+})
+
 test('single-choice content rejects duplicate normalized labels and invalid references', () => {
   const duplicateLabels = copy(fixedDefinition.content)
   duplicateLabels.choices[1].label = '  mm  '
@@ -128,14 +161,28 @@ test('generated instance creation enforces integer parameter ranges and preserve
   assert.throws(() => createQuestionInstance(generatedDefinition, { instanceId: 'blank-seed', content: generatedContent, seed: '  ' }), TypeError)
   assert.throws(() => createQuestionInstance(fixedDefinition, { instanceId: 'bad-fixed', seed: 's' }), TypeError)
 
-  const zeroDefinition = copy(generatedDefinition)
-  zeroDefinition.contentTemplate.relativeTolerance = '0.005'
-  const zeroContent = copy(generatedContent)
-  zeroContent.correctAnswer = '-0.000'
-  zeroContent.grading.relativeTolerance = '0.005'
-  assert.equal(validateQuestionDefinition(zeroDefinition), true)
+  const relativeOnlyDefinition = copy(generatedDefinition)
+  relativeOnlyDefinition.contentTemplate.roundingDigits = 2
+  delete relativeOnlyDefinition.contentTemplate.absoluteTolerance
+  relativeOnlyDefinition.contentTemplate.relativeTolerance = '0.005'
+  assert.equal(validateQuestionDefinition(relativeOnlyDefinition), true)
+
+  const nearZeroContent = copy(generatedContent)
+  nearZeroContent.correctAnswer = '0.004'
+  nearZeroContent.grading.roundingDigits = 2
+  delete nearZeroContent.grading.absoluteTolerance
+  nearZeroContent.grading.relativeTolerance = '0.005'
+  const boundaryContent = { ...nearZeroContent, correctAnswer: '0.005' }
+  assert.equal(validateQuestionContent(nearZeroContent), false)
+  assert.equal(validateQuestionContent(boundaryContent), true)
+  assert.throws(() => createQuestionInstance(relativeOnlyDefinition, { instanceId: 'generated-rounded-zero', content: nearZeroContent, seed: 's' }), TypeError)
+  assert.equal(validateQuestionInstance(createQuestionInstance(relativeOnlyDefinition, { instanceId: 'generated-rounding-boundary', content: boundaryContent, seed: 's' })), true)
+
+  const zeroDefinition = copy(relativeOnlyDefinition)
+  zeroDefinition.contentTemplate.absoluteTolerance = '0.002'
+  const zeroContent = { ...nearZeroContent, correctAnswer: '-0.004', grading: { ...nearZeroContent.grading, absoluteTolerance: '0.002' } }
   assert.equal(validateQuestionContent(zeroContent), true)
-  assert.equal(validateQuestionInstance(createQuestionInstance(zeroDefinition, { instanceId: 'zero-both-tolerances', content: zeroContent, seed: 's' })), true)
+  assert.equal(validateQuestionInstance(createQuestionInstance(zeroDefinition, { instanceId: 'generated-zero-with-absolute', content: zeroContent, seed: 's' })), true)
 })
 
 test('generated single-choice content keeps the declared choice IDs and answer', () => {

@@ -105,10 +105,12 @@ export const generatedInstance = createQuestionInstance(generatedDefinition, {
 
 export function assertReadonlyInstanceTypes() {
   const fixed = createQuestionInstance(fixedDefinition, { instanceId: 'type-check' })
-  // @ts-expect-error returned snapshots are deeply readonly
-  fixed.questionDefinitionSnapshot.content.choices[0].label = '変更'
-  // @ts-expect-error returned arrays are readonly
-  fixed.questionDefinitionSnapshot.content.choices.push({ id: 'D', label: '追加' })
+  if (fixed.questionDefinitionSnapshot.content.format === 'single-choice') {
+    // @ts-expect-error returned snapshots are deeply readonly
+    fixed.questionDefinitionSnapshot.content.choices[0].label = '変更'
+    // @ts-expect-error returned arrays are readonly
+    fixed.questionDefinitionSnapshot.content.choices.push({ id: 'D', label: '追加' })
+  }
 
   const generated = createQuestionInstance(generatedDefinition, {
     instanceId: 'type-check',
@@ -121,6 +123,10 @@ export function assertReadonlyInstanceTypes() {
   }
 
   const restored = restoreQuestionInstance(fixedInstance)
-  // @ts-expect-error restored snapshot arrays are readonly
-  restored.questionDefinitionSnapshot.lessonRefs.push('descriptive-statistics#mean')
+  if (restored.kind === 'fixed' && restored.questionDefinitionSnapshot.content.format === 'single-choice') {
+    // @ts-expect-error restored snapshots are deeply readonly
+    restored.questionDefinitionSnapshot.content.choices[0].label = '変更'
+    // @ts-expect-error restored snapshot arrays are readonly
+    restored.questionDefinitionSnapshot.content.choices.push({ id: 'D', label: '追加' })
+  }
 }
