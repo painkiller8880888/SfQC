@@ -120,6 +120,7 @@ const sourceDocuments = [
     purpose: '教材単元と公式出題範囲の対応根拠を確認する。公式本文・設問は転載しない。',
     citations: [
       { sourceItemId: "SRC-0040", location: "p.1は「Xbar-s管理図」" },
+      { sourceItemId: "SRC-0044", location: "p.1「工程能力指数の計算と評価方法」" },
       { sourceItemId: "SRC-0045", location: "p.1に明示" },
       { sourceItemId: "SRC-0046", location: "p.1に明示" },
       { sourceItemId: "SRC-0047", location: "p.1に明示" },
@@ -133,10 +134,10 @@ const sourceDocuments = [
     checkedAt: '2026-10-21',
     purpose: '教材単元と公式出題範囲の対応根拠を確認する。公式本文・設問は転載しない。',
     citations: [
-      { sourceItemId: "SRC-0044", location: "p.1「工程能力調査、工程解析」" },
-      { sourceItemId: "SRC-0044", location: "p.1「工程能力指数」（2級○、3級△）" },
-      { sourceItemId: "SRC-0062", location: "p.1（2級○、3級○）" },
-      { sourceItemId: "SRC-0063", location: "p.1（2級○、3級○）" },
+      { sourceItemId: "SRC-0044", location: "p.1「工程能力調査，工程解析」" },
+      { sourceItemId: "SRC-0044", location: "p.1「工程能力調査，工程解析」（2級○、3級△）" },
+      { sourceItemId: "SRC-0062", location: "p.1「検査の目的・意義・考え方(適合，不適合)」（2級○、3級○）" },
+      { sourceItemId: "SRC-0063", location: "p.1「検査の種類と方法」（2級○、3級○）" },
     ],
   },
 ]
