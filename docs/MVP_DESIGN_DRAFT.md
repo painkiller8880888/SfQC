@@ -15,7 +15,8 @@
 | ID | 意味・制約 | 参照先 |
 |---|---|---|
 | `lessonId` | 単元の安定ID。名称変更で振り直さず、既存の小文字ハイフン形式を使う。 | `PREREQUISITE_MAP_DRAFT.md` のlesson一覧 |
-| `sectionId` | 単元内の安定した節アンカー。単独では一意でなく、`lessonId#sectionId`で指定する。 | 同マップの固定アンカー一覧 |
+| `sectionId` | 単元内の安定した節アンカー。単独では一意でなく、`lessonId#sectionId`で指定する。記述統計の`mean`・`variance`・`standard-deviation`など、前提マップに宣言したIDを使う。 | 同マップの固定アンカー一覧 |
+| `LessonRef` | 単元全体なら`lessonId`、特定節なら`lessonId#sectionId`。 | 現行registryのlessonまたは宣言済み節に解決する。教材本文のリンク先は収録済みlessonに限る。 |
 | `sourceItemId` | JSA公式項目に限る出典追跡ID。数学の橋渡し単元には付けない。 | `SYLLABUS_MAPPING_DRAFT.md` のsource一覧 |
 | `questionId` | 問題定義の安定ID。表示文や正答を変えても同じ定義を改訂する場合は改訂番号を上げる。 | 問題定義一覧。参照するIDは必ず同文書内で定義する。 |
 | 改訂番号 | 教材または問題定義の内容版。整数を増やし、同じ番号を別内容に再利用しない。 | lessonまたはquestionの定義 |
@@ -43,13 +44,14 @@
 | `commonPrerequisites` | 必須。0件以上の`lessonId`または節アンカーの集合。 | 欠けると共通目標が理解できない前提。既存前提マップの共通必須辺と一致させる。 |
 | `conditionalPrerequisites` | 必須。0件以上の「条件・前提先・到達方法節」の組。条件文は利用者にも理解でき、方法選択を判定できる具体性を持つ。 | 該当方法を選ぶ場合だけ必要。方法別前提表と一致させ、一律の必修にしない。 |
 | `optionalReviews` | 必須。0件以上の「起点・復習先・表示する場面」の組。 | 理解を助ける復習。必須前提グラフには加えない。 |
-| `sections` | 必須。1件以上。各節に既存の固定`sectionId`、見出し、教材本文を持つ。 | 節アンカーは`lessonId#sectionId`で参照する。IDのない節へ設問や復習先からリンクしない。 |
-| `inlineLinks` | 任意。用語・式・図の位置と、復習先`lessonId#sectionId`の組。 | 本文の該当位置から前提の該当節へ移る。現在位置を説明文でも特定する。 |
-| `figures` | 任意。一意で安定した`figureId`、コード描画コンポーネントを指す`rendererRef`、教育目的、変数・単位、軸・尺度・凡例、代替説明を持つ。操作可能ならキーボードでも扱えること。 | `sectionId`から参照する。画像生成物や画像生成サービスへの参照は使わない。 |
-| `questionIds` | 必須。0件以上の`questionId`集合。 | 問題定義へ解決する。 |
+| `availability` / `sections` | lessonの状態は`planned`または`included`。収録前は宣言済みsection IDだけを登録し、収録済みは1件以上の節に見出しと本文を持つ。各節には空白以外のparagraphまたはformulaを含める。 | plannedの節IDは前提関係を記録するために使い、学習者向け本文リンク先にはしない。includedの節一覧は宣言IDと一致させる。 |
+| 本文blocks | 節本文は`paragraph`、`formula`、`lessonRef`、`figureRef`の判別可能なblock。段落と式は順序付き`parts`を持つ。 | lesson参照tokenは段落・式内の位置をpartsの添字で定める。任意HTML・Markdown parser・任意コードは使わない。 |
+| `figures` | 任意。一意で安定した`figureId`、`code:名前`形式の描画参照、教育目的、変数・単位、軸・尺度・凡例、代替説明を持つ。操作可能ならキーボードでも扱えること。 | `figureRef`は同じincluded lesson内の定義へ解決する。描画コードの実在性と操作性は図を収録するIssueで確認する。画像生成物は使わない。 |
+| `questionIds` | 必須。問題定義IDの集合。教材契約導入時点では空配列のみ。 | 問題registryの追加後に参照先を検証する。 |
 | `sourceItemIds` | 必須。0件以上の公式`sourceItemId`集合。 | 対応表で定義されたJSA項目のみ。数学橋渡し単元は空集合。lessonとsourceは多対多。 |
-| `sources` | 必須の欄。0件以上。出典を使う場合は資料名、URL、版、確認日、該当ページ・項目、利用目的を記録する。 | `sourceItemId`の公式出典を追跡する。公式項目を参照するlessonには根拠資料を付ける。本文や設問の転載はしない。 |
+| `sourceRefs` / `SourceDefinition` | lessonは出典記録IDを持つ。出典記録は資料名、URL、版、確認日、該当位置、利用目的、根拠となる`sourceItemId`を持つ。 | 公式`sourceItemId`とは別IDで管理し、担当項目と引用記録のカバレッジを検査する。本文や設問の転載はしない。 |
 | `revision` | 必須。1以上の整数。教材内容を改訂したとき増やす。 | 学習記録の対象教材を識別するための概念上の版。保存方式は未決定。 |
+| `curriculumRevision` / `officialSourceItemIds` | registry全体の改訂番号と、対応表で定義した公式sourceItemId一覧。 | `curriculumRevision`は教材個別の`revision`と別に増やす。 |
 
 ### 3.1 教材の短い例
 
@@ -69,6 +71,8 @@
 | `revision` | `1`。 |
 
 `math-algebra-sigma`には公式項目を装うsource IDを付けない。1つの教材で複数の公式項目を扱う例は`sampling-inspection`の5件の対応を参照する。複数lessonへ同じ公式項目を割り当てる場合も、source ID自体を複製・変更せず、対応表の関係を追加する。現行資料にない対応はこの例では作らない。
+
+教材本文の`LessonRef`は`lessonId`または`lessonId#sectionId`で表す。段落は`{kind:"text", text}`と`{kind:"lessonRef", label, targetRef}`を順序付きpartsとして持ち、数式は`{kind:"mathText", text}`と`{kind:"mathSymbol", symbol, lessonRef?}`を順序付きpartsとして持つ。たとえば分散式中の`Σ`に復習先を付ける場合、記号tokenに表示ラベルと`math-algebra-sigma#sigma`を保持するため、式の表示文字列を検索して位置を推測しない。本文リンクはincluded lessonへ解決し、planned lessonや宣言だけのsectionへは遷移しない。`curriculumRevision`とlessonごとの`revision`は正の安全整数とし、別々に管理する。
 
 ### 3.2 図解の例
 

@@ -83,7 +83,7 @@
 sourceItemId欄・前提欄・条件付き経路・任意復習に記したsection anchorは次の固定IDとする。設問・誤答から該当節を直接開けるようにする。
 
 - math-algebra-sigma: sigma
-- descriptive-statistics: variance
+- descriptive-statistics: mean, variance, standard-deviation
 - sampling: error, design
 - qc-seven-tools: pareto, cause-effect, check-sheet, histogram, scatter, graphs, stratification
 - new-qc-tools: affinity, relations, tree, matrix, arrow, pdpc, matrix-data
