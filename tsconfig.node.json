@@ -17,5 +17,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "scripts/question-contract.fixture.mjs"]
+  "include": ["vite.config.ts", "src/lesson-registry.mjs", "scripts/question-contract.fixture.mjs", "scripts/lesson-contract.fixture.mjs"]
 }
