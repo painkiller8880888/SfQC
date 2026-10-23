@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check": "tsc -b && node --test scripts/resolve-screen.test.mjs scripts/question-contract.test.mjs scripts/local-data.test.mjs scripts/lesson-contract.test.mjs scripts/lesson-curriculum.test.mjs",
+    "check": "tsc -b && node --test scripts/resolve-screen.test.mjs scripts/question-contract.test.mjs scripts/local-data.test.mjs scripts/lesson-contract.test.mjs scripts/lesson-curriculum.test.mjs scripts/variance-deviation-bars.test.mjs",
     "build": "npm run check && vite build && node scripts/check-build.mjs",
     "preview": "vite preview"
   },

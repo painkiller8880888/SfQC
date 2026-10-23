@@ -338,7 +338,7 @@ const lessons = [
     questionIds: [],
     sourceItemIds: ['SRC-0005'],
     sourceRefs: sourceRefsFor(['SRC-0005']),
-    revision: 2,
+    revision: 3,
     sections: [
       {
         sectionId: 'mean',
@@ -373,6 +373,7 @@ const lessons = [
             { kind: 'mathText', text: '_{i=1}^{n}(xᵢ − x̄)²' },
           ] },
           { kind: 'paragraph', parts: [{ kind: 'text', text: '例：偏差平方和は (−16/15)² + (2/15)² + (14/15)² = 152/75 mm² です。別経路の Σ_{i=1}^{n}xᵢ² − (Σ_{i=1}^{n}xᵢ)²/n = 1² + 2.2² + 3² − 6.2²/3 も 152/75 mm² になります。途中で丸めず、表示する最後の値だけを丸めます。' }] },
+          { kind: 'figureRef', figureId: 'FIG-DESC-VAR-001' },
           { kind: 'paragraph', parts: [{ kind: 'text', text: '同じ3点が調べたい対象の全件なら、母分散は N=3 で割って 152/225 ≈ 0.676 mm² です。観測した標本3点そのものの散らばりを記述する場合も、標本分散として n=3 で割り、同じ 0.676 mm² になります。より大きな母集団の分散を推定する場合は、母集団と同じ分布から独立に得た n≥2 個の標本について不偏分散を n−1 で割り、76/75 ≈ 1.013 mm² とします。設問では「標本」という言葉だけで分母を決めず、何を記述・推定するかを確認します。' }] },
           { kind: 'paragraph', parts: [{ kind: 'text', text: 'この不偏性は、同一分布から独立に得た標本で母分散が有限のときの性質です。同じ大きさの標本を何度も取り直すと、不偏分散の平均が母分散になります。不偏なのは分散の推定量 s²であり、標準偏差 s そのものが不偏という意味ではありません。OpenStax §2.7 は n−1 で割る式を “sample variance” と呼びますが、ここでは計算の目的が伝わるよう「標本内を記述する分散」と「母分散の不偏推定量」を区別します。' }] },
           { kind: 'paragraph', parts: [{ kind: 'text', text: '範囲の例は 3.000 − 1.000 = 2.000 mm です。範囲は最小値と最大値だけで決まり、途中の値がどう散らばっているかは示しません。分散は全ての偏差を使うので、極端な値の影響を受けやすい尺度です。' }] },
@@ -390,7 +391,23 @@ const lessons = [
         ],
       },
     ],
-    figures: [],
+    figures: [{
+      kind: 'cartesian',
+      figureId: 'FIG-DESC-VAR-001',
+      rendererRef: 'code:variance-deviation-bars',
+      educationalPurpose: '平均からの偏差を符号付きで示し、二乗して散らばりを集計する考え方を伝える。',
+      variables: [{ name: '測定値', unit: 'mm' }],
+      axes: [
+        { axis: 'x', label: '観測番号', scale: 'categorical' },
+        { axis: 'y', label: '測定値（mm）', scale: 'linear' },
+      ],
+      legend: [
+        { label: '平均', meaning: '破線の水平線は3値の平均 31/15 mm。' },
+        { label: '偏差', meaning: '各観測点と平均を結ぶ線。平均より下が負、上が正。' },
+        { label: '観測値', meaning: '丸・四角・三角と観測番号で1〜3を区別する。' },
+      ],
+      altText: '3つの測定点、平均の水平線、各点から平均までの符号付き偏差線を示し、偏差を二乗して集計する考え方を表す。',
+    }],
   },
   plannedLesson('sampling', '標本抽出と誤差', '標本抽出・誤差・抽出方式を区別し、標本からの一般化の限界を説明する。', ['error', 'design'], ['population-sample', 'descriptive-statistics'], ['SRC-0004', 'SRC-0006']),
   plannedLesson('data-transform', 'データ変換', '変換の目的、尺度、変換前後の解釈を説明する。', [], ['data-types', 'math-algebra-sigma'], ['SRC-0002']),

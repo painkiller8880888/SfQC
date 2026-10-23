@@ -150,6 +150,98 @@ h1 {
   line-height: 1.8;
 }
 
+.lesson-panel {
+  min-width: 0;
+  margin-top: 2rem;
+  padding: 1.25rem;
+  border: 1px solid #dbe5dc;
+  border-radius: 0.75rem;
+  background: #f3f7f3;
+}
+
+.lesson-panel h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.variance-figure {
+  min-width: 0;
+  margin: 1rem 0 0;
+}
+
+.variance-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.variance-grid-line {
+  stroke: #dbe5dc;
+  stroke-width: 1;
+}
+
+.variance-axis {
+  stroke: #50635a;
+  stroke-width: 1.5;
+}
+
+.variance-tick-label,
+.variance-observation-label,
+.variance-mean-label {
+  fill: #18392f;
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.variance-deviation-line {
+  fill: none;
+  stroke: #a84438;
+  stroke-width: 2;
+}
+
+.variance-deviation-1 {
+  stroke-dasharray: 4 2;
+}
+
+.variance-deviation-2 {
+  stroke-dasharray: 1 2;
+}
+
+.variance-deviation-3 {
+  stroke-dasharray: 6 2;
+}
+
+.variance-mean-line {
+  stroke: #34684e;
+  stroke-dasharray: 5 3;
+  stroke-width: 2;
+}
+
+.variance-point {
+  fill: #18392f;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.variance-figure figcaption {
+  overflow-wrap: anywhere;
+  color: #50635a;
+  line-height: 1.75;
+}
+
+.variance-figure figcaption p {
+  margin: 0.75rem 0 0;
+}
+
+.variance-values {
+  margin: 0.75rem 0;
+  padding-inline-start: 1.5rem;
+}
+
+.variance-values li + li {
+  margin-top: 0.5rem;
+}
+
 .storage-alert {
   width: min(100%, 50rem);
   margin: 0 0 1rem;
@@ -273,5 +365,10 @@ h1 {
 
   .screen {
     border-radius: 1rem;
+    padding: 1rem;
+  }
+
+  .lesson-panel {
+    padding: 0.75rem;
   }
 }
