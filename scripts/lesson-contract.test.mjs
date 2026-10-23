@@ -16,7 +16,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
   assert.ok(lesson(lessonRegistry, 'math-algebra-sigma').declaredSectionIds.includes('sigma'))
   assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').availability, 'included')
-  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 2)
+  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 3)
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').questionIds.length, 0)
   const expectedSections = new Map([
     ['data-types', ['types']],
@@ -35,7 +35,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
       assert.equal(item.revision, 1)
       continue
     }
-    assert.equal(item.revision, 2)
+    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 3 : 2)
     assert.deepEqual(item.declaredSectionIds, sectionIds)
     assert.equal(item.sections.length, sectionIds.length)
     const paragraphs = item.sections.flatMap((section) => section.blocks
@@ -131,7 +131,7 @@ test('descriptive statistics distinguish variance purposes and independently che
   assert.equal(Math.max(...data) - Math.min(...data), 2)
 })
 
-test('paragraph, equation token order, and code figure references stay explicit', () => {
+test('paragraphs, equation token order, and the registered variance figure stay explicit', () => {
   const variance = lesson(lessonRegistryFixture, 'descriptive-statistics').sections.find((section) => section.sectionId === 'variance')
   const formula = variance.blocks.find((block) => block.kind === 'formula')
   assert.deepEqual(formula.parts.map((part) => part.kind), ['mathText', 'mathSymbol', 'mathText'])
@@ -140,6 +140,17 @@ test('paragraph, equation token order, and code figure references stay explicit'
   assert.equal(formula.parts.map((part) => part.kind === 'mathSymbol' ? part.symbol : part.text).join(''), 's² = 1/(n−1) Σ (xᵢ−x̄)²')
   assert.equal(variance.blocks.find((block) => block.kind === 'figureRef').figureId, 'FIG-DESC-VAR-001')
   assert.equal(lesson(lessonRegistryFixture, 'descriptive-statistics').figures[0].rendererRef, 'code:variance-deviation-bars')
+
+  const registeredLesson = lesson(lessonRegistry, 'descriptive-statistics')
+  const registeredVariance = registeredLesson.sections.find((section) => section.sectionId === 'variance')
+  const registeredFigure = registeredLesson.figures.find((figure) => figure.figureId === 'FIG-DESC-VAR-001')
+  assert.equal(registeredVariance.blocks.find((block) => block.kind === 'figureRef').figureId, registeredFigure.figureId)
+  assert.equal(registeredFigure.rendererRef, 'code:variance-deviation-bars')
+  assert.deepEqual(registeredFigure.axes.map(({ axis, label, scale }) => ({ axis, label, scale })), [
+    { axis: 'x', label: '観測番号', scale: 'categorical' },
+    { axis: 'y', label: '測定値（mm）', scale: 'linear' },
+  ])
+  assert.match(registeredFigure.altText, /3つの測定点.*平均.*偏差線/)
 })
 
 test('figure contracts distinguish coordinate charts from axisless diagrams', () => {

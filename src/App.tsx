@@ -6,12 +6,20 @@ import {
   LocalDataError,
   readLocalData,
 } from './local-data.mjs'
+import { lessonRegistry } from './lesson-registry.mjs'
+import { FigureRef } from './figures/figure-ref'
 
 const navigation = [
   { label: '学習マップ', href: '#/map', screen: 'map' },
   { label: '進捗', href: '#/progress', screen: 'progress' },
   { label: 'データ管理', href: '#/data', screen: 'data' },
 ] as const
+
+const varianceLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'descriptive-statistics')
+const includedVarianceLesson = varianceLesson?.availability === 'included' ? varianceLesson : undefined
+const varianceFigureRef = includedVarianceLesson?.sections
+  .find((section) => section.sectionId === 'variance')?.blocks
+  .find((block) => block.kind === 'figureRef')
 
 const screens: Record<ScreenKind, {
   title: string
@@ -220,6 +228,15 @@ function App() {
               </div>
               <p className="data-limit">schemaVersion 1 · 最大500件 · JSON 1 MiBまで</p>
               <p className="data-message" role="status" aria-live="polite">{dataMessage}</p>
+            </section>
+          ) : screen === 'lesson' ? (
+            <section className="lesson-panel" aria-labelledby="variance-lesson-title">
+              <h2 id="variance-lesson-title">範囲と分散</h2>
+              {includedVarianceLesson && varianceFigureRef?.kind === 'figureRef' ? (
+                <FigureRef lesson={includedVarianceLesson} figureId={varianceFigureRef.figureId} />
+              ) : (
+                <p>教材の図を読み込めませんでした。</p>
+              )}
             </section>
           ) : screen === 'practice' ? (
             <>
