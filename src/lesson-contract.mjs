@@ -137,11 +137,18 @@ function isSection(value) {
 }
 
 function isFigure(value) {
-  if (!hasOnlyKeys(value, ['figureId', 'rendererRef', 'educationalPurpose', 'variables', 'axes', 'legend', 'altText'])
-    || !hasKeys(value, ['figureId', 'rendererRef', 'educationalPurpose', 'variables', 'axes', 'legend', 'altText'])) return false
+  const baseKeys = ['kind', 'figureId', 'rendererRef', 'educationalPurpose', 'legend', 'altText']
+  if (!isRecord(value) || !hasKeys(value, baseKeys)) return false
   if (typeof value.figureId !== 'string' || !figureIdPattern.test(value.figureId)
     || typeof value.rendererRef !== 'string' || !rendererRefPattern.test(value.rendererRef)
     || !isText(value.educationalPurpose) || !isText(value.altText)) return false
+  if (!isArray(value.legend) || !value.legend.every((item) => {
+    return hasOnlyKeys(item, ['label', 'meaning']) && hasKeys(item, ['label', 'meaning'])
+      && isText(item.label) && isText(item.meaning)
+  })) return false
+  if (value.kind === 'diagram') return hasOnlyKeys(value, baseKeys)
+  if (value.kind !== 'cartesian'
+    || !hasOnlyKeys(value, [...baseKeys, 'variables', 'axes'])) return false
   if (!isArray(value.variables) || value.variables.length === 0 || !value.variables.every((variable) => {
     return hasOnlyKeys(variable, ['name', 'unit']) && hasKeys(variable, ['name', 'unit'])
       && isText(variable.name) && isText(variable.unit)
@@ -152,17 +159,14 @@ function isFigure(value) {
       && isText(axis.label)
       && ['linear', 'log', 'categorical'].includes(axis.scale)
   }) || new Set(value.axes.map((axis) => axis.axis)).size !== 2) return false
-  return isArray(value.legend) && value.legend.every((item) => {
-    return hasOnlyKeys(item, ['label', 'meaning']) && hasKeys(item, ['label', 'meaning'])
-      && isText(item.label) && isText(item.meaning)
-  })
+  return true
 }
 
 function isSource(value, officialSourceItemIds) {
-  if (!hasOnlyKeys(value, ['sourceId', 'title', 'url', 'version', 'checkedAt', 'location', 'purpose', 'coversSourceItemIds'])
-    || !hasKeys(value, ['sourceId', 'title', 'url', 'version', 'checkedAt', 'location', 'purpose', 'coversSourceItemIds'])) return false
+  if (!hasOnlyKeys(value, ['sourceId', 'title', 'url', 'version', 'checkedAt', 'purpose', 'citations'])
+    || !hasKeys(value, ['sourceId', 'title', 'url', 'version', 'checkedAt', 'purpose', 'citations'])) return false
   if (typeof value.sourceId !== 'string' || !idPattern.test(value.sourceId)
-    || ![value.title, value.version, value.location, value.purpose].every(isText)) return false
+    || ![value.title, value.version, value.purpose].every(isText)) return false
   if (typeof value.url !== 'string') return false
   try {
     const url = new URL(value.url)
@@ -173,8 +177,17 @@ function isSource(value, officialSourceItemIds) {
   if (typeof value.checkedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value.checkedAt)) return false
   const checkedAt = Date.parse(`${value.checkedAt}T00:00:00Z`)
   if (!Number.isFinite(checkedAt) || new Date(checkedAt).toISOString().slice(0, 10) !== value.checkedAt) return false
-  return isUniqueTextArray(value.coversSourceItemIds, sourceItemIdPattern)
-    && value.coversSourceItemIds.every((sourceItemId) => officialSourceItemIds.has(sourceItemId))
+  if (!isArray(value.citations) || value.citations.length === 0) return false
+  const citationKeys = new Set()
+  return value.citations.every((citation) => {
+    if (!hasOnlyKeys(citation, ['sourceItemId', 'location']) || !hasKeys(citation, ['sourceItemId', 'location'])
+      || typeof citation.sourceItemId !== 'string' || !sourceItemIdPattern.test(citation.sourceItemId)
+      || !officialSourceItemIds.has(citation.sourceItemId) || !isText(citation.location)) return false
+    const key = `${citation.sourceItemId}\u0000${citation.location}`
+    if (citationKeys.has(key)) return false
+    citationKeys.add(key)
+    return true
+  })
 }
 
 function isLessonBase(value) {
@@ -322,16 +335,13 @@ export function validateLessonRegistry(value) {
   for (const lesson of value.lessons) {
     const sourceItemIds = new Set(lesson.sourceItemIds)
     if (lesson.sourceItemIds.some((sourceItemId) => !officialSourceItemIds.has(sourceItemId))) return false
-    if (lesson.sourceItemIds.length > 0 && lesson.sourceRefs.length === 0) return false
-    const lessonSources = []
-    for (const sourceId of lesson.sourceRefs) {
-      const source = sourcesById.get(sourceId)
-      if (!source) return false
-      if (sourceItemIds.size === 0 ? source.coversSourceItemIds.length !== 0
-        : !source.coversSourceItemIds.some((sourceItemId) => sourceItemIds.has(sourceItemId))) return false
-      lessonSources.push(source)
-    }
-    if (lesson.sourceItemIds.some((sourceItemId) => !lessonSources.some((source) => source.coversSourceItemIds.includes(sourceItemId)))) return false
+    const relevantSources = [...sourcesById.values()]
+      .filter((source) => source.citations.some((citation) => sourceItemIds.has(citation.sourceItemId)))
+    const relevantSourceIds = relevantSources.map((source) => source.sourceId)
+    if (lesson.sourceRefs.length !== relevantSourceIds.length
+      || relevantSourceIds.some((sourceId) => !lesson.sourceRefs.includes(sourceId))
+      || lesson.sourceItemIds.some((sourceItemId) => !relevantSources.some((source) =>
+      source.citations.some((citation) => citation.sourceItemId === sourceItemId)))) return false
 
     for (const reference of lesson.commonPrerequisites) {
       if (!resolveMetadataRef(reference, lessonsById)) return false

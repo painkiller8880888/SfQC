@@ -14,7 +14,7 @@ P2はQC検定2級全範囲の完成や合格可能性を保証しない。全教
 
 | ゲート | Issue | 受入範囲 |
 |---|---|---|
-| G0 教材契約 | [#16](https://github.com/painkiller8880888/SfQC/issues/16) | planned/included教材契約、教材版とregistry版、宣言section、本文・図・出典参照、共通・条件付き前提、任意復習、DAG循環、revisionを検査しCIへ接続する。現在の34単元はplannedとして登録し、未収録本文や学習者向けリンクを作らない。 |
+| G0 教材契約 | [#16](https://github.com/painkiller8880888/SfQC/issues/16) | planned/included教材契約、教材版とregistry版、宣言section、本文・図・出典参照、共通・条件付き前提、任意復習、DAG循環、revisionを検査しCIへ接続する。前提マップと公式対応表のID・前提・出典位置も照合する。現在の34単元はplannedとして登録し、未収録本文や学習者向けリンクを作らない。 |
 | G1 教材と図 | [#17](https://github.com/painkiller8880888/SfQC/issues/17)、[#18](https://github.com/painkiller8880888/SfQC/issues/18)、[#19](https://github.com/painkiller8880888/SfQC/issues/19) | 数学・データ型の復習教材から平均・偏差・分散・標準偏差へ進み、独立検算済みのコード描画SVGを追加する。教材ID、出典、節リンク、alt text、キーボード操作を確認する。 |
 | G2 問題と採点 | [#20](https://github.com/painkiller8880888/SfQC/issues/20)、[#21](https://github.com/painkiller8880888/SfQC/issues/21) | 固定・seed再現可能な生成問題、独立した出題snapshot、単一選択・数値採点、既知誤答と原因不明の誤答を区別するfeedbackを受け入れる。 |
 | G3 学習導線と復習復帰 | [#23](https://github.com/painkiller8880888/SfQC/issues/23)〜[#26](https://github.com/painkiller8880888/SfQC/issues/26) | ID付きURLと状態保持、教材表示、出題・回答、feedback、Σを含む複数前提の復習、元の同一出題への復帰をつなぐ。 |

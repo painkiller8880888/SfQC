@@ -11,9 +11,8 @@ export const lessonRegistryFixture = {
       url: 'https://example.test/qc',
       version: 'test-1',
       checkedAt: '2026-10-21',
-      location: 'SRC-0001',
       purpose: '契約検査用fixture',
-      coversSourceItemIds: ['SRC-0001'],
+      citations: [{ sourceItemId: 'SRC-0001', location: 'p.1「データの種類」' }],
     },
     {
       sourceId: 'scope-src-0005',
@@ -21,9 +20,8 @@ export const lessonRegistryFixture = {
       url: 'https://example.test/qc',
       version: 'test-1',
       checkedAt: '2026-10-21',
-      location: 'SRC-0005',
       purpose: '契約検査用fixture',
-      coversSourceItemIds: ['SRC-0005'],
+      citations: [{ sourceItemId: 'SRC-0005', location: 'p.1「基本統計量」' }],
     },
   ],
   lessons: [
@@ -117,6 +115,7 @@ export const lessonRegistryFixture = {
         },
       ],
       figures: [{
+        kind: 'cartesian',
         figureId: 'FIG-DESC-VAR-001',
         rendererRef: 'code:variance-deviation-bars',
         educationalPurpose: '平均との差と二乗が分散に使われることを見せる。',

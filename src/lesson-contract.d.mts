@@ -29,15 +29,24 @@ export type FigureVariable = { name: string; unit: string }
 export type FigureAxis = { axis: 'x' | 'y'; label: string; scale: 'linear' | 'log' | 'categorical' }
 export type FigureLegendItem = { label: string; meaning: string }
 
-export type FigureDefinition = {
+type FigureBase = {
   figureId: string
   rendererRef: string
   educationalPurpose: string
-  variables: FigureVariable[]
-  axes: FigureAxis[]
   legend: FigureLegendItem[]
   altText: string
 }
+
+type FigureXAxis = FigureAxis & { axis: 'x' }
+type FigureYAxis = FigureAxis & { axis: 'y' }
+
+export type FigureDefinition =
+  | (FigureBase & {
+    kind: 'cartesian'
+    variables: FigureVariable[]
+    axes: [FigureXAxis, FigureYAxis] | [FigureYAxis, FigureXAxis]
+  })
+  | (FigureBase & { kind: 'diagram' })
 
 export type ConditionalPrerequisite = {
   conditionId: string
@@ -84,9 +93,8 @@ export type SourceDefinition = {
   url: string
   version: string
   checkedAt: string
-  location: string
   purpose: string
-  coversSourceItemIds: string[]
+  citations: { sourceItemId: string; location: string }[]
 }
 
 export type LessonRegistry = {

@@ -1,10 +1,153 @@
 /** @typedef {import('./lesson-contract.mjs').ConditionalPrerequisite} ConditionalPrerequisite */
 /** @typedef {import('./lesson-contract.mjs').OptionalReview} OptionalReview */
 /** @typedef {import('./lesson-contract.mjs').PlannedLessonDefinition} PlannedLessonDefinition */
+/** @typedef {import('./lesson-contract.mjs').SourceDefinition} SourceDefinition */
 /** @typedef {import('./lesson-contract.mjs').LessonRegistry} LessonRegistry */
 
-/** @param {string} sourceItemId */
-const sourceIdFor = (sourceItemId) => `scope-${sourceItemId.toLowerCase()}`
+/** @type {SourceDefinition[]} */
+const sourceDocuments = [
+  {
+    sourceId: "jsa-l3",
+    title: "3級のレベル表",
+    url: "https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf",
+    version: "Ver.20150130.2",
+    checkedAt: '2026-10-21',
+    purpose: '教材単元と公式出題範囲の対応根拠を確認する。公式本文・設問は転載しない。',
+    citations: [
+      { sourceItemId: "SRC-0001", location: "p.1「データの取り方とまとめ方」" },
+      { sourceItemId: "SRC-0002", location: "p.1「データの取り方とまとめ方」" },
+      { sourceItemId: "SRC-0003", location: "p.1" },
+      { sourceItemId: "SRC-0004", location: "p.1" },
+      { sourceItemId: "SRC-0005", location: "p.1" },
+      { sourceItemId: "SRC-0007", location: "p.1「QC七つ道具」" },
+      { sourceItemId: "SRC-0008", location: "p.1「QC七つ道具」" },
+      { sourceItemId: "SRC-0009", location: "p.1「QC七つ道具」" },
+      { sourceItemId: "SRC-0010", location: "p.1「QC七つ道具」" },
+      { sourceItemId: "SRC-0011", location: "p.1「QC七つ道具」" },
+      { sourceItemId: "SRC-0012", location: "p.1「QC七つ道具」" },
+      { sourceItemId: "SRC-0013", location: "p.1「QC七つ道具」" },
+      { sourceItemId: "SRC-0014", location: "p.1" },
+      { sourceItemId: "SRC-0015", location: "p.1" },
+      { sourceItemId: "SRC-0016", location: "p.1" },
+      { sourceItemId: "SRC-0017", location: "p.1" },
+      { sourceItemId: "SRC-0018", location: "p.1「新QC七つ道具」" },
+      { sourceItemId: "SRC-0019", location: "p.1「新QC七つ道具」" },
+      { sourceItemId: "SRC-0020", location: "p.1「新QC七つ道具」" },
+      { sourceItemId: "SRC-0021", location: "p.1" },
+      { sourceItemId: "SRC-0022", location: "p.1" },
+      { sourceItemId: "SRC-0038", location: "p.1「管理図」" },
+      { sourceItemId: "SRC-0039", location: "p.1「X-R管理図」" },
+      { sourceItemId: "SRC-0042", location: "p.1「p管理図、np管理図」" },
+      { sourceItemId: "SRC-0044", location: "p.1「工程能力指数」" },
+      { sourceItemId: "SRC-0048", location: "p.1には明記なし" },
+      { sourceItemId: "SRC-0051", location: "p.1「相関分析」" },
+    ],
+  },
+  {
+    sourceId: "jsa-l4",
+    title: "4級のレベル表",
+    url: "https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf",
+    version: "Ver.20150130.2",
+    checkedAt: '2026-10-21',
+    purpose: '教材単元と公式出題範囲の対応根拠を確認する。公式本文・設問は転載しない。',
+    citations: [
+      { sourceItemId: "SRC-0001", location: "p.1「事実に基づく判断」" },
+      { sourceItemId: "SRC-0003", location: "p.1「事実に基づく判断」" },
+      { sourceItemId: "SRC-0004", location: "p.1「データの基礎」" },
+      { sourceItemId: "SRC-0005", location: "p.1「平均とばらつき」「平均と範囲」" },
+      { sourceItemId: "SRC-0010", location: "p.1「平均とばらつき」" },
+      { sourceItemId: "SRC-0038", location: "p.1のばらつき・工程基礎" },
+    ],
+  },
+  {
+    sourceId: "jsa-l2",
+    title: "2級のレベル表",
+    url: "https://webdesk.jsa.or.jp/pdf/qc/md_4927.pdf",
+    version: "Ver.20150130.2",
+    checkedAt: '2026-10-21',
+    purpose: '教材単元と公式出題範囲の対応根拠を確認する。公式本文・設問は転載しない。',
+    citations: [
+      { sourceItemId: "SRC-0006", location: "p.1「データの取り方とまとめ方」" },
+      { sourceItemId: "SRC-0014", location: "p.1「新QC七つ道具」" },
+      { sourceItemId: "SRC-0015", location: "p.1「新QC七つ道具」" },
+      { sourceItemId: "SRC-0016", location: "p.1「新QC七つ道具」" },
+      { sourceItemId: "SRC-0017", location: "p.1「新QC七つ道具」" },
+      { sourceItemId: "SRC-0018", location: "p.1では項目名の明記なし" },
+      { sourceItemId: "SRC-0019", location: "p.1では項目名の明記なし" },
+      { sourceItemId: "SRC-0020", location: "p.1では項目名の明記なし" },
+      { sourceItemId: "SRC-0021", location: "p.1「統計的方法の基礎」" },
+      { sourceItemId: "SRC-0022", location: "p.1「統計的方法の基礎」" },
+      { sourceItemId: "SRC-0023", location: "p.1「統計的方法の基礎」" },
+      { sourceItemId: "SRC-0024", location: "p.1「統計的方法の基礎」" },
+      { sourceItemId: "SRC-0025", location: "p.1「統計的方法の基礎」" },
+      { sourceItemId: "SRC-0026", location: "p.1「統計的方法の基礎」" },
+      { sourceItemId: "SRC-0027", location: "p.1「計量値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0028", location: "p.1「計量値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0029", location: "p.1「計量値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0030", location: "p.1「計量値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0031", location: "p.1「計量値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0032", location: "p.1「計量値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0033", location: "p.1「計数値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0034", location: "p.1「計数値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0035", location: "p.1「計数値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0036", location: "p.1「計数値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0037", location: "p.1「計数値データに基づく検定と推定」" },
+      { sourceItemId: "SRC-0040", location: "p.1のテキスト抽出は「X − s管理図」" },
+      { sourceItemId: "SRC-0041", location: "p.1「管理図」" },
+      { sourceItemId: "SRC-0042", location: "p.1「管理図」" },
+      { sourceItemId: "SRC-0043", location: "p.1「管理図」" },
+      { sourceItemId: "SRC-0044", location: "p.1「工程能力調査、工程解析」との重なり" },
+      { sourceItemId: "SRC-0046", location: "p.1「検査の種類と方法」と関連" },
+      { sourceItemId: "SRC-0047", location: "p.1「検査の種類と方法」と関連" },
+      { sourceItemId: "SRC-0048", location: "p.1「実験計画法」" },
+      { sourceItemId: "SRC-0049", location: "p.1「実験計画法」" },
+      { sourceItemId: "SRC-0050", location: "p.1「実験計画法」" },
+      { sourceItemId: "SRC-0052", location: "p.1「相関分析」" },
+      { sourceItemId: "SRC-0053", location: "p.1「単回帰分析」" },
+      { sourceItemId: "SRC-0054", location: "p.1「単回帰分析」" },
+      { sourceItemId: "SRC-0055", location: "p.1「単回帰分析」" },
+      { sourceItemId: "SRC-0044", location: "p.1「品質保証：プロセス保証」" },
+      { sourceItemId: "SRC-0062", location: "p.1「品質保証：プロセス保証」" },
+      { sourceItemId: "SRC-0063", location: "p.1「品質保証：プロセス保証」" },
+    ],
+  },
+  {
+    sourceId: "jsa-m",
+    title: "品質管理検定マトリックス（手法編）",
+    url: "https://webdesk.jsa.or.jp/pdf/qc/md_4806.pdf",
+    version: "Ver.20150130.2",
+    checkedAt: '2026-10-21',
+    purpose: '教材単元と公式出題範囲の対応根拠を確認する。公式本文・設問は転載しない。',
+    citations: [
+      { sourceItemId: "SRC-0040", location: "p.1は「Xbar-s管理図」" },
+      { sourceItemId: "SRC-0045", location: "p.1に明示" },
+      { sourceItemId: "SRC-0046", location: "p.1に明示" },
+      { sourceItemId: "SRC-0047", location: "p.1に明示" },
+    ],
+  },
+  {
+    sourceId: "jsa-p",
+    title: "品質管理検定マトリックス（実践編）",
+    url: "https://webdesk.jsa.or.jp/pdf/qc/md_4606.pdf",
+    version: "Ver.20150130.2",
+    checkedAt: '2026-10-21',
+    purpose: '教材単元と公式出題範囲の対応根拠を確認する。公式本文・設問は転載しない。',
+    citations: [
+      { sourceItemId: "SRC-0044", location: "p.1「工程能力調査、工程解析」" },
+      { sourceItemId: "SRC-0044", location: "p.1「工程能力指数」（2級○、3級△）" },
+      { sourceItemId: "SRC-0062", location: "p.1（2級○、3級○）" },
+      { sourceItemId: "SRC-0063", location: "p.1（2級○、3級○）" },
+    ],
+  },
+]
+
+/** @param {string[]} sourceItemIds */
+function sourceRefsFor(sourceItemIds) {
+  const used = new Set(sourceItemIds)
+  return sourceDocuments
+    .filter((source) => source.citations.some((citation) => used.has(citation.sourceItemId)))
+    .map((source) => source.sourceId)
+}
 
 /**
  * @param {string} lessonId
@@ -38,7 +181,7 @@ function plannedLesson(
     optionalReviews,
     questionIds: [],
     sourceItemIds,
-    sourceRefs: sourceItemIds.map(sourceIdFor),
+    sourceRefs: sourceRefsFor(sourceItemIds),
     revision: 1,
   }
 }
@@ -53,7 +196,7 @@ const lessons = [
   plannedLesson('data-types', 'データの種類', '計量値・計数値、カテゴリ・数値、単位と観測単位を区別する。', [], [], ['SRC-0001']),
   plannedLesson('population-sample', '母集団と標本', '母集団・標本・抽出単位・推定対象を例で区別する。', [], ['data-types'], ['SRC-0003']),
   plannedLesson('descriptive-statistics', '基本統計量', '平均・範囲・分散・標準偏差を計算し、分布の中心と散らばりを説明する。', ['mean', 'variance', 'standard-deviation'], ['data-types', 'math-ratios-percentages', 'math-powers-roots'], ['SRC-0005'], [], [
-    { fromRef: 'descriptive-statistics#variance', targetRef: 'math-algebra-sigma#sigma', context: '分散式でΣを初めて使うとき。分散節でも記号の意味を説明し、必要なら総和記号を復習する。' },
+    { fromRef: 'descriptive-statistics#variance', targetRef: 'math-algebra-sigma#sigma', context: '分散式でΣを初めて使うとき。分散節でも記号の意味を説明し、必要なら総和記号の復習を開けるようにする。' },
   ]),
   plannedLesson('sampling', '標本抽出と誤差', '標本抽出・誤差・抽出方式を区別し、標本からの一般化の限界を説明する。', ['error', 'design'], ['population-sample', 'descriptive-statistics'], ['SRC-0004', 'SRC-0006']),
   plannedLesson('data-transform', 'データ変換', '変換の目的、尺度、変換前後の解釈を説明する。', [], ['data-types', 'math-algebra-sigma'], ['SRC-0002']),
@@ -118,7 +261,7 @@ const lessons = [
     { conditionId: 'process-capability-normal-process', methodSectionRef: 'process-capability#capability', condition: '安定した正規工程にCp/Cpkを適用する場合。', prerequisiteRef: 'normal-distribution' },
     { conditionId: 'process-capability-sampling', methodSectionRef: 'process-capability#capability', condition: '安定性の確認に標本データを用いる場合。', prerequisiteRef: 'sampling' },
   ], [
-    { fromRef: 'process-capability', targetRef: 'control-charts#basics', context: '工程の安定性を管理図で確認する学習へ戻る場合。管理図を使わない確認方法もある。' },
+    { fromRef: 'process-capability', targetRef: 'control-charts#basics', context: '工程の安定性を管理図で確認する学習へ戻る場合。管理図を使わない確認方法を排除しない。' },
   ]),
   plannedLesson('sampling-inspection', '抜取検査', 'ロット・抽出・判定の関係と計数・計量方式を説明する。', ['purpose', 'types', 'attribute', 'variable'], ['population-sample', 'data-types', 'probability-foundations'], ['SRC-0045', 'SRC-0046', 'SRC-0047', 'SRC-0062', 'SRC-0063'], [
     { conditionId: 'sampling-inspection-attribute-binomial-model', methodSectionRef: 'sampling-inspection#attribute', condition: '計数結果でロットを判定し、採用する計画が二項モデルに基づく場合。', prerequisiteRef: 'binomial-distribution' },
@@ -133,7 +276,7 @@ const lessons = [
     { fromRef: 'experimental-design', targetRef: 'qc-seven-tools#graphs', context: '因子・応答を図で比べる例を復習する場合。' },
   ]),
   plannedLesson('correlation', '相関係数', '相関係数の意味・計算・限界を説明する。', [], ['data-types', 'descriptive-statistics'], ['SRC-0051'], [], [
-    { fromRef: 'correlation', targetRef: 'qc-seven-tools#scatter', context: '相関係数を学ぶ前に散布図で二変数の関係を確認する場合。' },
+    { fromRef: 'correlation', targetRef: 'qc-seven-tools#scatter', context: '相関係数の前に散布図で二変数の関係を確認する場合。' },
   ]),
   plannedLesson('serial-correlation', '系列相関', '時系列順の相関が独立観測の前提に与える影響を説明する。', [], ['correlation'], ['SRC-0052']),
   plannedLesson('simple-regression', '単回帰分析', '単回帰式と残差の基本を説明し、推論を行う場合は方法条件を確認する。', ['anova', 'residuals'], ['correlation', 'math-algebra-sigma'], ['SRC-0053', 'SRC-0054', 'SRC-0055'], [
@@ -146,21 +289,10 @@ const lessons = [
   ]),
 ]
 
-const usedSourceItemIds = [...new Set(lessons.flatMap((lesson) => lesson.sourceItemIds))].sort()
-
 /** @type {LessonRegistry} */
 export const lessonRegistry = {
   curriculumRevision: 1,
   officialSourceItemIds: Array.from({ length: 64 }, (_, index) => `SRC-${String(index + 1).padStart(4, '0')}`),
-  sources: usedSourceItemIds.map((sourceItemId) => ({
-    sourceId: sourceIdFor(sourceItemId),
-    title: 'QC検定「各級のレベルと内容」およびリンク資料',
-    url: 'https://webdesk.jsa.or.jp/common/W10K0500/index/qc/qc_level',
-    version: 'Ver.20150130.2',
-    checkedAt: '2026-10-21',
-    location: `SYLLABUS_MAPPING_DRAFT.md の ${sourceItemId} 出典欄に記録された公式資料のページ・項目`,
-    purpose: '教材単元と公式出題範囲の対応根拠を確認する。公式本文・設問は転載しない。',
-    coversSourceItemIds: [sourceItemId],
-  })),
+  sources: sourceDocuments,
   lessons,
 }

@@ -46,10 +46,10 @@
 | `optionalReviews` | 必須。0件以上の「起点・復習先・表示する場面」の組。 | 理解を助ける復習。必須前提グラフには加えない。 |
 | `availability` / `sections` | lessonの状態は`planned`または`included`。収録前は宣言済みsection IDだけを登録し、収録済みは1件以上の節に見出しと本文を持つ。各節には空白以外のparagraphまたはformulaを含める。 | plannedの節IDは前提関係を記録するために使い、学習者向け本文リンク先にはしない。includedの節一覧は宣言IDと一致させる。 |
 | 本文blocks | 節本文は`paragraph`、`formula`、`lessonRef`、`figureRef`の判別可能なblock。段落と式は順序付き`parts`を持つ。 | lesson参照tokenは段落・式内の位置をpartsの添字で定める。任意HTML・Markdown parser・任意コードは使わない。 |
-| `figures` | 任意。一意で安定した`figureId`、`code:名前`形式の描画参照、教育目的、変数・単位、軸・尺度・凡例、代替説明を持つ。操作可能ならキーボードでも扱えること。 | `figureRef`は同じincluded lesson内の定義へ解決する。描画コードの実在性と操作性は図を収録するIssueで確認する。画像生成物は使わない。 |
+| `figures` | 任意。`cartesian`は変数・単位とx/y軸・尺度を持ち、`diagram`は座標軸・変数を持たない。どちらも`code:名前`形式の描画参照、教育目的、凡例、代替説明を持つ。操作可能ならキーボードでも扱えること。 | `figureRef`は同じincluded lesson内の定義へ解決する。描画コードの実在性と操作性は図を収録するIssueで確認する。画像生成物は使わない。 |
 | `questionIds` | 必須。問題定義IDの集合。教材契約導入時点では空配列のみ。 | 問題registryの追加後に参照先を検証する。 |
 | `sourceItemIds` | 必須。0件以上の公式`sourceItemId`集合。 | 対応表で定義されたJSA項目のみ。数学橋渡し単元は空集合。lessonとsourceは多対多。 |
-| `sourceRefs` / `SourceDefinition` | lessonは出典記録IDを持つ。出典記録は資料名、URL、版、確認日、該当位置、利用目的、根拠となる`sourceItemId`を持つ。 | 公式`sourceItemId`とは別IDで管理し、担当項目と引用記録のカバレッジを検査する。本文や設問の転載はしない。 |
+| `sourceRefs` / `SourceDefinition` | lessonは出典記録IDを持つ。出典記録は資料名、直接URL、版、確認日、利用目的を持ち、対応する各`sourceItemId`のページ・項目を引用一覧に記録する。 | 公式`sourceItemId`とは別IDで管理し、担当項目と引用記録のカバレッジを検査する。前提マップと公式対応表への一致もCIで検査する。本文や設問の転載はしない。 |
 | `revision` | 必須。1以上の整数。教材内容を改訂したとき増やす。 | 学習記録の対象教材を識別するための概念上の版。保存方式は未決定。 |
 | `curriculumRevision` / `officialSourceItemIds` | registry全体の改訂番号と、対応表で定義した公式sourceItemId一覧。 | `curriculumRevision`は教材個別の`revision`と別に増やす。 |
 

@@ -17,6 +17,10 @@ test('fixture and all planned registry entries satisfy the contract', () => {
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').availability, 'planned')
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').questionIds.length, 0)
   assert.equal(lessonRegistry.officialSourceItemIds.length, 64)
+  assert.deepEqual(lesson(lessonRegistry, 'data-types').sourceRefs, ['jsa-l3', 'jsa-l4'])
+  assert.ok(lessonRegistry.sources.every((source) => source.url.endsWith('.pdf')))
+  assert.ok(lessonRegistry.sources.find((source) => source.sourceId === 'jsa-l2').citations
+    .some((citation) => citation.sourceItemId === 'SRC-0062' && citation.location === 'p.1「品質保証：プロセス保証」'))
 })
 
 test('paragraph, equation token order, and code figure references stay explicit', () => {
@@ -28,6 +32,33 @@ test('paragraph, equation token order, and code figure references stay explicit'
   assert.equal(formula.parts.map((part) => part.kind === 'mathSymbol' ? part.symbol : part.text).join(''), 's² = 1/(n−1) Σ (xᵢ−x̄)²')
   assert.equal(variance.blocks.find((block) => block.kind === 'figureRef').figureId, 'FIG-DESC-VAR-001')
   assert.equal(lesson(lessonRegistryFixture, 'descriptive-statistics').figures[0].rendererRef, 'code:variance-deviation-bars')
+})
+
+test('figure contracts distinguish coordinate charts from axisless diagrams', () => {
+  const withDiagram = copy(lessonRegistryFixture)
+  const descriptive = lesson(withDiagram, 'descriptive-statistics')
+  descriptive.sections[0].blocks.push({ kind: 'figureRef', figureId: 'FIG-DIAGRAM-001' })
+  descriptive.figures.push({
+    kind: 'diagram',
+    figureId: 'FIG-DIAGRAM-001',
+    rendererRef: 'code:cause-effect-diagram',
+    educationalPurpose: '要因候補を階層的に整理する。',
+    legend: [],
+    altText: '結果に向かう複数の原因候補を枝分かれで示す。',
+  })
+  assert.equal(validateLessonRegistry(withDiagram), true)
+
+  const diagramWithAxes = copy(withDiagram)
+  diagramWithAxes.lessons.find((item) => item.lessonId === 'descriptive-statistics').figures[1].axes = []
+  assert.equal(validateLessonRegistry(diagramWithAxes), false)
+
+  const chartWithoutVariable = copy(lessonRegistryFixture)
+  lesson(chartWithoutVariable, 'descriptive-statistics').figures[0].variables = []
+  assert.equal(validateLessonRegistry(chartWithoutVariable), false)
+
+  const chartWithDuplicateAxis = copy(lessonRegistryFixture)
+  lesson(chartWithDuplicateAxis, 'descriptive-statistics').figures[0].axes[1].axis = 'x'
+  assert.equal(validateLessonRegistry(chartWithDuplicateAxis), false)
 })
 
 test('metadata references resolve planned declarations while body links require included targets', () => {
@@ -89,6 +120,10 @@ test('source, section, and figure IDs must resolve without duplicates', () => {
   lesson(missingSourceCoverage, 'descriptive-statistics').sourceRefs = []
   assert.equal(validateLessonRegistry(missingSourceCoverage), false)
 
+  const missingSecondaryCitation = copy(lessonRegistry)
+  lesson(missingSecondaryCitation, 'data-types').sourceRefs = ['jsa-l3']
+  assert.equal(validateLessonRegistry(missingSecondaryCitation), false)
+
   const unrelatedSource = copy(lessonRegistryFixture)
   lesson(unrelatedSource, 'descriptive-statistics').sourceRefs = ['scope-src-0001']
   assert.equal(validateLessonRegistry(unrelatedSource), false)
@@ -96,6 +131,10 @@ test('source, section, and figure IDs must resolve without duplicates', () => {
   const badUrl = copy(lessonRegistryFixture)
   badUrl.sources[0].url = 'javascript:alert(1)'
   assert.equal(validateLessonRegistry(badUrl), false)
+
+  const badCitation = copy(lessonRegistryFixture)
+  badCitation.sources[0].citations = []
+  assert.equal(validateLessonRegistry(badCitation), false)
 
   const unresolvedFigure = copy(lessonRegistryFixture)
   lesson(unresolvedFigure, 'descriptive-statistics').sections[1].blocks[2].figureId = 'FIG-MISSING'
