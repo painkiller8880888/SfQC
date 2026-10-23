@@ -7,15 +7,41 @@ import { lessonRegistryFixture } from './lesson-contract.fixture.mjs'
 const copy = (value) => structuredClone(value)
 const lesson = (registry, lessonId) => registry.lessons.find((item) => item.lessonId === lessonId)
 
-test('fixture and all planned registry entries satisfy the contract', () => {
+test('fixture and the five included lessons satisfy the contract and keep other lessons planned', () => {
   assert.equal(validateLessonRegistry(lessonRegistryFixture), true)
   assert.equal(validateLessonRegistry(lessonRegistry), true)
   assert.equal(lessonRegistry.lessons.length, 34)
+  assert.equal(lessonRegistry.curriculumRevision, 2)
   assert.ok(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds.includes('variance'))
   assert.ok(lesson(lessonRegistry, 'math-algebra-sigma').declaredSectionIds.includes('sigma'))
   assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds, ['mean', 'variance', 'standard-deviation'])
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').availability, 'planned')
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').questionIds.length, 0)
+  const expectedSections = new Map([
+    ['data-types', 'types'],
+    ['math-arithmetic', 'operations'],
+    ['math-ratios-percentages', 'ratio'],
+    ['math-powers-roots', 'powers-roots'],
+    ['math-algebra-sigma', 'sigma'],
+  ])
+  const includedLessons = lessonRegistry.lessons.filter((item) => item.availability === 'included')
+  assert.deepEqual(includedLessons.map((item) => item.lessonId).sort(), [...expectedSections.keys()].sort())
+  for (const item of lessonRegistry.lessons) {
+    const sectionId = expectedSections.get(item.lessonId)
+    if (!sectionId) {
+      assert.equal(item.availability, 'planned')
+      assert.equal(item.revision, 1)
+      continue
+    }
+    assert.equal(item.revision, 2)
+    assert.deepEqual(item.declaredSectionIds, [sectionId])
+    assert.equal(item.sections.length, 1)
+    const paragraphs = item.sections[0].blocks
+      .filter((block) => block.kind === 'paragraph')
+      .map((block) => block.parts.filter((part) => part.kind === 'text').map((part) => part.text).join(''))
+    assert.ok(paragraphs.some((paragraph) => paragraph.includes('例：')))
+    assert.ok(paragraphs.some((paragraph) => paragraph.startsWith('出典（確認日：2026-10-23）：')))
+  }
   assert.equal(lessonRegistry.officialSourceItemIds.length, 64)
   assert.deepEqual(lesson(lessonRegistry, 'data-types').sourceRefs, ['jsa-l3', 'jsa-l4'])
   assert.ok(lessonRegistry.sources.every((source) => source.url.endsWith('.pdf')))
