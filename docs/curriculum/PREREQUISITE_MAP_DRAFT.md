@@ -71,7 +71,7 @@
 | correlation | qc-seven-tools#scatter | 相関係数の前に散布図で二変数の関係を確認する場合。 |
 | experimental-design | qc-seven-tools#graphs | 因子・応答を図で比べる例を復習する場合。 |
 | simple-regression | qc-seven-tools#scatter | 回帰式を読む前に散布図で関係・外れ値候補を確認する場合。 |
-| descriptive-statistics#variance | math-algebra-sigma#sigma | 分散式でΣを初めて使うとき。分散節でも記号の意味を説明し、必要なら総和記号の復習を開けるようにする。 |
+| descriptive-statistics#variance | math-algebra-sigma#sigma | 平均節で意味を説明したΣを分散の最初の公式でも使う。必要ならその近くのリンクから総和記号を復習できる。 |
 
 ### 前提がない項目と保留項目
 
@@ -148,7 +148,7 @@ math-arithmetic → math-powers-roots ──────────────
 data-types ──────────────────────────────────────────┘
 ```
 
-分散節ではΣの意味をその場で説明し、必要なら `math-algebra-sigma#sigma` を開ける復習リンクを式の近くに置く。これは記述統計全体の必須前提ではない。
+平均節の平均式でΣの意味を説明し、分散節では最初の公式の近くに `math-algebra-sigma#sigma` を開ける復習リンクを置く。これは記述統計全体の必須前提ではない。
 
 母集団と標本の意味が必要な場合は、population-sample → samplingを任意に先行する。記述統計の前提ではないため、全員に必修化しない。
 

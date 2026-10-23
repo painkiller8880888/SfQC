@@ -57,11 +57,19 @@ test('descriptive statistics distinguish variance purposes and independently che
     section.blocks.map((block) => block.kind === 'paragraph'
       ? block.parts.filter((part) => part.kind === 'text').map((part) => part.text).join('')
       : block.kind === 'formula' ? block.parts.map((part) => part.kind === 'mathSymbol' ? part.symbol : part.text).join('') : '').join(' ')]))
+  const sectionFormulas = new Map(descriptive.sections.map((section) => [section.sectionId,
+    section.blocks.filter((block) => block.kind === 'formula').map((block) => block.parts)]))
 
+  assert.ok(sectionText.get('mean').includes('Σ_{i=1}^{N} xᵢ は、添字 i を1から N まで')
+    && sectionText.get('mean').includes('その範囲の xᵢ をすべて足す記号'))
   assert.ok(sectionText.get('mean').includes('31/15 = 2.0666… mm'))
+  assert.ok(sectionText.get('mean').includes('測定値 1.000 mm、2.200 mm、3.000 mm'))
   assert.ok(sectionText.get('mean').includes('量的データ') && sectionText.get('mean').includes('μ') && sectionText.get('mean').includes('x̄'))
   assert.ok(sectionText.get('deviation').includes('−16/15 mm'))
   assert.ok(sectionText.get('deviation').includes('2/15 mm') && sectionText.get('deviation').includes('14/15 mm'))
+  assert.ok(sectionText.get('variance').includes('母集団全体を記述する母分散は偏差平方和を N で割り')
+    && sectionText.get('variance').includes('標本そのものを記述する分散は偏差平方和を n で割った平均')
+    && sectionText.get('variance').includes('母分散を推定する不偏分散は、標本の偏差平方和を n−1 で割った推定量'))
   assert.ok(sectionText.get('variance').includes('母分散の不偏推定量（不偏分散）'))
   assert.ok(sectionText.get('variance').includes('標本分散として n=3'))
   assert.ok(sectionText.get('variance').includes('152/225 ≈ 0.676 mm²'))
@@ -73,6 +81,36 @@ test('descriptive statistics distinguish variance purposes and independently che
   assert.ok(sectionText.get('standard-deviation').includes('2026-10-21')
     && sectionText.get('standard-deviation').includes('2026-10-23')
     && sectionText.get('standard-deviation').includes('2-7-measures-of-the-spread-of-the-data'))
+  assert.deepEqual(sectionFormulas.get('mean'), [[{
+    kind: 'mathText',
+    text: '母平均：μ = (Σ_{i=1}^{N} xᵢ)/N; 標本平均：x̄ = (Σ_{i=1}^{n} xᵢ)/n',
+  }]])
+  assert.deepEqual(sectionFormulas.get('deviation'), [[{
+    kind: 'mathText',
+    text: '母集団の偏差：xᵢ − μ; 標本の偏差：xᵢ − x̄',
+  }]])
+  assert.deepEqual(sectionFormulas.get('variance'), [
+    [{
+      kind: 'mathText',
+      text: '母分散：σ² = (Σ_{i=1}^{N}(xᵢ − μ)²)/N; 標本分散（標本内の記述）：(Σ_{i=1}^{n}(xᵢ − x̄)²)/n; 母分散の不偏推定量（不偏分散）：s² = (Σ_{i=1}^{n}(xᵢ − x̄)²)/(n−1); 範囲 = 最大値 − 最小値',
+    }],
+    [
+      { kind: 'mathText', text: '標本平方偏差和：' },
+      { kind: 'mathSymbol', symbol: 'Σ', lessonRef: { label: '総和記号の読み方', targetRef: 'math-algebra-sigma#sigma' } },
+      { kind: 'mathText', text: '_{i=1}^{n}(xᵢ − x̄)²' },
+    ],
+  ])
+  assert.deepEqual(sectionFormulas.get('standard-deviation'), [[{
+    kind: 'mathText',
+    text: '母標準偏差：σ = √σ²; 不偏分散から計算する標本標準偏差：s = √s²',
+  }]])
+  const varianceBlocks = descriptive.sections.find((section) => section.sectionId === 'variance').blocks
+  const firstVarianceFormulaIndex = varianceBlocks.findIndex((block) => block.kind === 'formula')
+  const linkedSigmaFormulaIndex = varianceBlocks.findIndex((block) => block.kind === 'formula'
+    && block.parts.some((part) => part.kind === 'mathSymbol' && part.symbol === 'Σ'))
+  assert.equal(linkedSigmaFormulaIndex, firstVarianceFormulaIndex + 2)
+  assert.ok(descriptive.optionalReviews.some((review) => review.fromRef === 'descriptive-statistics#variance'
+    && review.targetRef === 'math-algebra-sigma#sigma' && review.context.includes('平均節で意味を説明')))
 
   const data = [1, 2.2, 3]
   const sum = data.reduce((total, value) => total + value, 0)
