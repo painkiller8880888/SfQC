@@ -324,9 +324,74 @@ const lessons = [
     figures: [],
   },
   plannedLesson('population-sample', '母集団と標本', '母集団・標本・抽出単位・推定対象を例で区別する。', [], ['data-types'], ['SRC-0003']),
-  plannedLesson('descriptive-statistics', '基本統計量', '平均・範囲・分散・標準偏差を計算し、分布の中心と散らばりを説明する。', ['mean', 'variance', 'standard-deviation'], ['data-types', 'math-ratios-percentages', 'math-powers-roots'], ['SRC-0005'], [], [
-    { fromRef: 'descriptive-statistics#variance', targetRef: 'math-algebra-sigma#sigma', context: '分散式でΣを初めて使うとき。分散節でも記号の意味を説明し、必要なら総和記号の復習を開けるようにする。' },
-  ]),
+  {
+    availability: 'included',
+    lessonId: 'descriptive-statistics',
+    title: '基本統計量',
+    learningObjectives: ['量的データの平均、偏差、分散、標準偏差を計算し、中心と散らばりを単位と目的に沿って説明する。'],
+    declaredSectionIds: ['mean', 'deviation', 'variance', 'standard-deviation'],
+    commonPrerequisites: ['data-types', 'math-ratios-percentages', 'math-powers-roots'],
+    conditionalPrerequisites: [],
+    optionalReviews: [
+      { fromRef: 'descriptive-statistics#variance', targetRef: 'math-algebra-sigma#sigma', context: '平均節で意味を説明したΣを分散の最初の公式でも使う。必要ならその近くのリンクから総和記号を復習できる。' },
+    ],
+    questionIds: [],
+    sourceItemIds: ['SRC-0005'],
+    sourceRefs: sourceRefsFor(['SRC-0005']),
+    revision: 2,
+    sections: [
+      {
+        sectionId: 'mean',
+        title: '平均',
+        blocks: [
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '平均は量的データの中心を1つの数で要約します。母集団は調べたい対象全体、標本は実際に観測した一部です。母集団の平均を μ、標本の平均を x̄ と書き、個数はそれぞれ N、n とします。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '算術平均は、対象の値をすべて足し、対象の個数で割った値です。値がすべて同じ量を表し同じ単位で測られていることが必要です。平均は元の値と同じ単位になります。カテゴリに便宜上数字を割り当てただけのデータには、算術平均を使いません。' }] },
+          { kind: 'formula', parts: [{ kind: 'mathText', text: '母平均：μ = (Σ_{i=1}^{N} xᵢ)/N; 標本平均：x̄ = (Σ_{i=1}^{n} xᵢ)/n' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: 'Σ_{i=1}^{N} xᵢ は、添字 i を1から N まで動かし、その範囲の xᵢ をすべて足す記号です。標本平均の式も同じ読み方で、添字を n まで動かします。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '例：測定値 1.000 mm、2.200 mm、3.000 mm の平均は (1.000 + 2.200 + 3.000)/3 = 6.200/3 = 31/15 = 2.0666… mm なので、最後に丸めて約 2.067 mm です。この中心値は3点のつり合い位置を表しますが、実際の測定値のどれかと一致するとは限りません。' }] },
+        ],
+      },
+      {
+        sectionId: 'deviation',
+        title: '偏差',
+        blocks: [
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '偏差は、各値が対応する平均からどれだけ離れているかを符号付きで表した差です。平均より大きければ正、小さければ負になり、偏差の単位は元の値と同じです。値と平均は同じ量・単位で、同じ観測対象を表す必要があります。' }] },
+          { kind: 'formula', parts: [{ kind: 'mathText', text: '母集団の偏差：xᵢ − μ; 標本の偏差：xᵢ − x̄' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '例：同じ3点の標本平均は 31/15 mm です。偏差は 1.000 − 31/15 = −16/15 mm、2.200 − 31/15 = 2/15 mm、3.000 − 31/15 = 14/15 mm で、合計は 0 mm です。平均との差をそのまま足すと正負が打ち消し合うため、偏差の和だけでは散らばりの大きさを表せません。' }] },
+        ],
+      },
+      {
+        sectionId: 'variance',
+        title: '範囲と分散',
+        blocks: [
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '範囲は最大値と最小値の差です。分散は偏差を二乗して散らばりを表します。母集団全体を記述する母分散は偏差平方和を N で割り、観測した標本そのものを記述する分散は偏差平方和を n で割った平均です。母分散を推定する不偏分散は、標本の偏差平方和を n−1 で割った推定量です。二乗すると正負が打ち消し合わず、平均との差が大きい値ほど強く効きます。範囲は元の単位、分散は単位を二乗したものになります。' }] },
+          { kind: 'formula', parts: [{ kind: 'mathText', text: '母分散：σ² = (Σ_{i=1}^{N}(xᵢ − μ)²)/N; 標本分散（標本内の記述）：(Σ_{i=1}^{n}(xᵢ − x̄)²)/n; 母分散の不偏推定量（不偏分散）：s² = (Σ_{i=1}^{n}(xᵢ − x̄)²)/(n−1); 範囲 = 最大値 − 最小値' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: 'Σ は添字の範囲にある値をすべて足す記号です。必要なら「総和記号の読み方」を復習してください。' }] },
+          { kind: 'formula', parts: [
+            { kind: 'mathText', text: '標本平方偏差和：' },
+            { kind: 'mathSymbol', symbol: 'Σ', lessonRef: { label: '総和記号の読み方', targetRef: 'math-algebra-sigma#sigma' } },
+            { kind: 'mathText', text: '_{i=1}^{n}(xᵢ − x̄)²' },
+          ] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '例：偏差平方和は (−16/15)² + (2/15)² + (14/15)² = 152/75 mm² です。別経路の Σ_{i=1}^{n}xᵢ² − (Σ_{i=1}^{n}xᵢ)²/n = 1² + 2.2² + 3² − 6.2²/3 も 152/75 mm² になります。途中で丸めず、表示する最後の値だけを丸めます。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '同じ3点が調べたい対象の全件なら、母分散は N=3 で割って 152/225 ≈ 0.676 mm² です。観測した標本3点そのものの散らばりを記述する場合も、標本分散として n=3 で割り、同じ 0.676 mm² になります。より大きな母集団の分散を推定する場合は、母集団と同じ分布から独立に得た n≥2 個の標本について不偏分散を n−1 で割り、76/75 ≈ 1.013 mm² とします。設問では「標本」という言葉だけで分母を決めず、何を記述・推定するかを確認します。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: 'この不偏性は、同一分布から独立に得た標本で母分散が有限のときの性質です。同じ大きさの標本を何度も取り直すと、不偏分散の平均が母分散になります。不偏なのは分散の推定量 s²であり、標準偏差 s そのものが不偏という意味ではありません。OpenStax §2.7 は n−1 で割る式を “sample variance” と呼びますが、ここでは計算の目的が伝わるよう「標本内を記述する分散」と「母分散の不偏推定量」を区別します。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '範囲の例は 3.000 − 1.000 = 2.000 mm です。範囲は最小値と最大値だけで決まり、途中の値がどう散らばっているかは示しません。分散は全ての偏差を使うので、極端な値の影響を受けやすい尺度です。' }] },
+        ],
+      },
+      {
+        sectionId: 'standard-deviation',
+        title: '標準偏差',
+        blocks: [
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '標準偏差は分散の平方根で、平均との差による散らばりを元の測定単位で表します。母集団の標準偏差を σ、標本の標準偏差を s と書きます。標準偏差が 0 なら全ての値が平均と等しく、値が大きいほど平均の周りに広く散らばっています。' }] },
+          { kind: 'formula', parts: [{ kind: 'mathText', text: '母標準偏差：σ = √σ²; 不偏分散から計算する標本標準偏差：s = √s²' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '例：3点を対象全体として記述する場合（または観測標本内を記述する場合）は √(152/225) ≈ 0.822 mm です。大きな母集団を推定する不偏分散から計算すると √(76/75) ≈ 1.007 mm です。いずれも長さの単位 mm で、約 2.067 mm の平均を中心とした散らばりの尺度になります。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '標準偏差は偏差の絶対値を単純に平均したものではありません。分布の形など追加条件がなければ、平均から標準偏差以内に大半の値が入るとは結論できません。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '出典：公式出題範囲 SRC-0005 との対応は教材レジストリに登録済みのJSA「3級のレベル表」Ver.20150130.2 p.1、JSA「4級のレベル表」Ver.20150130.2 p.1「平均とばらつき」「平均と範囲」（2026-10-21確認）によります。式と用語は OpenStax, Introductory Statistics 2e, §2.7 “Measures of the Spread of the Data”, https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data （2026-10-23確認）も照合しました。同節は n−1 の式を “sample variance” と呼びます。本教材では計算目的を明確にするため「標本分散」と「不偏分散」を区別します。公式範囲の対応以外の説明と数値例は独自に作成。' }] },
+        ],
+      },
+    ],
+    figures: [],
+  },
   plannedLesson('sampling', '標本抽出と誤差', '標本抽出・誤差・抽出方式を区別し、標本からの一般化の限界を説明する。', ['error', 'design'], ['population-sample', 'descriptive-statistics'], ['SRC-0004', 'SRC-0006']),
   plannedLesson('data-transform', 'データ変換', '変換の目的、尺度、変換前後の解釈を説明する。', [], ['data-types', 'math-algebra-sigma'], ['SRC-0002']),
   plannedLesson('qc-seven-tools', 'QC七つ道具', '七つ道具を目的に応じて選び、作成・読取り・結論の限界を説明する。', ['pareto', 'cause-effect', 'check-sheet', 'histogram', 'scatter', 'graphs', 'stratification'], ['data-types'], ['SRC-0007', 'SRC-0008', 'SRC-0009', 'SRC-0010', 'SRC-0011', 'SRC-0012', 'SRC-0013'], [], [
@@ -420,7 +485,7 @@ const lessons = [
 
 /** @type {LessonRegistry} */
 export const lessonRegistry = {
-  curriculumRevision: 2,
+  curriculumRevision: 3,
   officialSourceItemIds: Array.from({ length: 64 }, (_, index) => `SRC-${String(index + 1).padStart(4, '0')}`),
   sources: sourceDocuments,
   lessons,

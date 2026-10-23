@@ -70,6 +70,8 @@
 | `sources` | 3級レベル表（`https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf`、Ver.20150130.2、2026-10-21確認、p.1「基本統計量とグラフ」）と4級レベル表（`https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf`、Ver.20150130.2、2026-10-21確認、p.1「平均とばらつき」「平均と範囲」）。対応表にも同じ資料位置を記録する。 |
 | `revision` | `1`。 |
 
+この表は教材契約の記法を説明する設計例であり、単一節・revision 1は現在の本番registryの構成を示さない。
+
 `math-algebra-sigma`には公式項目を装うsource IDを付けない。1つの教材で複数の公式項目を扱う例は`sampling-inspection`の5件の対応を参照する。複数lessonへ同じ公式項目を割り当てる場合も、source ID自体を複製・変更せず、対応表の関係を追加する。現行資料にない対応はこの例では作らない。
 
 教材本文の`LessonRef`は`lessonId`または`lessonId#sectionId`で表す。段落は`{kind:"text", text}`と`{kind:"lessonRef", label, targetRef}`を順序付きpartsとして持ち、数式は`{kind:"mathText", text}`と`{kind:"mathSymbol", symbol, lessonRef?}`を順序付きpartsとして持つ。たとえば分散式中の`Σ`に復習先を付ける場合、記号tokenに表示ラベルと`math-algebra-sigma#sigma`を保持するため、式の表示文字列を検索して位置を推測しない。本文リンクはincluded lessonへ解決し、planned lessonや宣言だけのsectionへは遷移しない。`curriculumRevision`とlessonごとの`revision`は正の安全整数とし、別々に管理する。
@@ -131,7 +133,7 @@ Issue #8の機械可読契約では、`QuestionDefinition.kind`を`fixed`また�
 | `difficulty` | `基礎` |
 | `format` | `single-choice` |
 | `prompt` | 「分散 `s²` の単位として正しいものを選んでください。元の測定値の単位はmmです。」 |
-| `conditions` | 標本分散の式で、測定値を二乗して集計する。 |
+| `conditions` | 分散の式では平均との差（偏差）を二乗して集計する。 |
 | `choices` | A: mm、B: mm²、C: mm⁻¹。Bだけが正答。 |
 | `correctAnswer` | B。偏差を二乗するため単位も二乗になる。 |
 | `grading` | 選択したキーがBの場合だけ正答。部分点は付けない。 |
@@ -150,12 +152,12 @@ Issue #8の機械可読契約では、`QuestionDefinition.kind`を`fixed`また�
 | `lessonRefs` | `descriptive-statistics#variance` |
 | `difficulty` | `標準` |
 | `format` | `numeric`。入力欄の単位ラベルはmm²。 |
-| `prompt` | 「測定値1.000 mm、2.200 mm、3.000 mmの標本分散を求めてください。結果は小数第3位までです。入力値は採点時に小数第3位へ丸めます。」 |
-| `conditions` | 標本分散 `s² = Σ(xᵢ − x̄)² / (n−1)`。単位はmm²。 |
+| `prompt` | 「標本とみなす測定値1.000 mm、2.200 mm、3.000 mmから、母分散の不偏推定量である不偏分散を求めてください。結果は小数第3位までです。入力値は採点時に小数第3位へ丸めます。」 |
+| `conditions` | 母分散の不偏推定量である不偏分散 `s² = Σ(xᵢ − x̄)² / (n−1)`。単位はmm²。 |
 | `generator` | `fixed`。測定値は計算・採点の説明用に固定した仮例であり、seedから生成した値ではない。生成問題で使う入力範囲・seedの扱い・規則版・パラメータ制約はP1で定義する。 |
 | `grading` | `p=3`、期待値と入力値を比較前に丸める。絶対許容誤差 `0.002 mm²`、相対許容誤差 `0.5%`、併用はOR。 |
 | `correctAnswer` | `1.013 mm²`（丸め前は`76/75 = 1.013333… mm²`）。 |
-| `feedbackRules` | `0.676 mm²`は`n`で割った値`152/225 = 0.675555… mm²`に一致する。標本分散の除数を`n−1`にする理由を示し、`descriptive-statistics#variance`へ案内する。 |
+| `feedbackRules` | `0.676 mm²`は`n`で割った値`152/225 = 0.675555… mm²`に一致する。不偏分散の除数を`n−1`にする理由を示し、`descriptive-statistics#variance`へ案内する。 |
 | `defaultFeedback` | §4.5の共通フィードバック。既知の計算過程に一致しない誤答を推測で分類しない。 |
 | `sources` | なし。計算例は独自作成。範囲確認はlessonのsource資料で行う。 |
 | `revision` | `1`。 |
@@ -193,13 +195,13 @@ s^2=\frac{152/75}{3-1}=\frac{76}{75}=1.0133\ldots\ \mathrm{mm^2}
 | 相対 | `0.200` | `0.5%` | `100.500` | `0.500` | 偽 | 真（境界） | 正答 |
 | 相対 | `0.200` | `0.5%` | `100.501` | `0.501` | 偽 | 偽（`0.501%`） | 誤答 |
 
-**標本分散を計算する中間値と答えは、偏差平方和の式と平方和の式で別々に検算した。** 実装時にはこの計算と境界例を自動テストするが、今回の設計文書ではアプリ実行テストは行わない。
+**不偏分散を計算する中間値と答えは、偏差平方和の式と平方和の式で別々に検算した。** 実装時にはこの計算と境界例を自動テストするが、今回の設計文書ではアプリ実行テストは行わない。
 
 ### 4.5 誤答フィードバック
 
 単一選択では誤答に個別の説明と復習節を指定できる。各`choiceId`は正答IDと異なり、feedback規則間で一意にする。数値入力では、除数を`n`にした、偏差の二乗を忘れたなど、答案から一意に確認できる規則だけを分類する。既知の誤解に該当しない場合は次の共通フィードバックを使う。
 
-> この値だけでは誤りの原因を特定できません。標本分散の式、偏差平方和、除数`n−1`、丸める位置、入力欄の単位を順に確認し、途中計算と見比べてください。解説の「分散」節を開いてから、同じ出題に戻って再入力できます。
+> この値だけでは誤りの原因を特定できません。不偏分散の式、偏差平方和、除数`n−1`、丸める位置、入力欄の単位を順に確認し、途中計算と見比べてください。解説の「分散」節を開いてから、同じ出題に戻って再入力できます。
 
 共通説明は誤りを断定せず、該当する`lessonId#sectionId`へのリンクを付ける。
 
@@ -225,7 +227,7 @@ snapshot validatorは保存済み構造だけを検査し、現行`QuestionDefin
 
 Issue #9では`QuestionInstance`のみを保存し、`AnswerAttempt`は保存しない。localStorageの固定キー`sfqc:local-data`に`{ "schemaVersion": 1, "questionInstances": [...] }`を保存し、JSONバックアップにも同じ形式を使う。空集合は有効で、集合内の`instanceId`は一意とする。1回の保存・復元は最大500件、JSONはUTF-8で最大1 MiBとする。保存集合のschemaとIDを検査した後、各instanceを`restoreQuestionInstance`へ渡し、全件が成功したときだけ保存内容へ反映する。version 1以外は拒否し、migrationは行わない。`AnswerAttempt`の保存、出題IDとの関連付け、回答履歴の参照整合性検査は学習履歴機能で扱う。
 
-数値例の`QuestionInstance`は`instanceId`、`questionId=q-desc-var-num-001`、`questionDefinitionRevision=1`、snapshot、固定値`1.000, 2.200, 3.000 mm`とする。これらの確定値と「標本分散・分母`n−1`・小数第3位・mm²」の計算条件は、snapshot内の`content`だけに置く。たとえば回答`1.030`は、入力欄の単位mm²で丸め後も`1.030`、判定は誤答となり、既知の誤り規則に一致しなければ§4.5の共通フィードバックを使う。これは一つの`AnswerAttempt`として同じ出題インスタンスに紐づく。
+数値例の`QuestionInstance`は`instanceId`、`questionId=q-desc-var-num-001`、`questionDefinitionRevision=1`、snapshot、固定値`1.000, 2.200, 3.000 mm`とする。これらの確定値と「母分散の不偏推定量である不偏分散・分母`n−1`・小数第3位・mm²」の計算条件は、snapshot内の`content`だけに置く。たとえば回答`1.030`は、入力欄の単位mm²で丸め後も`1.030`、判定は誤答となり、既知の誤り規則に一致しなければ§4.5の共通フィードバックを使う。これは一つの`AnswerAttempt`として同じ出題インスタンスに紐づく。
 
 | 学習者の操作 | 扱うもの |
 |---|---|
@@ -276,7 +278,7 @@ Issue #9では`QuestionInstance`のみを保存し、`AnswerAttempt`は保存し
 - 本書で参照するsection anchorは、`descriptive-statistics#variance`、`math-algebra-sigma#sigma`、`mean-inference#z`、`mean-inference#t`、`mean-inference#large-sample`、`sampling-distributions#t`である。いずれも前提マップで固定済み。小標本のt法の正規性の前提は、anchorを定めていない既存lesson全体の`normal-distribution`へ案内し、未定義のsectionを参照しない。
 - `q-desc-var-sc-001`と`q-desc-var-num-001`は本書内に一度ずつ定義され、教材例の`questionIds`、シナリオ、解説リンクのすべてがこの2件のどちらかを指す。`FIG-DESC-VAR-001`も教材例・図解例に対応する。
 - 共通必須、方法条件付き必須、任意復習を混同していない。`mean-inference#t` → `sampling-distributions#t`、小標本の場合のみ追加する`normal-distribution`、および分散からΣへの任意復習が前提マップと一致する。
-- 数値例は平均、平方偏差和、標本分散を独立した式で照合し、丸め桁、丸め方式、入力単位、許容誤差の併用（OR）、絶対・相対条件それぞれの独立した境界内外6ケース、十進値による`<=`判定を再計算する。
+- 数値例は平均、平方偏差和、不偏分散を独立した式で照合し、丸め桁、丸め方式、入力単位、許容誤差の併用（OR）、絶対・相対条件それぞれの独立した境界内外6ケース、十進値による`<=`判定を再計算する。
 - 図のコード描画参照、教育目的、変数・単位、テキスト代替が記載され、生成画像を使っていない。
 - PR前に`git diff --check`を実行する。文書のみのためアプリ実行テストは対象外。検証用の一時スクリプトを使う場合、リポジトリへ追加しない。
 
