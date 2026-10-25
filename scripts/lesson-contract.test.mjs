@@ -16,8 +16,8 @@ test('fixture and the six included lessons satisfy the contract and keep other l
   assert.ok(lesson(lessonRegistry, 'math-algebra-sigma').declaredSectionIds.includes('sigma'))
   assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').availability, 'included')
-  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 3)
-  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').questionIds.length, 0)
+  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 4)
+  assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').questionIds, ['q-desc-var-sc-001', 'q-desc-var-num-001', 'q-desc-mean-sc-001', 'q-desc-sd-sc-001', 'q-desc-var-gen-num-001'])
   const expectedSections = new Map([
     ['data-types', ['types']],
     ['math-arithmetic', ['operations']],
@@ -35,7 +35,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
       assert.equal(item.revision, 1)
       continue
     }
-    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 3 : 2)
+    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 4 : 2)
     assert.deepEqual(item.declaredSectionIds, sectionIds)
     assert.equal(item.sections.length, sectionIds.length)
     const paragraphs = item.sections.flatMap((section) => section.blocks
@@ -307,7 +307,7 @@ test('shared and conditional prerequisites form one acyclic graph; optional revi
   assert.equal(validateLessonRegistry(optionalCycle), true)
 })
 
-test('conditions keep method scope and stable IDs, and question IDs remain unresolved', () => {
+test('conditions keep method scope and question IDs are shape-checked without registry resolution', () => {
   const conditional = copy(lessonRegistryFixture)
   lesson(conditional, 'descriptive-statistics').conditionalPrerequisites = [{
     conditionId: 'descriptive-mean-method',
@@ -334,7 +334,15 @@ test('conditions keep method scope and stable IDs, and question IDs remain unres
 
   const unresolvedQuestion = copy(lessonRegistryFixture)
   lesson(unresolvedQuestion, 'descriptive-statistics').questionIds = ['q-not-yet-registered']
-  assert.equal(validateLessonRegistry(unresolvedQuestion), false)
+  assert.equal(validateLessonRegistry(unresolvedQuestion), true)
+
+  const malformedQuestionId = copy(lessonRegistryFixture)
+  lesson(malformedQuestionId, 'descriptive-statistics').questionIds = ['Invalid_ID']
+  assert.equal(validateLessonRegistry(malformedQuestionId), false)
+
+  const duplicateQuestionIds = copy(lessonRegistryFixture)
+  lesson(duplicateQuestionIds, 'descriptive-statistics').questionIds = ['q-question-1', 'q-question-1']
+  assert.equal(validateLessonRegistry(duplicateQuestionIds), false)
 })
 
 test('unknown keys, undefined values, malformed IDs, and invalid revisions are rejected', () => {

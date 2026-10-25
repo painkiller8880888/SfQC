@@ -202,7 +202,7 @@ function isLessonBase(value) {
     && isUniqueTextArray(value.commonPrerequisites, lessonRefPattern)
     && isArray(value.conditionalPrerequisites)
     && isArray(value.optionalReviews)
-    && isArray(value.questionIds) && value.questionIds.length === 0
+    && isUniqueTextArray(value.questionIds, idPattern)
     && isUniqueTextArray(value.sourceItemIds, sourceItemIdPattern)
     && isUniqueTextArray(value.sourceRefs, idPattern)
     && isPositiveSafeInteger(value.revision)
