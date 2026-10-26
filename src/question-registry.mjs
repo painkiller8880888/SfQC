@@ -30,17 +30,17 @@ export const questionRegistry = [
   {
     kind: 'fixed',
     questionId: 'q-desc-var-num-001',
-    revision: 1,
+    revision: 2,
     lessonRefs: ['descriptive-statistics#variance'],
     difficulty: '標準',
     sources: [],
     content: {
       format: 'numeric',
-      prompt: '標本とみなす測定値1.000 mm、2.200 mm、3.000 mmから、母分散の不偏推定量である不偏分散を求めてください。結果は小数第3位までです。入力値は採点時に小数第3位へ丸めます。',
+      prompt: '標本とみなす測定値1.000 mm、2.200 mm、3.000 mmから、母分散の不偏推定量である不偏分散を求めてください。結果は小数第3位までです。入力値は採点時に小数第3位へ丸め、丸め後の正答と一致した場合に正解とします。',
       conditions: '母分散の不偏推定量である不偏分散 s² = Σ(xᵢ − x̄)² / (n−1) です。単位はmm²です。',
       parameters: { x1: '1.000', x2: '2.200', x3: '3.000' },
       correctAnswer: '1.013',
-      grading: { type: 'numeric', unit: 'mm²', roundingDigits: 3, absoluteTolerance: '0.002', relativeTolerance: '0.005' },
+      grading: { type: 'numeric', unit: 'mm²', roundingDigits: 3, absoluteTolerance: '0', relativeTolerance: '0' },
       solution: '標本平均は(1.000 + 2.200 + 3.000)/3 = 31/15 mmです。偏差平方和は(−16/15)² + (2/15)² + (14/15)² = 456/225 = 152/75 mm²です。n−1=2で割ると、76/75 = 1.013333… mm²なので、1.013 mm²です。',
       feedbackRules: [
         { answer: '0.676', explanation: 'これは偏差平方和をn=3で割った標本内の分散です。母分散の不偏推定量ではn−1=2で割ります。', lessonRef: 'descriptive-statistics#variance' },

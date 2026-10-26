@@ -74,10 +74,11 @@ test('single-choice wrong answers have distinct, complete feedback', () => {
     standardDeviation.feedbackRules.find((rule) => rule.choiceId === 'C').explanation)
 })
 
-test('fixed variance calculation preserves units, n−1, tolerances, and known error', () => {
+test('fixed variance calculation preserves units, n−1, exact rounded grading, and known error', () => {
   const { content } = getQuestionDefinition('q-desc-var-num-001')
   assert.equal(validateQuestionContent(content), true)
-  assert.equal(content.prompt, '標本とみなす測定値1.000 mm、2.200 mm、3.000 mmから、母分散の不偏推定量である不偏分散を求めてください。結果は小数第3位までです。入力値は採点時に小数第3位へ丸めます。')
+  assert.equal(content.prompt, '標本とみなす測定値1.000 mm、2.200 mm、3.000 mmから、母分散の不偏推定量である不偏分散を求めてください。結果は小数第3位までです。入力値は採点時に小数第3位へ丸め、丸め後の正答と一致した場合に正解とします。')
+  assert.equal(getQuestionDefinition('q-desc-var-num-001').revision, 2)
   assert.match(content.conditions, /n−1/u)
   assert.match(content.conditions, /mm²/u)
   assert.equal(content.correctAnswer, '1.013')
@@ -85,8 +86,8 @@ test('fixed variance calculation preserves units, n−1, tolerances, and known e
     type: 'numeric',
     unit: 'mm²',
     roundingDigits: 3,
-    absoluteTolerance: '0.002',
-    relativeTolerance: '0.005',
+    absoluteTolerance: '0',
+    relativeTolerance: '0',
   })
   assert.equal(content.feedbackRules[0].answer, '0.676')
   assert.match(content.feedbackRules[0].explanation, /n=3/u)
