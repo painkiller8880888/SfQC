@@ -266,7 +266,13 @@ Issue #22で保存形式を`{ "schemaVersion": 2, "questionInstances": [...], "a
 | 進捗ダッシュボード | 単元状態（未着手・学習中・演習中・復習待ち・定着確認済み）、試行数、正答率、最終実施日、復習履歴を示す。少数回の正答率で理解度を断定しない。 | 単元解説、演習、復習対象。 |
 | データ管理 | ブラウザ内の出題snapshot・解答試行・復習イベント件数を確認し、利用者がJSONバックアップ・復元を行う。 | 進捗ダッシュボード、JSONの書き出し・読み込み。 |
 
-画面は「学習マップ→単元解説→演習→採点・フィードバック→関連節の復習→元の出題へ復帰→再演習→進捗確認」を支える。ページ遷移・モーダル等の見た目やルーティング方式は未決定。
+画面は「学習マップ→単元解説→演習→採点・フィードバック→関連節の復習→元の出題へ復帰→再演習→進捗確認」を支える。実装はGitHub Pagesで使えるhash routeとし、既存6 route（`#/map`、`#/lesson`、`#/practice`、`#/feedback`、`#/progress`、`#/data`）を維持しながら、`#/lesson/{lessonId}/{sectionId?}`、`#/practice/{instanceId}`、`#/feedback/{attemptId}`を追加する。`lessonId#sectionId`は教材参照表記として解析し、URLのhashと混同しない。
+
+ID routeはURL構文を解析した後に教材registryまたは最新の保存データから解決する。出題・解答IDはURL segmentごとにencodeし、path分割後一度だけdecodeする。未知IDは別の問題へ置き換えず、該当IDが見つからない案内と学習マップ／データ管理への導線を示す。破損・未対応の保存データは空データとして扱わず、既存のデータ異常・回復案内へつなぐ。route entryの解決では`readLocalData()`を一度読み、ID存在確認と画面表示で同じ結果を使う。
+
+未送信回答のdraft、現在の節、読書位置、復習戻り経路、必要なattempt参照はschema v2を変更せず、version付き`history.state`に平坦な復帰frameとして保持する。draftは回答の原文文字列とし、フォームは現在entryの`draft`を読み、変更時に`updateRouteHistoryState`で`replaceState`する。入力・位置変更は現在entryを更新する。復習リンクは現在frameをstackへ積んで新entryを作り、「1段戻る」はstack末尾を取り出した復帰先を新entryにする。Back／Forwardとreloadは対象entryの状態を復元する。同一単元内の節移動はstackを保ち、通常のメインナビゲーションはstackを空にする。feedbackからの再開は同じsnapshotとattemptの回答を使う新しいpractice entryとし、保存済みattemptを再採点しない。直接ID URLで履歴状態がなければ復帰元を推測せず、URLと保存データだけで開く。
+
+この実装段階ではroute別の単元・節見出し、必須前提と任意復習の区別、保存済み出題・解答の最小表示までを接続する。全教材本文、回答フォーム、採点UIと完成したfeedback画面は後続Issueで扱う。後続実装はこのroute IDと履歴draft更新契約を使い、フォーム統合を確認する。既存のスクロール復元はアプリが管理し、Back／Forward・reloadではentryの読書位置を復元する。
 
 ## 8. 復習後に元の出題へ戻るシナリオ
 

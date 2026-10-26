@@ -1,15 +1,35 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { resolveScreen, type ScreenKind } from './resolve-screen.mjs'
+import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react'
+import {
+  resolveRoute,
+  routeToHash,
+  screenForRoute,
+  type AppRoute,
+  type ScreenKind,
+} from './resolve-screen.mjs'
+import {
+  navigateRouteHistory,
+  updateRouteHistoryState,
+  validateRouteHistoryState,
+  type NavigationIntent,
+  type RouteHistoryState,
+} from './route-history.mjs'
 import {
   exportLocalData,
   importLocalData,
   LocalDataError,
   migrateLocalData,
   readLocalData,
-  type LocalData,
-  type LocalDataReadResult,
 } from './local-data.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
+import { parseLessonRef, type InlineLessonRef, type SectionDefinition } from './lesson-contract.mjs'
+import {
+  applyRouteNavigationEffect,
+  refreshRouteView,
+  resolveRouteView,
+  type NavigationCause,
+  type RouteView,
+  type StoredLocalData,
+} from './route-view.mjs'
 import { FigureRef } from './figures/figure-ref'
 
 const navigation = [
@@ -83,24 +103,196 @@ const screens: Record<ScreenKind, {
   },
 }
 
-type StoredLocalData = LocalDataReadResult
-  | { status: 'migration-failed'; raw: string; data: LocalData; error: Error }
+function browserUrl(hash: string) {
+  return window.location.pathname + window.location.search + hash
+}
+
+function routeForLessonRef(reference: string): AppRoute | null {
+  const parsed = parseLessonRef(reference)
+  return parsed ? { kind: 'lesson-id', lessonId: parsed.lessonId, sectionId: parsed.sectionId } : null
+}
+
+function lessonLabel(reference: string) {
+  const parsed = parseLessonRef(reference)
+  if (!parsed) return reference
+  const lesson = lessonRegistry.lessons.find((item) => item.lessonId === parsed.lessonId)
+  const section = parsed.sectionId && lesson?.availability === 'included'
+    ? lesson.sections.find((item) => item.sectionId === parsed.sectionId)
+    : undefined
+  return section ? lesson?.title + '：' + section.title : lesson?.title ?? reference
+}
+
+function sectionLessonRefs(section: SectionDefinition): InlineLessonRef[] {
+  const references: InlineLessonRef[] = []
+  for (const block of section.blocks) {
+    if (block.kind === 'lessonRef') references.push(block)
+    if (block.kind === 'paragraph') {
+      for (const part of block.parts) if (part.kind === 'lessonRef') references.push(part)
+    }
+    if (block.kind === 'formula') {
+      for (const part of block.parts) {
+        if (part.kind === 'mathSymbol' && part.lessonRef) references.push(part.lessonRef)
+      }
+    }
+  }
+  return references
+}
+
+function InternalLink({ route, intent = 'normal', children }: {
+  route: AppRoute
+  intent?: NavigationIntent
+  children: ReactNode
+}) {
+  return <a href={routeToHash(route)} data-nav-intent={intent}>{children}</a>
+}
+
+function LessonReference({ targetRef, label, intent = 'review' }: InlineLessonRef & { intent?: NavigationIntent }) {
+  const route = routeForLessonRef(targetRef)
+  return route ? <InternalLink route={route} intent={intent}>{label}</InternalLink> : <span>{label}</span>
+}
+
+function RouteProblem({ message }: { message: string }) {
+  return (
+    <section className="placeholder" aria-labelledby="route-problem-title">
+      <h2 id="route-problem-title">指定先を開けません</h2>
+      <p>{message}</p>
+      <p><InternalLink route={{ kind: 'map' }}>学習マップへ</InternalLink> · <InternalLink route={{ kind: 'data' }}>データ管理へ</InternalLink></p>
+    </section>
+  )
+}
 
 function App() {
-  const [screen, setScreen] = useState(() => resolveScreen(window.location.hash))
-  const [storedData, setStoredData] = useState<StoredLocalData>(readLocalData)
+  const [view, setView] = useState(() => resolveRouteView(
+    window.location.hash, window.history.state, 'initial', 0,
+  ))
+  const [storedData, setStoredData] = useState<StoredLocalData>(() => view.storedData)
   const [dataMessage, setDataMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const sectionHeadingRef = useRef<HTMLHeadingElement>(null)
+  const viewRef = useRef(view)
+  const navigationIdRef = useRef(0)
+  const lastHandledRef = useRef('')
   const busyRef = useRef(false)
-  const previousScreenRef = useRef<ScreenKind>(screen)
+  const screen = screenForRoute(view.route)
   const current = screens[screen]
+  const entityTitle = view.resolved.status === 'lesson'
+    ? view.resolved.section?.title ?? view.resolved.lesson.title
+    : view.resolved.status === 'practice'
+      ? view.resolved.instance.questionId + 'の演習'
+      : view.resolved.status === 'feedback'
+        ? '解答結果'
+        : current.title
+  const pageTitle = screen === 'lesson' && view.resolved.status === 'lesson'
+    ? entityTitle + ' | ' + view.resolved.lesson.title
+    : entityTitle
   const storageError = storedData.status === 'invalid' || storedData.status === 'unreadable'
   const storageIssue = storageError || storedData.status === 'migration-failed'
     ? storedData.error
     : null
   const hasCounts = storedData.status === 'missing' || storedData.status === 'ok'
     || storedData.status === 'legacy' || storedData.status === 'migration-failed'
+
+  const publishRouteView = (next: RouteView) => {
+    viewRef.current = next
+    setView(next)
+    setStoredData(next.storedData)
+  }
+
+  const resolveCurrentLocation = (cause: NavigationCause, rawState: unknown, historyWarning = false) => {
+    const nextId = ++navigationIdRef.current
+    const next = resolveRouteView(window.location.hash, rawState, cause, nextId)
+    if (historyWarning) next.historyWarning = true
+    if (next.stateNeedsRepair) {
+      try {
+        window.history.replaceState(next.historyState, '', browserUrl(next.historyState.routeHash))
+      } catch {
+        next.historyWarning = true
+      }
+    }
+    publishRouteView(next)
+  }
+
+  const replaceCurrentEntry = (
+    patch: Partial<Pick<RouteHistoryState, 'draft' | 'scrollY'>>,
+    publish = true,
+  ) => {
+    const hash = window.location.hash
+    const liveState = validateRouteHistoryState(window.history.state, hash)
+    const currentState = liveState ?? viewRef.current.historyState
+    if (currentState.routeHash !== hash) return false
+    try {
+      const nextState = updateRouteHistoryState(currentState, patch)
+      window.history.replaceState(nextState, '', browserUrl(hash))
+      const nextView = { ...viewRef.current, historyState: nextState }
+      viewRef.current = nextView
+      if (publish) setView(nextView)
+      return true
+    } catch {
+      setDataMessage('この画面の入力や表示位置を履歴へ保存できませんでした。現在の画面に留まっています。')
+      return false
+    }
+  }
+
+  const saveCurrentPosition = () => {
+    return replaceCurrentEntry({ scrollY: window.scrollY })
+  }
+
+  const pushNavigation = (route: AppRoute, hash: string, intent: NavigationIntent) => {
+    if (!saveCurrentPosition()) return
+    const currentView = viewRef.current
+    const currentState = validateRouteHistoryState(window.history.state, window.location.hash)
+      ?? currentView.historyState
+    let options: { attemptId?: string; answer?: string } = {}
+    if (intent === 'resume') {
+      if (currentView.resolved.status !== 'feedback'
+        || route.kind !== 'practice-id'
+        || route.instanceId !== currentView.resolved.attempt.instanceId) {
+        setDataMessage('保存済み解答から同じ出題を再開できません。')
+        return
+      }
+      options = {
+        attemptId: currentView.resolved.attempt.attemptId,
+        answer: currentView.resolved.attempt.answer,
+      }
+    }
+    let nextState: RouteHistoryState | null
+    try {
+      nextState = navigateRouteHistory(currentState, route, hash, intent, options)
+    } catch {
+      setDataMessage('画面の復帰情報を作成できませんでした。現在の画面に留まっています。')
+      return
+    }
+    if (!nextState) {
+      setDataMessage('これ以上戻れる復習先はありません。')
+      return
+    }
+    try {
+      window.history.pushState(nextState, '', browserUrl(hash))
+    } catch {
+      setDataMessage('ブラウザー履歴に復帰情報を保存できませんでした。現在の画面に留まっています。')
+      return
+    }
+    lastHandledRef.current = hash + '\u0000' + nextState.entryId
+    resolveCurrentLocation(intent, nextState)
+  }
+
+  const handleInternalClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const anchor = target.closest<HTMLAnchorElement>('a[data-nav-intent]')
+    if (!anchor || event.defaultPrevented || event.button !== 0
+      || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
+      || (anchor.target && anchor.target !== '_self')
+      || anchor.hasAttribute('download')) return
+    const url = new URL(anchor.href, window.location.href)
+    if (url.origin !== window.location.origin || url.pathname !== window.location.pathname
+      || url.search !== window.location.search) return
+    const intent = anchor.dataset.navIntent as NavigationIntent
+    if (!['normal', 'review', 'section', 'resume', 'return'].includes(intent)) return
+    event.preventDefault()
+    pushNavigation(resolveRoute(url.hash), url.hash, intent)
+  }
 
   const handleExport = () => {
     if (busyRef.current) return
@@ -124,6 +316,22 @@ function App() {
     }
   }
 
+  const refreshRouteWithData = (data: StoredLocalData) => {
+    const hash = window.location.hash
+    const currentView = viewRef.current
+    const state = validateRouteHistoryState(window.history.state, hash) ?? currentView.historyState
+    // A data-only refresh must not cancel the route's pending scroll effect.
+    const next = refreshRouteView(currentView, data, hash, state)
+    if (next.stateNeedsRepair) {
+      try {
+        window.history.replaceState(next.historyState, '', browserUrl(hash))
+      } catch {
+        next.historyWarning = true
+      }
+    }
+    publishRouteView(next)
+  }
+
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget
     const file = input.files?.[0]
@@ -138,21 +346,22 @@ function App() {
     setDataMessage('')
     try {
       const result = await importLocalData(file, ({ damaged, existingCounts, importCounts }) => {
-        const imported = `${importCounts.questionInstances}件のsnapshot、${importCounts.answerAttempts}件の解答試行、${importCounts.reviewEvents}件の復習イベント`
+        const imported = importCounts.questionInstances + '件のsnapshot、' + importCounts.answerAttempts + '件の解答試行、' + importCounts.reviewEvents + '件の復習イベント'
         return window.confirm(damaged
-          ? `現在の保存データは破損しているか、このアプリでは対応していない形式のため、通常の方法で読み出し・バックアップできません。元の保存データは元に戻せません。選択したファイル（${imported}）で置き換えますか？`
-          : `保存済みの全データを置き換えます。現在はsnapshot ${existingCounts?.questionInstances}件、解答試行 ${existingCounts?.answerAttempts}件、復習イベント ${existingCounts?.reviewEvents}件です。選択したファイル（${imported}）で置き換えますか？`)
+          ? '現在の保存データは破損しているか、このアプリでは対応していない形式のため、通常の方法で読み出し・バックアップできません。元の保存データは元に戻せません。選択したファイル（' + imported + '）で置き換えますか？'
+          : '保存済みの全データを置き換えます。現在はsnapshot ' + existingCounts?.questionInstances + '件、解答試行 ' + existingCounts?.answerAttempts + '件、復習イベント ' + existingCounts?.reviewEvents + '件です。選択したファイル（' + imported + '）で置き換えますか？')
       })
       if (result.status === 'cancelled') {
         setDataMessage('復元をキャンセルしました。保存データは変更されていません。')
       } else {
-        setStoredData({ status: 'ok', raw: result.raw, data: result.data })
-        setDataMessage(`snapshot ${result.data.questionInstances.length}件、解答試行 ${result.data.answerAttempts.length}件、復習イベント ${result.data.reviewEvents.length}件を復元しました。`)
+        const importedData = { status: 'ok' as const, raw: result.raw, data: result.data }
+        refreshRouteWithData(importedData)
+        setDataMessage('snapshot ' + result.data.questionInstances.length + '件、解答試行 ' + result.data.answerAttempts.length + '件、復習イベント ' + result.data.reviewEvents.length + '件を復元しました。')
       }
     } catch (error) {
       setDataMessage(error instanceof LocalDataError ? error.message : '復元に失敗しました。')
       if (error instanceof LocalDataError && error.code === 'storage-changed') {
-        setStoredData(readLocalData())
+        refreshRouteWithData(readLocalData())
       }
     } finally {
       input.value = ''
@@ -162,45 +371,251 @@ function App() {
   }
 
   useEffect(() => {
-    const updateScreen = () => setScreen(resolveScreen(window.location.hash))
-    window.addEventListener('hashchange', updateScreen)
-    return () => window.removeEventListener('hashchange', updateScreen)
+    const originalScrollRestoration = window.history.scrollRestoration
+    window.history.scrollRestoration = 'manual'
+    const initial = viewRef.current
+    if (initial.stateNeedsRepair) {
+      try {
+        window.history.replaceState(initial.historyState, '', browserUrl(initial.historyState.routeHash))
+      } catch {
+        const failed = { ...initial, historyWarning: true }
+        viewRef.current = failed
+        setView(failed)
+      }
+    }
+    lastHandledRef.current = initial.historyState.routeHash + '\u0000' + initial.historyState.entryId
+
+    const handleLocationChange = () => {
+      const hash = window.location.hash
+      const rawState = window.history.state
+      const structuralState = validateRouteHistoryState(rawState, hash)
+      const signature = structuralState ? hash + '\u0000' + structuralState.entryId : hash + '\u0000invalid'
+      if (signature === lastHandledRef.current) return
+      const next = resolveRouteView(hash, rawState, structuralState ? 'restore' : 'normal', ++navigationIdRef.current)
+      if (next.stateNeedsRepair) {
+        try {
+          window.history.replaceState(next.historyState, '', browserUrl(hash))
+        } catch {
+          next.historyWarning = true
+        }
+      }
+      lastHandledRef.current = hash + '\u0000' + next.historyState.entryId
+      publishRouteView(next)
+    }
+
+    window.addEventListener('popstate', handleLocationChange)
+    window.addEventListener('hashchange', handleLocationChange)
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange)
+      window.removeEventListener('hashchange', handleLocationChange)
+      window.history.scrollRestoration = originalScrollRestoration
+    }
   }, [])
+
+  useEffect(() => {
+    const viewAtSchedule = view
+    const isCurrent = () => viewRef.current.navigationId === viewAtSchedule.navigationId
+      && window.history.state?.entryId === viewAtSchedule.historyState.entryId
+      && window.location.hash === viewAtSchedule.historyState.routeHash
+    const frame = window.requestAnimationFrame(() => {
+      if (!isCurrent()) return
+      applyRouteNavigationEffect(viewAtSchedule.navigation, viewAtSchedule.historyState, {
+        heading: headingRef.current,
+        sectionHeading: sectionHeadingRef.current,
+        scrollTo: (x, y) => window.scrollTo(x, y),
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [view.navigationId])
+
+  useEffect(() => {
+    document.title = pageTitle + ' | SfQC'
+  }, [pageTitle])
+
+  useEffect(() => {
+    const onScroll = () => {
+      const scheduled = viewRef.current
+      const hash = window.location.hash
+      const currentState = validateRouteHistoryState(window.history.state, hash)
+      if (!currentState || currentState.entryId !== scheduled.historyState.entryId
+        || viewRef.current.navigationId !== scheduled.navigationId) return
+      replaceCurrentEntry({ scrollY: window.scrollY }, false)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [view.navigationId])
 
   useEffect(() => {
     if (storedData.status !== 'legacy') return
     try {
       const result = migrateLocalData(storedData.raw, storedData.data)
-      setStoredData({ status: 'ok', raw: result.raw, data: result.data })
+      const migrated = { status: 'ok' as const, raw: result.raw, data: result.data }
+      refreshRouteWithData(migrated)
       setDataMessage('保存データをschemaVersion 2へ移行しました。')
     } catch (error) {
       if (error instanceof LocalDataError && error.code === 'storage-changed') {
-        setStoredData(readLocalData())
+        refreshRouteWithData(readLocalData())
         return
       }
       const migrationError = error instanceof Error
         ? error
         : new Error('保存データの移行に失敗しました。元のデータはそのままです。')
-      setStoredData({ status: 'migration-failed', raw: storedData.raw, data: storedData.data, error: migrationError })
-      setDataMessage(`${migrationError.message} データ管理画面からバックアップを保存できます。`)
+      const failed: StoredLocalData = {
+        status: 'migration-failed', raw: storedData.raw, data: storedData.data, error: migrationError,
+      }
+      refreshRouteWithData(failed)
+      setDataMessage(migrationError.message + ' データ管理画面からバックアップを保存できます。')
     }
   }, [storedData])
 
-  useEffect(() => {
-    document.title = `${current.title} | SfQC`
-    if (previousScreenRef.current !== screen) {
-      headingRef.current?.focus({ preventScroll: true })
-      const scrollTimeout = window.setTimeout(() => window.scrollTo(0, 0), 0)
-      previousScreenRef.current = screen
-
-      return () => {
-        window.clearTimeout(scrollTimeout)
-      }
+  const renderLessonRoute = () => {
+    if (view.route.kind !== 'lesson-id') return null
+    if (view.resolved.status === 'data-error') return <RouteProblem message="保存データに問題があるため、このID付き画面を解決できません。データ管理画面で保存状態を確認してください。" />
+    if (view.resolved.status === 'unknown-id') {
+      return <RouteProblem message={view.resolved.target === 'section'
+        ? 'この単元に指定された節はありません。別の節を選ぶか、学習マップへ戻ってください。'
+        : '指定された単元IDは教材レジストリにありません。学習マップから利用できる教材を選んでください。'} />
     }
-  }, [current.title, screen])
+    if (view.resolved.status === 'unavailable-lesson') {
+      return <RouteProblem message="この教材はまだ収録されていません。学習マップから利用できる教材を選んでください。" />
+    }
+    if (view.resolved.status !== 'lesson') return null
+    const { lesson, section } = view.resolved
+    const currentRef = view.route.sectionId ? view.route.lessonId + '#' + view.route.sectionId : view.route.lessonId
+    const optionalReviews = lesson.optionalReviews.filter((item) => item.fromRef === currentRef)
+    const bodyReferences = section ? sectionLessonRefs(section) : []
+    return (
+      <section className="lesson-panel" aria-labelledby="route-lesson-title">
+        <h2 id="route-lesson-title" ref={sectionHeadingRef} tabIndex={-1}>
+          {section?.title ?? '節を選ぶ'}
+        </h2>
+        <nav className="section-list" aria-label="この単元の節">
+          <h3>この単元の節</h3>
+          <ul>
+            {lesson.sections.map((item) => (
+              <li key={item.sectionId}>
+                <InternalLink
+                  route={{ kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: item.sectionId }}
+                  intent="section"
+                >
+                  {item.title}
+                </InternalLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        {lesson.commonPrerequisites.length > 0 && (
+          <div className="reference-group">
+            <h3>必須前提</h3>
+            <p>この単元を学ぶ前に必要な内容です。</p>
+            <ul>
+              {lesson.commonPrerequisites.map((reference) => (
+                <li key={reference}>
+                  <LessonReference targetRef={reference} label={lessonLabel(reference)} intent="review" />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {optionalReviews.length > 0 && (
+          <div className="reference-group">
+            <h3>任意復習</h3>
+            <ul>
+              {optionalReviews.map((item) => (
+                <li key={item.fromRef + item.targetRef}>
+                  <LessonReference targetRef={item.targetRef} label={lessonLabel(item.targetRef)} intent="review" />
+                  <p>{item.context}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {bodyReferences.length > 0 && (
+          <div className="reference-group">
+            <h3>本文にある復習リンク</h3>
+            <ul>
+              {bodyReferences.map((item, index) => (
+                <li key={item.targetRef + index}>
+                  <LessonReference targetRef={item.targetRef} label={item.label} intent="review" />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {section?.blocks.filter((block) => block.kind === 'figureRef').map((block) => (
+          <FigureRef key={block.figureId} lesson={lesson} figureId={block.figureId} />
+        ))}
+      </section>
+    )
+  }
+
+  const renderPracticeRoute = () => {
+    if (view.route.kind !== 'practice-id') return null
+    if (view.resolved.status === 'data-error') return <RouteProblem message="保存データに問題があるため、出題IDを解決できません。データ管理画面で保存状態を確認してください。" />
+    if (view.resolved.status === 'unknown-id') {
+      return <RouteProblem message="指定された出題IDは保存データにありません。別の問題へ自動で置き換えていません。学習マップから利用できる内容を選んでください。" />
+    }
+    if (view.resolved.status !== 'practice') return null
+    const { instance } = view.resolved
+    const content = instance.questionDefinitionSnapshot.content
+    return (
+      <section className="route-summary" aria-labelledby="question-title">
+        <p>出題ID：<code>{instance.instanceId}</code></p>
+        <h2 id="question-title">問題</h2>
+        <p>{content.prompt}</p>
+        <p>{content.conditions}</p>
+        {content.format === 'single-choice' && (
+          <ul>{content.choices.map((choice) => <li key={choice.id}>{choice.id}：{choice.label}</li>)}</ul>
+        )}
+        <p>回答入力画面は準備中です。保存済みの出題snapshotを表示しています。</p>
+        <div className="reference-group">
+          <h3>関連する解説</h3>
+          <ul>{instance.questionDefinitionSnapshot.lessonRefs.map((reference) => (
+            <li key={reference}>
+              <LessonReference targetRef={reference} label={lessonLabel(reference)} intent="review" />
+            </li>
+          ))}</ul>
+        </div>
+      </section>
+    )
+  }
+
+  const renderFeedbackRoute = () => {
+    if (view.route.kind !== 'feedback-id') return null
+    if (view.resolved.status === 'data-error') return <RouteProblem message="保存データに問題があるため、解答IDを解決できません。データ管理画面で保存状態を確認してください。" />
+    if (view.resolved.status === 'unknown-id') {
+      return <RouteProblem message="指定された解答IDは保存データにありません。新しい解答や別の問題へ置き換えていません。" />
+    }
+    if (view.resolved.status !== 'feedback') return null
+    const { attempt, instance } = view.resolved
+    const feedback = attempt.gradingResult.feedback
+    const practiceRoute: AppRoute = { kind: 'practice-id', instanceId: instance.instanceId }
+    return (
+      <section className="route-summary" aria-labelledby="feedback-title">
+        <p>解答ID：<code>{attempt.attemptId}</code></p>
+        <p>出題ID：<code>{instance.instanceId}</code></p>
+        <h2 id="feedback-title">解答結果</h2>
+        <p>あなたの回答：{attempt.answer}</p>
+        <p>{attempt.gradingResult.isCorrect ? '正解です。' : '不正解です。'}</p>
+        <p>{instance.questionDefinitionSnapshot.content.solution}</p>
+        {feedback && (
+          <div className="reference-group">
+            <h3>解説</h3>
+            <p>{feedback.explanation}</p>
+            <LessonReference
+              targetRef={feedback.lessonRef}
+              label={lessonLabel(feedback.lessonRef)}
+              intent="review"
+            />
+          </div>
+        )}
+        <p><InternalLink route={practiceRoute} intent="resume">同じ出題を再開する</InternalLink></p>
+      </section>
+    )
+  }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" onClick={handleInternalClick}>
       <button
         type="button"
         className="skip-link"
@@ -212,12 +627,13 @@ function App() {
         本文へ移動
       </button>
       <header className="site-header">
-        <a className="site-brand" href="#/map">SfQC</a>
+        <a className="site-brand" href="#/map" data-nav-intent="normal">SfQC</a>
         <nav className="primary-nav" aria-label="メイン">
           {navigation.map((item) => (
             <a
               key={item.screen}
               href={item.href}
+              data-nav-intent="normal"
               aria-current={screen === item.screen ? 'page' : undefined}
             >
               {item.label}
@@ -232,16 +648,21 @@ function App() {
             {storageIssue.message} 保存データを空として扱ったり、自動で上書きしたりしません。データ管理画面で確認してください。
           </p>
         )}
+        {view.historyWarning && (
+          <p className="storage-alert" role="status">
+            このURLの復帰情報は利用できないため、保存データとURLだけで画面を開きました。読書位置や復習経路の一部は復元できないことがあります。
+          </p>
+        )}
         <article className="screen">
-          <h1 id="page-title" ref={headingRef} tabIndex={-1}>{current.title}</h1>
+          <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
           <p className="description">{current.description}</p>
 
           {screen === 'data' ? (
             <section className="data-panel" aria-labelledby="data-title">
               <h2 id="data-title">保存データ</h2>
-              <p>出題snapshot：{hasCounts ? `${storedData.data.questionInstances.length}件` : '読み込みエラー'}</p>
-              <p>解答試行：{hasCounts ? `${storedData.data.answerAttempts.length}件` : '読み込みエラー'}</p>
-              <p>復習イベント：{hasCounts ? `${storedData.data.reviewEvents.length}件` : '読み込みエラー'}</p>
+              <p>出題snapshot：{hasCounts ? storedData.data.questionInstances.length + '件' : '読み込みエラー'}</p>
+              <p>解答試行：{hasCounts ? storedData.data.answerAttempts.length + '件' : '読み込みエラー'}</p>
+              <p>復習イベント：{hasCounts ? storedData.data.reviewEvents.length + '件' : '読み込みエラー'}</p>
               <p>このデータはこのブラウザ内に保存され、サーバーへ送信されません。バックアップは安全な場所に保管してください。</p>
               <div className="data-actions">
                 <button type="button" onClick={handleExport} disabled={busy || storageError}>
@@ -260,6 +681,8 @@ function App() {
               <p>容量上限を超えるときは未編集バックアップを保存し、複製したJSONを整理してから読み込みます。snapshotを除く場合は参照する解答試行も、解答試行を除く場合は参照する復習イベントも一緒に除いてください。保存履歴は自動削除しません。</p>
               <p className="data-message" role="status" aria-live="polite">{dataMessage}</p>
             </section>
+          ) : screen === 'lesson' && view.route.kind === 'lesson-id' ? (
+            renderLessonRoute()
           ) : screen === 'lesson' ? (
             <section className="lesson-panel" aria-labelledby="variance-lesson-title">
               <h2 id="variance-lesson-title">範囲と分散</h2>
@@ -269,6 +692,8 @@ function App() {
                 <p>教材の図を読み込めませんでした。</p>
               )}
             </section>
+          ) : screen === 'practice' && view.route.kind === 'practice-id' ? (
+            renderPracticeRoute()
           ) : screen === 'practice' ? (
             <>
               <section className="placeholder" aria-labelledby="question-title">
@@ -280,6 +705,8 @@ function App() {
                 <p>{current.placeholder}</p>
               </section>
             </>
+          ) : screen === 'feedback' && view.route.kind === 'feedback-id' ? (
+            renderFeedbackRoute()
           ) : (
             <section className="placeholder" aria-labelledby="placeholder-title">
               <h2 id="placeholder-title">この画面でできること</h2>
@@ -287,16 +714,29 @@ function App() {
             </section>
           )}
 
+          {view.historyState.returnStack.length > 0 && (
+            <nav className="return-navigation" aria-label="復習から戻る">
+              <a
+                href={view.historyState.returnStack.at(-1)?.routeHash}
+                data-nav-intent="return"
+              >
+                1段戻る
+              </a>
+            </nav>
+          )}
+
           <nav className="screen-navigation" aria-label="この画面から移動">
             <ul>
               {current.links.map((link) => (
-                <li key={link.label}><a href={link.href}>{link.label}</a></li>
+                <li key={link.label}>
+                  <a href={link.href} data-nav-intent="normal">{link.label}</a>
+                </li>
               ))}
             </ul>
           </nav>
 
           <footer className="site-footer">
-            <a href={`${import.meta.env.BASE_URL}third-party-licenses.txt`}>使用ライブラリのライセンス</a>
+            <a href={import.meta.env.BASE_URL + 'third-party-licenses.txt'}>使用ライブラリのライセンス</a>
           </footer>
         </article>
       </main>
