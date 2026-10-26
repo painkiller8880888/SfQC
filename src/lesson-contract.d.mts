@@ -1,4 +1,5 @@
 export type LessonRef = string
+export type ParsedLessonRef = { lessonId: string; sectionId: string | null }
 
 export type InlineLessonRef = {
   label: string
@@ -104,4 +105,5 @@ export type LessonRegistry = {
   lessons: LessonDefinition[]
 }
 
+export function parseLessonRef(value: unknown): ParsedLessonRef | null
 export declare function validateLessonRegistry(value: unknown): value is LessonRegistry

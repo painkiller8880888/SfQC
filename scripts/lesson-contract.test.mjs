@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
-import { validateLessonRegistry } from '../src/lesson-contract.mjs'
+import { parseLessonRef, validateLessonRegistry } from '../src/lesson-contract.mjs'
 import { lessonRegistryFixture } from './lesson-contract.fixture.mjs'
 
 const copy = (value) => structuredClone(value)
 const lesson = (registry, lessonId) => registry.lessons.find((item) => item.lessonId === lessonId)
+
+test('LessonRef parser validates stable syntax without requiring a current registry entry', () => {
+  assert.deepEqual(parseLessonRef('future-lesson#section'), { lessonId: 'future-lesson', sectionId: 'section' })
+  assert.deepEqual(parseLessonRef('future-lesson'), { lessonId: 'future-lesson', sectionId: null })
+  for (const value of ['future_lesson', 'future-lesson#bad_section', 'future-lesson#', '', null]) {
+    assert.equal(parseLessonRef(value), null)
+  }
+})
 
 test('fixture and the six included lessons satisfy the contract and keep other lessons planned', () => {
   assert.equal(validateLessonRegistry(lessonRegistryFixture), true)

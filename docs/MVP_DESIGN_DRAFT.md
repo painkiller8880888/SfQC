@@ -232,6 +232,10 @@ snapshot validatorは保存済み構造だけを検査し、現行`QuestionDefin
 
 Issue #9では`QuestionInstance`のみを保存し、`AnswerAttempt`は保存しない。localStorageの固定キー`sfqc:local-data`に`{ "schemaVersion": 1, "questionInstances": [...] }`を保存し、JSONバックアップにも同じ形式を使う。空集合は有効で、集合内の`instanceId`は一意とする。1回の保存・復元は最大500件、JSONはUTF-8で最大1 MiBとする。保存集合のschemaとIDを検査した後、各instanceを`restoreQuestionInstance`へ渡し、全件が成功したときだけ保存内容へ反映する。version 1以外は拒否し、migrationは行わない。`AnswerAttempt`の保存、出題IDとの関連付け、回答履歴の参照整合性検査は学習履歴機能で扱う。
 
+Issue #22で保存形式を`{ "schemaVersion": 2, "questionInstances": [...], "answerAttempts": [...], "reviewEvents": [...] }`へ拡張する。v1は読み取り・JSON export・確認付きimportで扱え、アプリ初期化時のread/exportは書き込みをしない。画面描画後にv1からv2へ昇格し、失敗時は元のrawと検証済みデータを保ち、v2形式のbackupを書き出せる。通常saveは既存3配列の順序と要素内容を維持した末尾追記だけを許す。整理を含む置換は利用者が確認したJSON importに限る。snapshotは最大500件、JSONはUTF-8で最大2 MiBとする。2 MiBはアプリ側の上限であり、ブラウザquotaを保証しない。
+
+`AnswerAttempt`は`attemptId`、`instanceId`、入力文字列`answer`、`status: 'graded'`の採点結果、UTCの実在日時`attemptedAt`を持つ。入力の前後空白を含む原文を保持し、選択式はsnapshot内choice ID、数値式は採点APIと同じ十進数形式を検証する。採点結果は過去の判定を再計算せず、正答/誤答のunionと、snapshot内の一致するrule/default feedbackを検証する。`ReviewEvent`は`reviewEventId`、`targetRef`、誤答`sourceAttemptId`、UTCの実在日時`reviewedAt`を持つ。これは復習先への明示的な訪問記録で、理解・復習完了・習熟の証拠ではない。保存時にはtargetRefのLessonRef構文と誤答attempt参照を検証するが、教材registryに現存するかは問わない。実際のevent記録triggerは後続Issue #26が担う。
+
 数値例の`QuestionInstance`は`instanceId`、`questionId=q-desc-var-num-001`、`questionDefinitionRevision=2`、snapshot、固定値`1.000, 2.200, 3.000 mm`とする。revision 1の保存済みsnapshotは旧許容差を保持し、`1.018`を正答とする。これらの確定値と「母分散の不偏推定量である不偏分散・分母`n−1`・小数第3位・mm²」の計算条件は、snapshot内の`content`だけに置く。たとえば回答`1.030`は、入力欄の単位mm²で丸め後も`1.030`、判定は誤答となり、既知の誤り規則に一致しなければ§4.5の共通フィードバックを使う。これは一つの`AnswerAttempt`として同じ出題インスタンスに紐づく。
 
 | 学習者の操作 | 扱うもの |
@@ -260,7 +264,7 @@ Issue #9では`QuestionInstance`のみを保存し、`AnswerAttempt`は保存し
 | 演習 | 出題インスタンスの条件・単位を保って回答を受け付ける。 | 採点・フィードバック、同じ問題の再開。 |
 | 解答・フィードバック | 正誤、根拠、誤答別の説明と該当節への復習先を示す。未知の数値誤答には共通説明を使う。 | 復習先、同じ出題への復帰、生成問題の別パラメータ類題。 |
 | 進捗ダッシュボード | 単元状態（未着手・学習中・演習中・復習待ち・定着確認済み）、試行数、正答率、最終実施日、復習履歴を示す。少数回の正答率で理解度を断定しない。 | 単元解説、演習、復習対象。 |
-| データ管理 | ブラウザ内の出題snapshot件数を確認し、利用者がJSONバックアップ・復元を行う。 | 進捗ダッシュボード、JSONの書き出し・読み込み。 |
+| データ管理 | ブラウザ内の出題snapshot・解答試行・復習イベント件数を確認し、利用者がJSONバックアップ・復元を行う。 | 進捗ダッシュボード、JSONの書き出し・読み込み。 |
 
 画面は「学習マップ→単元解説→演習→採点・フィードバック→関連節の復習→元の出題へ復帰→再演習→進捗確認」を支える。ページ遷移・モーダル等の見た目やルーティング方式は未決定。
 

@@ -51,7 +51,7 @@ function isPositiveSafeInteger(value) {
   return Number.isSafeInteger(value) && value > 0 && !Object.is(value, -0)
 }
 
-function parseLessonRef(value) {
+export function parseLessonRef(value) {
   if (typeof value !== 'string') return null
   const match = lessonRefPattern.exec(value)
   return match ? { lessonId: match[1], sectionId: match[2] ?? null } : null
