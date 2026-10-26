@@ -335,10 +335,16 @@ const lessons = [
     optionalReviews: [
       { fromRef: 'descriptive-statistics#variance', targetRef: 'math-algebra-sigma#sigma', context: '平均節で意味を説明したΣを分散の最初の公式でも使う。必要ならその近くのリンクから総和記号を復習できる。' },
     ],
-    questionIds: [],
+    questionIds: [
+      'q-desc-var-sc-001',
+      'q-desc-var-num-001',
+      'q-desc-mean-sc-001',
+      'q-desc-sd-sc-001',
+      'q-desc-var-gen-num-001',
+    ],
     sourceItemIds: ['SRC-0005'],
     sourceRefs: sourceRefsFor(['SRC-0005']),
-    revision: 3,
+    revision: 4,
     sections: [
       {
         sectionId: 'mean',

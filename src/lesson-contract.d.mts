@@ -69,7 +69,7 @@ type LessonBase = {
   commonPrerequisites: LessonRef[]
   conditionalPrerequisites: ConditionalPrerequisite[]
   optionalReviews: OptionalReview[]
-  questionIds: []
+  questionIds: string[]
   sourceItemIds: string[]
   sourceRefs: string[]
   revision: number

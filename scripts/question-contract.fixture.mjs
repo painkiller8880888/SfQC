@@ -1,58 +1,16 @@
 // @ts-check
 import { createQuestionInstance, restoreQuestionInstance } from '../src/question-contract.mjs'
+import { getQuestionDefinition } from '../src/question-registry.mjs'
 
-/** @type {import('../src/question-contract.mjs').FixedQuestionDefinition} */
-export const fixedDefinition = {
-  kind: 'fixed',
-  questionId: 'q-desc-var-sc-001',
-  revision: 1,
-  lessonRefs: ['descriptive-statistics#variance'],
-  difficulty: '基礎',
-  sources: [],
-  content: {
-    format: 'single-choice',
-    prompt: '分散の単位を選んでください。',
-    conditions: '測定値の単位はmmです。',
-    parameters: {},
-    choices: [
-      { id: 'A', label: 'mm' },
-      { id: 'B', label: 'mm²' },
-      { id: 'C', label: 'mm⁻¹' },
-    ],
-    correctAnswer: 'B',
-    grading: { type: 'single-choice' },
-    solution: '偏差を二乗するため、単位も二乗されます。',
-    feedbackRules: [
-      { choiceId: 'A', explanation: '偏差と分散の単位を確認します。', lessonRef: 'descriptive-statistics#variance' },
-      { choiceId: 'C', explanation: '単位を逆数にする計算はありません。', lessonRef: 'descriptive-statistics#variance' },
-    ],
-    defaultFeedback: '分散の式で単位を順に確認します。',
-  },
+/** @param {string} questionId @returns {import('../src/question-contract.mjs').FixedQuestionDefinition} */
+function fixedQuestion(questionId) {
+  const definition = getQuestionDefinition(questionId)
+  if (definition.kind !== 'fixed') throw new TypeError('Fixed question required')
+  return structuredClone(definition)
 }
 
-/** @type {import('../src/question-contract.mjs').FixedQuestionDefinition} */
-export const numericDefinition = {
-  kind: 'fixed',
-  questionId: 'q-desc-var-num-001',
-  revision: 1,
-  lessonRefs: ['descriptive-statistics#variance'],
-  difficulty: '標準',
-  sources: [],
-  content: {
-    format: 'numeric',
-    prompt: '標本分散を小数第3位まで求めてください。',
-    conditions: '測定値は1.000 mm、2.200 mm、3.000 mm、分母はn−1です。',
-    parameters: { x1: '1.000', x2: '2.200', x3: '3.000' },
-    correctAnswer: '1.013',
-    grading: { type: 'numeric', unit: 'mm²', roundingDigits: 3, absoluteTolerance: '0.002', relativeTolerance: '0.005' },
-    solution: '標本分散は76/75 = 1.013333… mm²です。',
-    feedbackRules: [
-      { answer: '0.676', explanation: '分母をn−1にします。', lessonRef: 'descriptive-statistics#variance' },
-    ],
-    defaultFeedback: '分散の式と丸め位置を確認します。',
-  },
-}
-
+export const fixedDefinition = fixedQuestion('q-desc-var-sc-001')
+export const numericDefinition = fixedQuestion('q-desc-var-num-001')
 /** @type {import('../src/question-contract.mjs').GeneratedQuestionDefinition} */
 export const generatedDefinition = {
   kind: 'generated',
