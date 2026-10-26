@@ -265,3 +265,22 @@ test('grading is repeatable, leaves snapshots unchanged, and ignores later defin
   assert.deepEqual(gradeQuestionAnswer(instance, '1.013'), first)
   assert.equal(JSON.stringify(instance), before)
 })
+
+test('fixed variance revision 2 rejects 1.018 while revision 1 snapshots keep their saved tolerance', () => {
+  const currentDefinition = structuredClone(getQuestionDefinition('q-desc-var-num-001'))
+  const previousDefinition = structuredClone(currentDefinition)
+  previousDefinition.revision = 1
+  previousDefinition.content.grading.absoluteTolerance = '0.002'
+  previousDefinition.content.grading.relativeTolerance = '0.005'
+
+  const previousSnapshot = createQuestionInstance(previousDefinition, { instanceId: 'variance-revision-1' })
+  const currentSnapshot = createQuestionInstance(currentDefinition, { instanceId: 'variance-revision-2' })
+
+  assert.equal(previousSnapshot.questionDefinitionRevision, 1)
+  assert.equal(gradeQuestionAnswer(previousSnapshot, '1.018').isCorrect, true)
+  assert.equal(currentSnapshot.questionDefinitionRevision, 2)
+  assert.equal(gradeQuestionAnswer(currentSnapshot, '1.018').isCorrect, false)
+  assert.equal(gradeQuestionAnswer(currentSnapshot, '1.013').isCorrect, true)
+  assert.equal(gradeQuestionAnswer(currentSnapshot, '1.0125').isCorrect, true)
+  assert.equal(gradeQuestionAnswer(currentSnapshot, '1.0135').isCorrect, false)
+})
