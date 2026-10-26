@@ -164,6 +164,58 @@ h1 {
   font-size: 1.1rem;
 }
 
+.lesson-panel h2:focus,
+.route-summary h2:focus {
+  outline: 3px solid #7ab69b;
+  outline-offset: 4px;
+}
+
+.section-list,
+.reference-group,
+.route-summary {
+  margin-top: 1.5rem;
+  overflow-wrap: anywhere;
+}
+
+.section-list h3,
+.reference-group h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.section-list ul,
+.reference-group ul {
+  margin: 0.75rem 0 0;
+  padding-inline-start: 1.5rem;
+}
+
+.section-list li + li,
+.reference-group li + li {
+  margin-top: 0.5rem;
+}
+
+.reference-group p,
+.route-summary p {
+  line-height: 1.8;
+}
+
+.route-summary code {
+  overflow-wrap: anywhere;
+}
+
+.return-navigation {
+  margin-top: 1.5rem;
+}
+
+.return-navigation a {
+  display: inline-block;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #c8d9ce;
+  border-radius: 999px;
+  background: #e4efe7;
+  font-weight: 650;
+}
+
 .variance-figure {
   min-width: 0;
   margin: 1rem 0 0;
