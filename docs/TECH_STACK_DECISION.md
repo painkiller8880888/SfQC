@@ -17,6 +17,10 @@ Issue #9の対象は少量の出題snapshotだけなので、ブラウザ標準A
 
 Issue #9のproduction previewを2026-10-22にWindows版Vivaldiのプライベートウィンドウで確認した。fixtureのJSONを読み込み、再読み込み後も2件が残ること、書き出した1,917 bytesのJSONがfixtureと一致すること、書き出しJSONの再読込で置換確認が出ることを確認した。保存状態異常の検証にはproduction previewの`dist/`にコミットしない一時fixtureページを置き、同一originのプライベートプロファイルだけに試験値を作成した。不正JSONと`schemaVersion: 2`の各ケースで、起動時の警告・件数エラー・通常のexport無効化、fixtureから有効JSONを選んだ際の専用置換確認、Escapeによるキャンセル通知を確認した。両ケースともキャンセル後に起動時警告と件数エラーが残り、fixtureページで読み出した生の保存文字列も投入時と完全一致した。さらにversion 2の状態から有効fixtureを確認後に復元し、成功通知・2件表示・再読み込み後の2件維持まで確認した。一時fixtureページとJSONは検証後に削除した。ライブ領域は画面上に常設され、空状態で余白が出ず、キャンセル・復元後の通知が表示されることを確認したが、実スクリーンリーダーでの音声読み上げは確認していない。ズーム300%（約310–320 CSS px相当）でもデータ操作パネルの横はみ出しがなく、アプリ起因の外部通信もなかった。
 
+## 学習履歴の保存とJSONバックアップ（Issue #22）
+
+固定キー`sfqc:local-data`を維持し、schema v2に`questionInstances`、`answerAttempts`、`reviewEvents`を保存する。既存v1はpure read/export後に描画後effectから昇格し、通常saveは保存開始rawと書込直前rawを比較したうえで、既存配列要素の順序・内容を保つ追記だけを許す。利用者が確認したJSON importは単一置換として扱い、破損・未対応データや書込失敗時には通常saveから上書きしない。v1/v2・import/exportを含むJSON上限をUTF-8 2 MiB、snapshot上限を500件とする。quota失敗時に履歴を自動削除せず、手動整理は未編集backupの保管後に複製JSONを参照整合性を保って編集し、確認付きimportする。browser quotaと最終read後から`setItem`までの複数tab競合は保証しない。`ReviewEvent`は誤答起点の明示訪問記録であり、実triggerはIssue #26、訪問数としての集計はIssue #27が担う。学習記録を外部送信しない。
+
 Viteの公式`react-ts`テンプレート（create-vite 9.3.1）から、起動に必要な構成を使った。デモ画面、生成ロゴ・画像、テンプレートのfaviconファイル、Oxlint設定と依存は削除した。依存の確定バージョンは`package-lock.json`に固定する。
 
 ## 実行環境と主要依存
