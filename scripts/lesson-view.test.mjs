@@ -4,6 +4,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
+import { questionRegistry } from '../src/question-registry.mjs'
 
 test('registry-driven map, references, lesson blocks, and app routes render only available lessons', async () => {
   const server = await createServer({
@@ -54,7 +55,20 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.ok(variance.indexOf('例：偏差平方和') < variance.indexOf('class="variance-figure"'))
     assert.ok(variance.indexOf('class="variance-figure"') < variance.indexOf('同じ3点が調べたい対象'))
     assert.match(variance, /76\/75 ≈ 1\.013 mm²/u)
-    assert.match(variance, /演習へ進む/u)
+    assert.match(variance, /演習の開始・回答入力は準備中です。/u)
+    assert.doesNotMatch(variance, /href="#\/practice"/u)
+
+    const mathBridge = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'math-powers-roots')
+    assert.ok(mathBridge)
+    assert.equal(questionRegistry.some((question) => question.lessonRefs.some((reference) =>
+      reference === 'math-powers-roots' || reference.startsWith('math-powers-roots#'))), false)
+    const mathBridgeRoute = render(LessonRouteContent, {
+      lesson: mathBridge,
+      sectionId: mathBridge.sections[0].sectionId,
+      sectionHeadingRef: { current: null },
+    })
+    assert.match(mathBridgeRoute, /演習の開始・回答入力は準備中です。/u)
+    assert.doesNotMatch(mathBridgeRoute, /href="#\/practice"/u)
 
     const formulaLesson = {
       ...descriptive,

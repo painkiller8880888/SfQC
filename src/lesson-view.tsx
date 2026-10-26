@@ -211,6 +211,6 @@ export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, regis
       </li>)}</ul>
     </nav>
     <ReferenceGroups lesson={lesson} currentRef={currentRef} registry={registry} />
-    <p className="lesson-actions"><InternalLink route={{ kind: 'practice' }}>演習へ進む</InternalLink></p>
+    <p className="lesson-actions">演習の開始・回答入力は準備中です。</p>
   </section>
 }
