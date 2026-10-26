@@ -1,5 +1,6 @@
 import { parseLessonRef } from './lesson-contract.mjs'
 import { restoreQuestionInstance } from './question-contract.mjs'
+import { gradeQuestionAnswer } from './question-grading.mjs'
 
 export const LOCAL_DATA_KEY = 'sfqc:local-data'
 export const LOCAL_DATA_MAX_BYTES = 2_097_152
@@ -184,11 +185,15 @@ function restoreAttempts(value, instancesById) {
     if (!isAnswerValid(instance, attempt.answer)) {
       fail('invalid-schema', '解答試行の回答形式が出題snapshotと一致しません。')
     }
+    const gradingResult = restoreGradingResult(attempt.gradingResult, instance)
+    if (!sameJsonValue(gradingResult, gradeQuestionAnswer(instance, attempt.answer))) {
+      fail('invalid-schema', '回答と採点結果が一致しません。')
+    }
     const restored = Object.freeze({
       attemptId: attempt.attemptId,
       instanceId: attempt.instanceId,
       answer: attempt.answer,
-      gradingResult: restoreGradingResult(attempt.gradingResult, instance),
+      gradingResult,
       attemptedAt: attempt.attemptedAt,
     })
     ids.add(restored.attemptId)

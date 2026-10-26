@@ -234,7 +234,7 @@ Issue #9では`QuestionInstance`のみを保存し、`AnswerAttempt`は保存し
 
 Issue #22で保存形式を`{ "schemaVersion": 2, "questionInstances": [...], "answerAttempts": [...], "reviewEvents": [...] }`へ拡張する。v1は読み取り・JSON export・確認付きimportで扱え、アプリ初期化時のread/exportは書き込みをしない。画面描画後にv1からv2へ昇格し、失敗時は元のrawと検証済みデータを保ち、v2形式のbackupを書き出せる。通常saveは既存3配列の順序と要素内容を維持した末尾追記だけを許す。整理を含む置換は利用者が確認したJSON importに限る。snapshotは最大500件、JSONはUTF-8で最大2 MiBとする。2 MiBはアプリ側の上限であり、ブラウザquotaを保証しない。
 
-`AnswerAttempt`は`attemptId`、`instanceId`、入力文字列`answer`、`status: 'graded'`の採点結果、UTCの実在日時`attemptedAt`を持つ。入力の前後空白を含む原文を保持し、選択式はsnapshot内choice ID、数値式は採点APIと同じ十進数形式を検証する。採点結果は過去の判定を再計算せず、正答/誤答のunionと、snapshot内の一致するrule/default feedbackを検証する。`ReviewEvent`は`reviewEventId`、`targetRef`、誤答`sourceAttemptId`、UTCの実在日時`reviewedAt`を持つ。これは復習先への明示的な訪問記録で、理解・復習完了・習熟の証拠ではない。保存時にはtargetRefのLessonRef構文と誤答attempt参照を検証するが、教材registryに現存するかは問わない。実際のevent記録triggerは後続Issue #26が担う。
+`AnswerAttempt`は`attemptId`、`instanceId`、入力文字列`answer`、`status: 'graded'`の採点結果、UTCの実在日時`attemptedAt`を持つ。入力の前後空白を含む原文を保持し、選択式はsnapshot内choice ID、数値式は採点APIと同じ十進数形式を検証する。保存した判定を書き換えずに、同じsnapshotと回答に対する採点結果との一致を検証し、正答/誤答とsnapshot内の該当rule/default feedbackの対応を確認する。`ReviewEvent`は`reviewEventId`、`targetRef`、誤答`sourceAttemptId`、UTCの実在日時`reviewedAt`を持つ。これは復習先への明示的な訪問記録で、理解・復習完了・習熟の証拠ではない。保存時にはtargetRefのLessonRef構文と誤答attempt参照を検証するが、教材registryに現存するかは問わない。実際のevent記録triggerは後続Issue #26が担う。
 
 数値例の`QuestionInstance`は`instanceId`、`questionId=q-desc-var-num-001`、`questionDefinitionRevision=2`、snapshot、固定値`1.000, 2.200, 3.000 mm`とする。revision 1の保存済みsnapshotは旧許容差を保持し、`1.018`を正答とする。これらの確定値と「母分散の不偏推定量である不偏分散・分母`n−1`・小数第3位・mm²」の計算条件は、snapshot内の`content`だけに置く。たとえば回答`1.030`は、入力欄の単位mm²で丸め後も`1.030`、判定は誤答となり、既知の誤り規則に一致しなければ§4.5の共通フィードバックを使う。これは一つの`AnswerAttempt`として同じ出題インスタンスに紐づく。
 

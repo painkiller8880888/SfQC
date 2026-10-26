@@ -317,6 +317,20 @@ test('attempt/eventの参照、ID、採点feedback、日時、LessonRef構文を
   }
 })
 
+test('回答と保存済み採点結果が一致しない試行を拒否する', () => {
+  const changedChoice = structuredClone(historyFixture())
+  changedChoice.answerAttempts[0].answer = 'B'
+  assert.throws(() => parseLocalData(JSON.stringify(changedChoice)), (error) => errorCode(error, 'invalid-schema'))
+
+  const wrongCorrectness = structuredClone(historyFixture())
+  wrongCorrectness.answerAttempts[0].gradingResult = { status: 'graded', isCorrect: true, feedback: null }
+  assert.throws(() => parseLocalData(JSON.stringify(wrongCorrectness)), (error) => errorCode(error, 'invalid-schema'))
+
+  const changedNumericAnswer = structuredClone(historyFixture())
+  changedNumericAnswer.answerAttempts[2].answer = ' +20.5 '
+  assert.throws(() => parseLocalData(JSON.stringify(changedNumericAnswer)), (error) => errorCode(error, 'invalid-schema'))
+})
+
 test('通常saveは三配列の追記だけを許し、配列順と保存済み内容を守る', () => {
   const before = historyFixture()
   const storage = new MemoryStorage()
