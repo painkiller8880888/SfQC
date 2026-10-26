@@ -1,0 +1,48 @@
+{
+  "hash": "9164218e",
+  "configHash": "b7a320ab",
+  "lockfileHash": "a2773c51",
+  "browserHash": "352389f5",
+  "optimized": {
+    "react-dom": {
+      "src": "../../../../../.codex/worktrees/issue-21-question-grading/SfQC/node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "125b6e96",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../../../../.codex/worktrees/issue-21-question-grading/SfQC/node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "e850a0d3",
+      "needsInterop": true
+    },
+    "react": {
+      "src": "../../../../../.codex/worktrees/issue-21-question-grading/SfQC/node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "95487ad5",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../../../../.codex/worktrees/issue-21-question-grading/SfQC/node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "cae939ed",
+      "needsInterop": true
+    },
+    "react/jsx-runtime": {
+      "src": "../../../../../.codex/worktrees/issue-21-question-grading/SfQC/node_modules/react/jsx-runtime.js",
+      "file": "react_jsx-runtime.js",
+      "fileHash": "3062b76a",
+      "needsInterop": true
+    }
+  },
+  "chunks": {
+    "react-DPKsgqat": {
+      "file": "react-DPKsgqat.js",
+      "isDynamicEntry": false
+    },
+    "react-dom-CdETjqJa": {
+      "file": "react-dom-CdETjqJa.js",
+      "isDynamicEntry": false
+    }
+  }
+}
