@@ -7,7 +7,6 @@ import {
   type ScreenKind,
 } from './resolve-screen.mjs'
 import {
-  createRouteHistoryState,
   navigateRouteHistory,
   updateRouteHistoryState,
   validateRouteHistoryState,
@@ -20,12 +19,17 @@ import {
   LocalDataError,
   migrateLocalData,
   readLocalData,
-  type LocalData,
-  type LocalDataReadResult,
 } from './local-data.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { parseLessonRef, type InlineLessonRef, type SectionDefinition } from './lesson-contract.mjs'
-import { resolveRouteData, validateRouteHistoryReferences, type RouteDataResult } from './route-data.mjs'
+import {
+  applyRouteNavigationEffect,
+  refreshRouteView,
+  resolveRouteView,
+  type NavigationCause,
+  type RouteView,
+  type StoredLocalData,
+} from './route-view.mjs'
 import { FigureRef } from './figures/figure-ref'
 
 const navigation = [
@@ -97,43 +101,6 @@ const screens: Record<ScreenKind, {
     placeholder: '学習マップから利用できる画面へ移動できます。',
     links: [{ label: '学習マップへ戻る', href: '#/map' }],
   },
-}
-
-type StoredLocalData = LocalDataReadResult
-  | { status: 'migration-failed'; raw: string; data: LocalData; error: Error }
-type NavigationCause = 'initial' | 'normal' | 'review' | 'section' | 'resume' | 'return' | 'restore' | 'refresh'
-type RouteView = {
-  route: AppRoute
-  historyState: RouteHistoryState
-  storedData: StoredLocalData
-  resolved: RouteDataResult
-  navigation: NavigationCause
-  navigationId: number
-  historyWarning: boolean
-  stateNeedsRepair: boolean
-}
-
-function resolveRouteView(
-  hash: string,
-  rawState: unknown,
-  navigationCause: NavigationCause,
-  navigationId: number,
-  storedData: StoredLocalData = readLocalData(),
-): RouteView {
-  const route = resolveRoute(hash)
-  let historyState = validateRouteHistoryState(rawState, hash)
-  if (historyState && !validateRouteHistoryReferences(historyState, storedData)) historyState = null
-  const stateNeedsRepair = historyState === null
-  return {
-    route,
-    historyState: historyState ?? createRouteHistoryState(route, hash),
-    storedData,
-    resolved: resolveRouteData(route, storedData),
-    navigation: stateNeedsRepair && navigationCause !== 'initial' ? 'normal' : navigationCause,
-    navigationId,
-    historyWarning: rawState !== null && stateNeedsRepair,
-    stateNeedsRepair,
-  }
 }
 
 function browserUrl(hash: string) {
@@ -351,9 +318,10 @@ function App() {
 
   const refreshRouteWithData = (data: StoredLocalData) => {
     const hash = window.location.hash
-    const state = validateRouteHistoryState(window.history.state, hash)
-      ?? viewRef.current.historyState
-    const next = resolveRouteView(hash, state, 'refresh', ++navigationIdRef.current, data)
+    const currentView = viewRef.current
+    const state = validateRouteHistoryState(window.history.state, hash) ?? currentView.historyState
+    // A data-only refresh must not cancel the route's pending scroll effect.
+    const next = refreshRouteView(currentView, data, hash, state)
     if (next.stateNeedsRepair) {
       try {
         window.history.replaceState(next.historyState, '', browserUrl(hash))
@@ -446,22 +414,16 @@ function App() {
 
   useEffect(() => {
     const viewAtSchedule = view
-    if (view.navigation === 'refresh') return
     const isCurrent = () => viewRef.current.navigationId === viewAtSchedule.navigationId
       && window.history.state?.entryId === viewAtSchedule.historyState.entryId
       && window.location.hash === viewAtSchedule.historyState.routeHash
     const frame = window.requestAnimationFrame(() => {
       if (!isCurrent()) return
-      if (view.navigation === 'restore' || view.navigation === 'return' || view.navigation === 'initial') {
-        window.scrollTo(0, view.historyState.scrollY)
-        return
-      }
-      const target = view.navigation === 'section' || view.navigation === 'review'
-        ? sectionHeadingRef.current ?? headingRef.current
-        : headingRef.current
-      target?.focus({ preventScroll: true })
-      if (view.navigation === 'section' || view.navigation === 'review') target?.scrollIntoView()
-      else window.scrollTo(0, 0)
+      applyRouteNavigationEffect(viewAtSchedule.navigation, viewAtSchedule.historyState, {
+        heading: headingRef.current,
+        sectionHeading: sectionHeadingRef.current,
+        scrollTo: (x, y) => window.scrollTo(x, y),
+      })
     })
     return () => window.cancelAnimationFrame(frame)
   }, [view.navigationId])
