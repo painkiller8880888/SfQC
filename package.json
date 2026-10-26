@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check": "tsc -b && node --test scripts/question-grading.test.mjs scripts/resolve-screen.test.mjs scripts/route-history.test.mjs scripts/route-view.test.mjs scripts/route-data.test.mjs scripts/question-contract.test.mjs scripts/question-registry.test.mjs scripts/local-data.test.mjs scripts/lesson-contract.test.mjs scripts/lesson-curriculum.test.mjs scripts/variance-deviation-bars.test.mjs",
+    "check": "tsc -b && node --test scripts/question-grading.test.mjs scripts/resolve-screen.test.mjs scripts/route-history.test.mjs scripts/route-view.test.mjs scripts/route-data.test.mjs scripts/question-contract.test.mjs scripts/question-registry.test.mjs scripts/local-data.test.mjs scripts/lesson-contract.test.mjs scripts/lesson-curriculum.test.mjs scripts/variance-deviation-bars.test.mjs scripts/lesson-view.test.mjs",
     "build": "npm run check && vite build && node scripts/check-build.mjs",
     "preview": "vite preview"
   },

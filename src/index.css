@@ -159,6 +159,86 @@ h1 {
   background: #f3f7f3;
 }
 
+.lesson-map,
+.lesson-card-list,
+.lesson-body {
+  display: grid;
+  min-width: 0;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.lesson-map > section > h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.lesson-map > section > p,
+.lesson-card p,
+.lesson-panel p,
+.lesson-panel li {
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.lesson-card {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #dbe5dc;
+  border-radius: 0.75rem;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+
+.lesson-card-planned {
+  background: #f8f9f7;
+}
+
+.lesson-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.lesson-card h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.lesson-status {
+  color: #50635a;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.lesson-context {
+  margin-top: 0;
+}
+
+.lesson-body {
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.lesson-paragraph,
+.lesson-formula,
+.lesson-body-reference {
+  margin: 0.75rem 0;
+}
+
+.lesson-formula {
+  max-width: 100%;
+  padding: 0.75rem;
+  border-left: 3px solid #9abb9e;
+  background: #fff;
+  font-family: "Cambria Math", "Yu Mincho", serif;
+  line-height: 2;
+  overflow-wrap: anywhere;
+}
+
+.lesson-actions {
+  margin-top: 1.5rem;
+}
+
 .lesson-panel h2 {
   margin: 0;
   font-size: 1.1rem;
