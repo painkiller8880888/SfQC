@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { createQuestionInstance } from '../src/question-contract.mjs'
 import { generateQuestionContent } from '../src/question-generator.mjs'
@@ -150,6 +151,18 @@ test('numeric input accepts signed decimals and outside whitespace, and rejects 
   for (const answer of ['', ' \t\n', '01.0', '.5', '1.', '1,0', '1e0', '1 + 0', '1 個', '+', 1, null]) {
     assert.deepEqual(gradeQuestionAnswer(instance, answer), { status: 'invalid', reason: 'invalid-answer-format' }, String(answer))
   }
+})
+
+test('long fractional trailing zeros are removed before BigInt conversion', () => {
+  const instance = numericInstance({ correctAnswer: '1' })
+  const script = `import { gradeQuestionAnswer } from ${JSON.stringify(new URL('../src/question-grading.mjs', import.meta.url).href)}
+const instance = ${JSON.stringify(instance)}
+const answer = '1.' + '0'.repeat(300_000)
+if (!gradeQuestionAnswer(instance, answer).isCorrect) process.exitCode = 1
+`
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 5_000 })
+  assert.equal(child.error?.code, undefined, 'grading exceeded 5 seconds')
+  assert.equal(child.status, 0, child.stderr)
 })
 
 test('absolute and relative tolerance include their boundary and use OR', () => {

@@ -22,12 +22,13 @@ function parseDecimal(value) {
   const text = value.trim()
   if (!inputDecimalPattern.test(text)) return null
   const unsigned = text.startsWith('+') || text.startsWith('-') ? text.slice(1) : text
-  const [integerPart, fractionalPart = ''] = unsigned.split('.')
+  const [integerPart, rawFractionalPart = ''] = unsigned.split('.')
+  const fractionalPart = rawFractionalPart.replace(/0+$/u, '')
   const sign = text.startsWith('-') ? -1n : 1n
-  return normalizeDecimal({
+  return {
     coefficient: sign * BigInt(integerPart + fractionalPart),
     scale: fractionalPart.length,
-  })
+  }
 }
 
 /** @param {number} digits @returns {bigint} */
