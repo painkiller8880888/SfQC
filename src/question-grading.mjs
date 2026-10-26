@@ -23,7 +23,9 @@ function parseDecimal(value) {
   if (!inputDecimalPattern.test(text)) return null
   const unsigned = text.startsWith('+') || text.startsWith('-') ? text.slice(1) : text
   const [integerPart, rawFractionalPart = ''] = unsigned.split('.')
-  const fractionalPart = rawFractionalPart.replace(/0+$/u, '')
+  let end = rawFractionalPart.length
+  while (end > 0 && rawFractionalPart[end - 1] === '0') end -= 1
+  const fractionalPart = rawFractionalPart.slice(0, end)
   const sign = text.startsWith('-') ? -1n : 1n
   return {
     coefficient: sign * BigInt(integerPart + fractionalPart),
