@@ -210,6 +210,73 @@ h1 {
   font-weight: 600;
 }
 
+.lesson-observation {
+  padding: 0.5rem 0.65rem;
+  border-left: 3px solid #9abb9e;
+  background: #f3f7f3;
+}
+
+.progress-view,
+.progress-card-list {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.progress-guidance,
+.progress-card,
+.progress-subsection {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.progress-guidance,
+.progress-card {
+  padding: 1rem;
+  border: 1px solid #dbe5dc;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.progress-guidance h2,
+.progress-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.progress-guidance p,
+.progress-card p,
+.progress-card li {
+  line-height: 1.8;
+}
+
+.progress-card summary {
+  cursor: pointer;
+  line-height: 1.8;
+}
+
+.progress-card-detail {
+  padding-top: 0.5rem;
+  border-top: 1px solid #dbe5dc;
+}
+
+.progress-card-detail ul {
+  padding-inline-start: 1.5rem;
+}
+
+.progress-subsection {
+  margin-top: 1.25rem;
+}
+
+.progress-subsection li + li {
+  margin-top: 1rem;
+}
+
+.progress-clock-note {
+  color: #7a4d17;
+}
+
 .lesson-context {
   margin-top: 0;
 }

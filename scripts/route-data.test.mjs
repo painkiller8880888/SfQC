@@ -46,6 +46,25 @@ test('unknown IDs in valid data stay distinct from damaged local data', () => {
   }), { status: 'data-error', error })
 })
 
+test('migration failure keeps history readable to progress but blocks saved ID routes', () => {
+  const attempt = {
+    attemptId: 'migration-attempt',
+    instanceId: fixedInstance.instanceId,
+    answer: fixedInstance.questionDefinitionSnapshot.content.correctAnswer,
+    gradingResult: gradeQuestionAnswer(fixedInstance, fixedInstance.questionDefinitionSnapshot.content.correctAnswer),
+    attemptedAt: '2026-10-26T00:00:00.000Z',
+  }
+  const valid = read({ ...emptyData, questionInstances: [fixedInstance], answerAttempts: [attempt] })
+  const error = new Error('保存データの移行に失敗しました。')
+  const migrationFailed = { status: 'migration-failed', raw: valid.raw, data: valid.data, error }
+  assert.deepEqual(resolveRouteData({ kind: 'feedback-id', attemptId: attempt.attemptId }, migrationFailed), {
+    status: 'data-error', error,
+  })
+  assert.deepEqual(resolveRouteData({ kind: 'practice-id', instanceId: fixedInstance.instanceId }, migrationFailed), {
+    status: 'data-error', error,
+  })
+})
+
 test('attempts without their referenced snapshot report a data error', () => {
   const attempt = {
     attemptId: 'orphan', instanceId: 'missing-snapshot', answer: '1',
