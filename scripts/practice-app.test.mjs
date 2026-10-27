@@ -4,7 +4,7 @@ import { act, createElement } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
 import { readLocalData } from '../src/local-data.mjs'
-import { navigateRouteHistory } from '../src/route-history.mjs'
+import { createRouteHistoryState, navigateRouteHistory } from '../src/route-history.mjs'
 import { routeToHash } from '../src/resolve-screen.mjs'
 
 const globalKeys = [
@@ -57,6 +57,11 @@ async function createHarness() {
       root = createRoot(host)
       await mount()
     },
+    async remount() {
+      await unmount()
+      root = createRoot(host)
+      await mount()
+    },
     async close() {
       await unmount()
       await server.close()
@@ -76,6 +81,10 @@ function buttonFor(host, text) {
 
 function linkFor(host, text) {
   return [...host.querySelectorAll('a')].find((anchor) => anchor.textContent.includes(text))
+}
+
+function linkForRoute(host, route) {
+  return [...host.querySelectorAll('a')].find((anchor) => anchor.getAttribute('href') === routeToHash(route))
 }
 
 function questionOption(host, questionId) {
@@ -102,6 +111,10 @@ async function waitForHistory(window, method) {
     window.history[method]()
     await new Promise((resolve) => window.setTimeout(resolve, 20))
   })
+}
+
+async function settleEffects(window) {
+  await act(async () => new Promise((resolve) => window.setTimeout(resolve, 30)))
 }
 
 test('fixed practice saves drafts per history entry, preserves attempts, and retries a saved result navigation', async () => {
@@ -183,6 +196,7 @@ test('fixed practice saves drafts per history entry, preserves attempts, and ret
     await click(buttonFor(app.host, '保存済みの画面を開く'))
     assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: firstAttempt.attemptId }))
     assert.equal(readLocalData().data.answerAttempts.length, 1)
+    assert.match(app.host.textContent, /mmは偏差の単位です。分散では偏差を二乗します。/u)
 
     await click(linkFor(app.host, '同じ出題を再開する'))
     assert.equal(window.location.hash, routeHash)
@@ -294,6 +308,202 @@ test('practice recovery clears after leaving its history entry and submitting ag
     assert.equal(attempts[1].answer, 'B')
     assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: attempts[1].attemptId }))
     assert.equal(app.host.querySelector('.practice-recovery'), null)
+  } finally {
+    await app.close()
+  }
+})
+
+test('wrong feedback logs review links, keeps their origin through nested lessons, and resumes the same attempt', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const instanceLink = questionOption(app.host, 'q-desc-var-num-001')
+    await click(buttonFor(instanceLink, 'この問題を始める'))
+    const instance = readLocalData().data.questionInstances[0]
+    const snapshot = JSON.stringify(instance)
+    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
+    await click(buttonFor(app.host, '回答を送信する'))
+    const attemptA = readLocalData().data.answerAttempts[0]
+    assert.equal(attemptA.answer, '1.030')
+    assert.equal(attemptA.gradingResult.isCorrect, false)
+    assert.match(app.host.textContent, /何を記述または推定するのかを確認し、分母と丸めの位置を見直します。/u)
+
+    await click(linkFor(app.host, '同じ出題を再開する'))
+    assert.equal(app.host.querySelector('input[type="text"]').value, '1.030')
+    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.040')
+    await click(buttonFor(app.host, '回答を送信する'))
+    const attemptB = readLocalData().data.answerAttempts[1]
+    assert.equal(attemptB.answer, '1.040')
+    assert.notEqual(attemptA.attemptId, attemptB.attemptId)
+
+    await waitForHistory(window, 'back')
+    await waitForHistory(window, 'back')
+    assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: attemptA.attemptId }))
+    assert.match(app.host.textContent, /あなたの回答：1\.030/u)
+
+    const order = []
+    const storage = window.Storage.prototype
+    const writeStorage = storage.setItem
+    let firstEventWrite = true
+    Object.defineProperty(storage, 'setItem', {
+      configurable: true,
+      value(key, value) {
+        order.push('setItem')
+        if (firstEventWrite) {
+          firstEventWrite = false
+          assert.ok(app.host.querySelector('#feedback-title'), 'route stays on feedback until the event is saved')
+        }
+        return writeStorage.call(this, key, value)
+      },
+    })
+    const replaceState = window.history.replaceState.bind(window.history)
+    window.history.replaceState = (...args) => {
+      order.push('replaceState')
+      return replaceState(...args)
+    }
+    const pushState = window.history.pushState.bind(window.history)
+    window.history.pushState = (...args) => {
+      order.push('pushState')
+      return pushState(...args)
+    }
+    const scrolledHeadings = []
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value() { scrolledHeadings.push(this.id) },
+    })
+
+    const variance = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
+    await click(linkForRoute(app.host, variance))
+    await settleEffects(window)
+    assert.deepEqual(order.slice(0, 3), ['replaceState', 'pushState', 'setItem'])
+    assert.equal(window.location.hash, routeToHash(variance))
+    assert.equal(window.document.activeElement.id, 'route-lesson-title')
+    assert.deepEqual(scrolledHeadings, ['route-lesson-title'])
+    let data = readLocalData().data
+    assert.equal(data.reviewEvents.length, 1)
+    assert.equal(data.reviewEvents[0].targetRef, 'descriptive-statistics#variance')
+    assert.equal(data.reviewEvents[0].sourceAttemptId, attemptA.attemptId)
+
+    const mean = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'mean' }
+    await click(linkForRoute(app.host, mean))
+    assert.equal(readLocalData().data.reviewEvents.length, 1)
+    await click(linkForRoute(app.host, variance))
+    await waitForHistory(window, 'back')
+    await waitForHistory(window, 'forward')
+    assert.equal(readLocalData().data.reviewEvents.length, 1)
+
+    const sigma = { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' }
+    const powers = { kind: 'lesson-id', lessonId: 'math-powers-roots', sectionId: null }
+    const arithmetic = { kind: 'lesson-id', lessonId: 'math-arithmetic', sectionId: null }
+    await click(linkForRoute(app.host, sigma))
+    await click(linkFor(app.host, '1段戻る'))
+    await click(linkForRoute(app.host, sigma))
+    await click(linkForRoute(app.host, powers))
+    await click(linkForRoute(app.host, arithmetic))
+    data = readLocalData().data
+    assert.deepEqual(data.reviewEvents.map((event) => event.targetRef), [
+      'descriptive-statistics#variance',
+      'math-algebra-sigma#sigma',
+      'math-algebra-sigma#sigma',
+      'math-powers-roots',
+      'math-arithmetic',
+    ])
+    assert.ok(data.reviewEvents.every((event) => event.sourceAttemptId === attemptA.attemptId))
+
+    await waitForHistory(window, 'back')
+    await waitForHistory(window, 'forward')
+    assert.equal(readLocalData().data.reviewEvents.length, 5)
+    const scrollToCalls = []
+    window.scrollTo = (x, y) => scrollToCalls.push([x, y])
+    window.history.replaceState({ ...window.history.state, scrollY: 321 }, '', window.location.href)
+    await app.remount()
+    await settleEffects(window)
+    assert.match(app.host.textContent, /四則計算と単位/u)
+    assert.deepEqual(scrollToCalls, [[0, 321]])
+    assert.equal(readLocalData().data.reviewEvents.length, 5)
+
+    for (const route of [powers, sigma, variance, { kind: 'feedback-id', attemptId: attemptA.attemptId }]) {
+      await click(linkFor(app.host, '1段戻る'))
+      assert.equal(window.location.hash, routeToHash(route))
+      assert.equal(readLocalData().data.reviewEvents.length, 5)
+    }
+    assert.match(app.host.textContent, /あなたの回答：1\.030/u)
+    await click(linkFor(app.host, '同じ出題を再開する'))
+    const resumedInput = app.host.querySelector('input[type="text"]')
+    assert.equal(resumedInput.value, '1.030')
+    await changeTextInput(window, resumedInput, '1.050')
+    await click(buttonFor(app.host, '回答を送信する'))
+
+    let attempts = readLocalData().data.answerAttempts
+    assert.equal(attempts.length, 3)
+    assert.deepEqual(attempts.slice(0, 2), [attemptA, attemptB])
+    assert.equal(attempts[2].answer, '1.050')
+    assert.ok(attempts.every((attempt) => attempt.instanceId === instance.instanceId))
+    assert.equal(JSON.stringify(readLocalData().data.questionInstances[0]), snapshot)
+
+    const feedbackB = { kind: 'feedback-id', attemptId: attemptB.attemptId }
+    const feedbackBHash = routeToHash(feedbackB)
+    window.history.pushState(
+      createRouteHistoryState(feedbackB, feedbackBHash, { entryId: 'old-feedback-b' }),
+      '',
+      window.location.pathname + feedbackBHash,
+    )
+    await act(async () => window.dispatchEvent(new window.PopStateEvent('popstate')))
+    assert.match(app.host.textContent, /あなたの回答：1\.040/u)
+    await click(linkForRoute(app.host, variance))
+    attempts = readLocalData().data.answerAttempts
+    assert.equal(readLocalData().data.reviewEvents.at(-1).sourceAttemptId, attemptB.attemptId)
+    assert.deepEqual(attempts.slice(0, 2), [attemptA, attemptB])
+    assert.equal(JSON.stringify(readLocalData().data.questionInstances[0]), snapshot)
+  } finally {
+    await app.close()
+  }
+})
+
+test('review event storage failure keeps the lesson navigation, announces the failure, and still focuses and scrolls', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
+    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
+    await click(buttonFor(app.host, '回答を送信する'))
+    const attempt = readLocalData().data.answerAttempts[0]
+    const target = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
+    const savedRaw = window.localStorage.getItem('sfqc:local-data')
+
+    const pushState = window.history.pushState.bind(window.history)
+    window.history.pushState = (state, title, url) => {
+      if (new URL(url, window.location.href).hash === routeToHash(target)) {
+        throw new window.DOMException('history unavailable', 'SecurityError')
+      }
+      pushState(state, title, url)
+    }
+    await click(linkForRoute(app.host, target))
+    assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: attempt.attemptId }))
+    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedRaw)
+    assert.equal(readLocalData().data.reviewEvents.length, 0)
+
+    window.history.pushState = pushState
+    Object.defineProperty(window.Storage.prototype, 'setItem', {
+      configurable: true,
+      value() { throw new window.DOMException('quota exceeded', 'QuotaExceededError') },
+    })
+    let scrollCount = 0
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value() { scrollCount += 1 },
+    })
+    await click(linkForRoute(app.host, target))
+    await settleEffects(window)
+
+    assert.equal(window.location.hash, routeToHash(target))
+    assert.match(app.host.textContent, /復習先には移動しましたが、誤答からの復習訪問を保存できませんでした/u)
+    assert.equal(app.host.querySelector('[role="status"]').textContent,
+      '復習先には移動しましたが、誤答からの復習訪問を保存できませんでした。保存データを確認してください。')
+    assert.equal(readLocalData().data.reviewEvents.length, 0)
+    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedRaw)
+    assert.equal(window.document.activeElement.id, 'route-lesson-title')
+    assert.equal(scrollCount, 1)
   } finally {
     await app.close()
   }
