@@ -20,8 +20,7 @@ import {
   migrateLocalData,
   readLocalData,
 } from './local-data.mjs'
-import { lessonRegistry } from './lesson-registry.mjs'
-import { parseLessonRef, type InlineLessonRef, type SectionDefinition } from './lesson-contract.mjs'
+import { LessonMap, LessonReference, LessonRouteContent, lessonRefLabel } from './lesson-view'
 import {
   applyRouteNavigationEffect,
   refreshRouteView,
@@ -30,19 +29,12 @@ import {
   type RouteView,
   type StoredLocalData,
 } from './route-view.mjs'
-import { FigureRef } from './figures/figure-ref'
 
 const navigation = [
   { label: '学習マップ', href: '#/map', screen: 'map' },
   { label: '進捗', href: '#/progress', screen: 'progress' },
   { label: 'データ管理', href: '#/data', screen: 'data' },
 ] as const
-
-const varianceLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'descriptive-statistics')
-const includedVarianceLesson = varianceLesson?.availability === 'included' ? varianceLesson : undefined
-const varianceFigureRef = includedVarianceLesson?.sections
-  .find((section) => section.sectionId === 'variance')?.blocks
-  .find((block) => block.kind === 'figureRef')
 
 const screens: Record<ScreenKind, {
   title: string
@@ -54,14 +46,13 @@ const screens: Record<ScreenKind, {
     title: '学習マップ',
     description: '学ぶ単元を選び、解説と演習へ進みます。',
     placeholder: '単元一覧と前提関係の表示は、教材データの整備後に追加します。',
-    links: [{ label: '単元解説へ', href: '#/lesson' }],
+    links: [],
   },
   lesson: {
     title: '単元解説',
     description: '統計の考え方や計算を、基礎から学ぶ画面です。',
     placeholder: '解説本文・図・前提知識への復習リンクは準備中です。',
     links: [
-      { label: '演習へ', href: '#/practice' },
       { label: '学習マップへ', href: '#/map' },
     ],
   },
@@ -107,48 +98,12 @@ function browserUrl(hash: string) {
   return window.location.pathname + window.location.search + hash
 }
 
-function routeForLessonRef(reference: string): AppRoute | null {
-  const parsed = parseLessonRef(reference)
-  return parsed ? { kind: 'lesson-id', lessonId: parsed.lessonId, sectionId: parsed.sectionId } : null
-}
-
-function lessonLabel(reference: string) {
-  const parsed = parseLessonRef(reference)
-  if (!parsed) return reference
-  const lesson = lessonRegistry.lessons.find((item) => item.lessonId === parsed.lessonId)
-  const section = parsed.sectionId && lesson?.availability === 'included'
-    ? lesson.sections.find((item) => item.sectionId === parsed.sectionId)
-    : undefined
-  return section ? lesson?.title + '：' + section.title : lesson?.title ?? reference
-}
-
-function sectionLessonRefs(section: SectionDefinition): InlineLessonRef[] {
-  const references: InlineLessonRef[] = []
-  for (const block of section.blocks) {
-    if (block.kind === 'lessonRef') references.push(block)
-    if (block.kind === 'paragraph') {
-      for (const part of block.parts) if (part.kind === 'lessonRef') references.push(part)
-    }
-    if (block.kind === 'formula') {
-      for (const part of block.parts) {
-        if (part.kind === 'mathSymbol' && part.lessonRef) references.push(part.lessonRef)
-      }
-    }
-  }
-  return references
-}
-
 function InternalLink({ route, intent = 'normal', children }: {
   route: AppRoute
   intent?: NavigationIntent
   children: ReactNode
 }) {
   return <a href={routeToHash(route)} data-nav-intent={intent}>{children}</a>
-}
-
-function LessonReference({ targetRef, label, intent = 'review' }: InlineLessonRef & { intent?: NavigationIntent }) {
-  const route = routeForLessonRef(targetRef)
-  return route ? <InternalLink route={route} intent={intent}>{label}</InternalLink> : <span>{label}</span>
 }
 
 function RouteProblem({ message }: { message: string }) {
@@ -183,9 +138,10 @@ function App() {
       : view.resolved.status === 'feedback'
         ? '解答結果'
         : current.title
-  const pageTitle = screen === 'lesson' && view.resolved.status === 'lesson'
-    ? entityTitle + ' | ' + view.resolved.lesson.title
-    : entityTitle
+  const pageTitle = entityTitle
+  const documentTitle = screen === 'lesson' && view.resolved.status === 'lesson' && view.resolved.section
+    ? view.resolved.section.title + ' | ' + view.resolved.lesson.title
+    : pageTitle
   const storageError = storedData.status === 'invalid' || storedData.status === 'unreadable'
   const storageIssue = storageError || storedData.status === 'migration-failed'
     ? storedData.error
@@ -429,8 +385,8 @@ function App() {
   }, [view.navigationId])
 
   useEffect(() => {
-    document.title = pageTitle + ' | SfQC'
-  }, [pageTitle])
+    document.title = documentTitle + ' | SfQC'
+  }, [documentTitle])
 
   useEffect(() => {
     const onScroll = () => {
@@ -480,73 +436,11 @@ function App() {
       return <RouteProblem message="この教材はまだ収録されていません。学習マップから利用できる教材を選んでください。" />
     }
     if (view.resolved.status !== 'lesson') return null
-    const { lesson, section } = view.resolved
-    const currentRef = view.route.sectionId ? view.route.lessonId + '#' + view.route.sectionId : view.route.lessonId
-    const optionalReviews = lesson.optionalReviews.filter((item) => item.fromRef === currentRef)
-    const bodyReferences = section ? sectionLessonRefs(section) : []
-    return (
-      <section className="lesson-panel" aria-labelledby="route-lesson-title">
-        <h2 id="route-lesson-title" ref={sectionHeadingRef} tabIndex={-1}>
-          {section?.title ?? '節を選ぶ'}
-        </h2>
-        <nav className="section-list" aria-label="この単元の節">
-          <h3>この単元の節</h3>
-          <ul>
-            {lesson.sections.map((item) => (
-              <li key={item.sectionId}>
-                <InternalLink
-                  route={{ kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: item.sectionId }}
-                  intent="section"
-                >
-                  {item.title}
-                </InternalLink>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        {lesson.commonPrerequisites.length > 0 && (
-          <div className="reference-group">
-            <h3>必須前提</h3>
-            <p>この単元を学ぶ前に必要な内容です。</p>
-            <ul>
-              {lesson.commonPrerequisites.map((reference) => (
-                <li key={reference}>
-                  <LessonReference targetRef={reference} label={lessonLabel(reference)} intent="review" />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {optionalReviews.length > 0 && (
-          <div className="reference-group">
-            <h3>任意復習</h3>
-            <ul>
-              {optionalReviews.map((item) => (
-                <li key={item.fromRef + item.targetRef}>
-                  <LessonReference targetRef={item.targetRef} label={lessonLabel(item.targetRef)} intent="review" />
-                  <p>{item.context}</p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {bodyReferences.length > 0 && (
-          <div className="reference-group">
-            <h3>本文にある復習リンク</h3>
-            <ul>
-              {bodyReferences.map((item, index) => (
-                <li key={item.targetRef + index}>
-                  <LessonReference targetRef={item.targetRef} label={item.label} intent="review" />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {section?.blocks.filter((block) => block.kind === 'figureRef').map((block) => (
-          <FigureRef key={block.figureId} lesson={lesson} figureId={block.figureId} />
-        ))}
-      </section>
-    )
+    return <LessonRouteContent
+      lesson={view.resolved.lesson}
+      sectionId={view.route.sectionId}
+      sectionHeadingRef={sectionHeadingRef}
+    />
   }
 
   const renderPracticeRoute = () => {
@@ -572,7 +466,7 @@ function App() {
           <h3>関連する解説</h3>
           <ul>{instance.questionDefinitionSnapshot.lessonRefs.map((reference) => (
             <li key={reference}>
-              <LessonReference targetRef={reference} label={lessonLabel(reference)} intent="review" />
+              <LessonReference targetRef={reference} label={lessonRefLabel(reference)} intent="review" />
             </li>
           ))}</ul>
         </div>
@@ -604,7 +498,7 @@ function App() {
             <p>{feedback.explanation}</p>
             <LessonReference
               targetRef={feedback.lessonRef}
-              label={lessonLabel(feedback.lessonRef)}
+              label={lessonRefLabel(feedback.lessonRef)}
               intent="review"
             />
           </div>
@@ -657,7 +551,9 @@ function App() {
           <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
           <p className="description">{current.description}</p>
 
-          {screen === 'data' ? (
+          {screen === 'map' ? (
+            <LessonMap />
+          ) : screen === 'data' ? (
             <section className="data-panel" aria-labelledby="data-title">
               <h2 id="data-title">保存データ</h2>
               <p>出題snapshot：{hasCounts ? storedData.data.questionInstances.length + '件' : '読み込みエラー'}</p>
@@ -684,13 +580,9 @@ function App() {
           ) : screen === 'lesson' && view.route.kind === 'lesson-id' ? (
             renderLessonRoute()
           ) : screen === 'lesson' ? (
-            <section className="lesson-panel" aria-labelledby="variance-lesson-title">
-              <h2 id="variance-lesson-title">範囲と分散</h2>
-              {includedVarianceLesson && varianceFigureRef?.kind === 'figureRef' ? (
-                <FigureRef lesson={includedVarianceLesson} figureId={varianceFigureRef.figureId} />
-              ) : (
-                <p>教材の図を読み込めませんでした。</p>
-              )}
+            <section className="lesson-panel" aria-labelledby="lesson-selection-title">
+              <h2 id="lesson-selection-title">単元を選んでください</h2>
+              <p>学習マップから収録済みの単元または節を選ぶと、教材を表示できます。</p>
             </section>
           ) : screen === 'practice' && view.route.kind === 'practice-id' ? (
             renderPracticeRoute()
@@ -725,15 +617,13 @@ function App() {
             </nav>
           )}
 
-          <nav className="screen-navigation" aria-label="この画面から移動">
-            <ul>
-              {current.links.map((link) => (
-                <li key={link.label}>
-                  <a href={link.href} data-nav-intent="normal">{link.label}</a>
-                </li>
-              ))}
-            </ul>
-          </nav>
+          {current.links.length > 0 && <nav className="screen-navigation" aria-label="この画面から移動">
+            <ul>{current.links.map((link) => (
+              <li key={link.label}>
+                <a href={link.href} data-nav-intent="normal">{link.label}</a>
+              </li>
+            ))}</ul>
+          </nav>}
 
           <footer className="site-footer">
             <a href={import.meta.env.BASE_URL + 'third-party-licenses.txt'}>使用ライブラリのライセンス</a>
