@@ -504,3 +504,152 @@ h1 {
     padding: 0.75rem;
   }
 }
+
+.practice-panel {
+  min-width: 0;
+  margin-top: 2rem;
+  padding: 1.25rem;
+  border: 1px solid #dbe5dc;
+  border-radius: 0.75rem;
+  background: #f3f7f3;
+}
+
+.practice-panel h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.practice-panel p,
+.practice-panel li {
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.practice-question-list {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.practice-question-list > li {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #dbe5dc;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.practice-question-list h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+}
+
+.practice-question-list p {
+  margin: 0.75rem 0;
+}
+
+.practice-panel button {
+  max-width: 100%;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #c8d9ce;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #34684e;
+  font: inherit;
+}
+
+.practice-panel button:not(:disabled) {
+  cursor: pointer;
+}
+
+.practice-panel button:disabled {
+  opacity: 0.6;
+}
+
+.practice-form {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  margin-top: 1rem;
+}
+
+.practice-form fieldset {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid #c8d9ce;
+  border-radius: 0.5rem;
+}
+
+.practice-form legend {
+  padding-inline: 0.25rem;
+  font-weight: 650;
+}
+
+.practice-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  min-width: 0;
+  line-height: 1.7;
+}
+
+.practice-choice input {
+  flex: 0 0 auto;
+  margin-top: 0.45rem;
+}
+
+.practice-numeric-field {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.practice-numeric-input {
+  width: 100%;
+  max-width: 24rem;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #8aa596;
+  border-radius: 0.4rem;
+  color: #18392f;
+  font: inherit;
+}
+
+.practice-numeric-field p {
+  margin: 0;
+}
+
+.practice-error,
+.practice-warning {
+  padding: 0.75rem;
+  border-left: 4px solid #a84438;
+  background: #fff2ef;
+  color: #742c24;
+}
+
+.practice-recovery {
+  width: min(100%, 50rem);
+  margin: 0 auto 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #a84438;
+  border-radius: 0.5rem;
+  background: #fff2ef;
+}
+
+.practice-recovery p {
+  margin: 0 0 0.75rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .practice-panel {
+    padding: 0.75rem;
+  }
+}
