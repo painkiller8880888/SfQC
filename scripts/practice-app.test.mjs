@@ -508,3 +508,45 @@ test('review event storage failure keeps the lesson navigation, announces the fa
     await app.close()
   }
 })
+
+test('map and progress show derived observations, and progress links use normal navigation without logging a visit', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
+    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
+    await click(buttonFor(app.host, '回答を送信する'))
+    const attempt = readLocalData().data.answerAttempts[0]
+    assert.equal(attempt.gradingResult.isCorrect, false)
+    assert.equal(attempt.gradingResult.feedback.lessonRef, 'descriptive-statistics#variance')
+
+    await click(linkFor(app.host, '学習マップ'))
+    const descriptiveCard = [...app.host.querySelectorAll('.lesson-card')]
+      .find((card) => card.querySelector('h3').textContent.includes('基本統計量'))
+    assert.match(descriptiveCard.textContent, /状態：回答記録あり/u)
+    assert.match(descriptiveCard.textContent, /回答試行：1回/u)
+    assert.match(descriptiveCard.textContent, /復習候補：あり/u)
+    assert.doesNotMatch(descriptiveCard.textContent, /正答割合|最終回答|訪問：/u)
+
+    await click(linkFor(app.host, '進捗'))
+    assert.equal(window.location.hash, '#/progress')
+    const feedbackLink = linkFor(app.host, '誤答と復習先を見る')
+    assert.equal(feedbackLink.dataset.navIntent, 'normal')
+    await click(feedbackLink)
+    assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: attempt.attemptId }))
+    assert.deepEqual(window.history.state.returnStack, [])
+    assert.equal(readLocalData().data.reviewEvents.length, 0)
+
+    await click(linkFor(app.host, '進捗'))
+    const practiceLink = linkFor(app.host, '同じ出題へ戻る')
+    assert.equal(practiceLink.dataset.navIntent, 'normal')
+    await click(practiceLink)
+    assert.equal(window.location.hash, routeToHash({ kind: 'practice-id', instanceId: attempt.instanceId }))
+    assert.deepEqual(window.history.state.returnStack, [])
+    assert.equal(window.history.state.resumeAttemptId, null)
+    assert.equal(app.host.querySelector('input[type="text"]').value, '')
+    assert.equal(readLocalData().data.reviewEvents.length, 0)
+  } finally {
+    await app.close()
+  }
+})

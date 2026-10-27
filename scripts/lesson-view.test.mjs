@@ -5,6 +5,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 import { questionRegistry } from '../src/question-registry.mjs'
+import { deriveProgress } from '../src/progress-data.mjs'
+import { gradeQuestionAnswer } from '../src/question-grading.mjs'
+import { fixedInstance } from './question-contract.fixture.mjs'
 
 test('registry-driven map, references, lesson blocks, and app routes render only available lessons', async () => {
   const server = await createServer({
@@ -14,9 +17,11 @@ test('registry-driven map, references, lesson blocks, and app routes render only
   })
   const previousWindow = globalThis.window
   try {
-    const { LessonMap, LessonReference, LessonRouteContent, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
+    const { LessonMap, LessonReference, LessonRouteContent, ProgressView, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
     const render = (component, props = {}) => renderToStaticMarkup(createElement(component, props))
-    const map = render(LessonMap)
+    const emptyData = { schemaVersion: 2, questionInstances: [], answerAttempts: [], reviewEvents: [] }
+    const emptyProgress = deriveProgress(emptyData, lessonRegistry, Date.parse('2026-10-27T00:00:00.000Z'))
+    const map = render(LessonMap, { progress: emptyProgress })
     const included = lessonRegistry.lessons.filter((lesson) => lesson.availability === 'included')
     const expectedSectionRoutes = new Set(included.flatMap((lesson) => lesson.sections
       .map((section) => `#/lesson/${lesson.lessonId}/${section.sectionId}`)))
@@ -38,6 +43,47 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.equal(resolveLessonRef('mean-inference#z'), null)
     assert.equal(resolveLessonRef('future-lesson'), null)
     assert.equal(resolveLessonRef('math-algebra-sigma').sectionId, null)
+
+    const fixedContent = fixedInstance.questionDefinitionSnapshot.content
+    const wrongAnswer = fixedContent.choices.find((choice) => choice.id !== fixedContent.correctAnswer).id
+    const attempt = {
+      attemptId: 'progress-ui-attempt',
+      instanceId: fixedInstance.instanceId,
+      answer: wrongAnswer,
+      gradingResult: gradeQuestionAnswer(fixedInstance, wrongAnswer),
+      attemptedAt: '2026-10-26T00:00:00.000Z',
+    }
+    const progress = deriveProgress({
+      ...emptyData,
+      questionInstances: [fixedInstance],
+      answerAttempts: [attempt],
+      reviewEvents: [{
+        reviewEventId: 'progress-ui-review',
+        sourceAttemptId: attempt.attemptId,
+        targetRef: 'math-algebra-sigma#sigma',
+        reviewedAt: '2026-10-26T01:00:00.000Z',
+      }],
+    }, lessonRegistry, Date.parse('2026-10-27T00:00:00.000Z'))
+    const progressMap = render(LessonMap, { progress })
+    assert.match(progressMap, /状態：回答記録あり · 回答試行：1回 · 誤答からの復習候補：あり/u)
+    const progressView = render(ProgressView, {
+      progress,
+      canResolveRoute: () => true,
+      unavailableMessage: '保存IDを開けません。',
+    })
+    assert.match(progressView, /回答試行：1回（正答 0回・誤答 1回）/u)
+    assert.match(progressView, /href="#\/feedback\/progress-ui-attempt" data-nav-intent="normal">誤答と復習先を見る/u)
+    assert.match(progressView, /href="#\/practice\/attempt-question-1" data-nav-intent="normal">同じ出題へ戻る/u)
+    assert.match(progressView, /href="#\/lesson\/math-algebra-sigma\/sigma" data-nav-intent="normal"/u)
+    assert.match(progressView, /href="#\/lesson\/descriptive-statistics\/variance" data-nav-intent="normal"/u)
+    assert.match(progressView, /記録された復習先への訪問/u)
+    const failedRouteProgress = render(ProgressView, {
+      progress,
+      canResolveRoute: () => false,
+      unavailableMessage: '保存形式の移行に失敗したため、この保存IDは開けません。',
+    })
+    assert.doesNotMatch(failedRouteProgress, /href="#\/(?:feedback|practice)\//u)
+    assert.match(failedRouteProgress, /保存形式の移行に失敗したため、この保存IDは開けません/u)
 
     const conditional = render(LessonReference, { targetRef: 'mean-inference#z' })
     assert.match(conditional, /未収録/u)
@@ -108,6 +154,16 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     const appMap = render(App)
     assert.doesNotMatch(appMap, /href="#\/lesson"/u)
     assert.doesNotMatch(appMap, /aria-label="この画面から移動"/u)
+
+    globalThis.window.location.hash = '#/progress'
+    const progressScreen = render(App)
+    assert.match(progressScreen, /記録の見方/u)
+    assert.doesNotMatch(progressScreen, /学習状況や復習対象の表示は/u)
+    globalThis.window.localStorage.getItem = () => '{broken'
+    const invalidProgressScreen = render(App)
+    assert.match(invalidProgressScreen, /進捗を集計できません/u)
+    assert.doesNotMatch(invalidProgressScreen, /演習記録なし/u)
+    globalThis.window.localStorage.getItem = () => null
 
     globalThis.window.location.hash = '#/lesson'
     const legacyLessonRoute = render(App)

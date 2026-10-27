@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react'
 import {
   resolveRoute,
   routeToHash,
@@ -24,7 +24,10 @@ import {
 import { availablePracticeQuestions, createPracticeInstance, createSimilarPractice, recordReviewEvent, submitPracticeAnswer } from './practice-actions.mjs'
 import { PracticeQuestionView, PracticeSelectionView } from './practice-view'
 import type { ReadonlyQuestionInstance } from './question-contract.mjs'
-import { LessonMap, LessonReference, LessonRouteContent, lessonRefLabel } from './lesson-view'
+import { resolveRouteData } from './route-data.mjs'
+import { lessonRegistry } from './lesson-registry.mjs'
+import { LessonMap, LessonReference, LessonRouteContent, ProgressView, lessonRefLabel } from './lesson-view'
+import { deriveProgress } from './progress-data.mjs'
 import {
   applyRouteNavigationEffect,
   refreshRouteView,
@@ -78,11 +81,8 @@ const screens: Record<ScreenKind, {
   progress: {
     title: '進捗',
     description: '学習状況を振り返り、次に取り組む内容を選ぶ画面です。',
-    placeholder: '学習状況や復習対象の表示は、学習記録の保存機能とあわせて追加します。',
-    links: [
-      { label: '単元解説・復習先へ', href: '#/lesson' },
-      { label: '演習へ', href: '#/practice' },
-    ],
+    placeholder: '',
+    links: [],
   },
   data: {
     title: 'データ管理',
@@ -159,6 +159,14 @@ function App() {
     || storedData.status === 'legacy' || storedData.status === 'migration-failed'
   const canWritePracticeData = storedData.status === 'missing' || storedData.status === 'ok' || storedData.status === 'legacy'
   const practiceQuestions = availablePracticeQuestions()
+  const progress = useMemo(() => {
+    if (storedData.status === 'invalid' || storedData.status === 'unreadable') return null
+    return deriveProgress(storedData.data, lessonRegistry, Date.now())
+  }, [view.navigationId, storedData])
+  const canResolveProgressRoute = (route: Extract<AppRoute, { kind: 'feedback-id' | 'practice-id' }>) => {
+    const resolved = resolveRouteData(route, storedData)
+    return route.kind === 'feedback-id' ? resolved.status === 'feedback' : resolved.status === 'practice'
+  }
 
   const publishRouteView = (next: RouteView) => {
     setPendingPracticeNavigation((pending) =>
@@ -700,7 +708,7 @@ function App() {
           <p className="description">{current.description}</p>
 
           {screen === 'map' ? (
-            <LessonMap />
+            <LessonMap progress={progress} />
           ) : screen === 'data' ? (
             <section className="data-panel" aria-labelledby="data-title">
               <h2 id="data-title">保存データ</h2>
@@ -743,6 +751,20 @@ function App() {
             />
           ) : screen === 'feedback' && view.route.kind === 'feedback-id' ? (
             renderFeedbackRoute()
+          ) : screen === 'progress' ? (
+            progress
+              ? <ProgressView
+                progress={progress}
+                canResolveRoute={canResolveProgressRoute}
+                unavailableMessage={storedData.status === 'migration-failed'
+                  ? '保存形式の移行に失敗したため、この保存IDは開けません。'
+                  : '保存IDを現在のデータから解決できません。'}
+              />
+              : <section className="placeholder" aria-labelledby="progress-unavailable-title">
+                <h2 id="progress-unavailable-title">進捗を集計できません</h2>
+                <p>保存データを検証できないため、数値を表示していません。データ管理画面で保存状態を確認してください。</p>
+                <p><InternalLink route={{ kind: 'data' }}>データ管理へ</InternalLink></p>
+              </section>
           ) : (
             <section className="placeholder" aria-labelledby="placeholder-title">
               <h2 id="placeholder-title">この画面でできること</h2>
