@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from 'react'
 import { lessonRegistry } from './lesson-registry.mjs'
+import { availablePracticeQuestions } from './practice-actions.mjs'
 import { parseLessonRef, type IncludedLessonDefinition, type LessonDefinition, type LessonRegistry } from './lesson-contract.mjs'
 import { routeToHash, type AppRoute } from './resolve-screen.mjs'
 import type { NavigationIntent } from './route-history.mjs'
@@ -211,6 +212,8 @@ export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, regis
       </li>)}</ul>
     </nav>
     <ReferenceGroups lesson={lesson} currentRef={currentRef} registry={registry} />
-    <p className="lesson-actions">演習の開始・回答入力は準備中です。</p>
+    {availablePracticeQuestions().some((question) => lesson.questionIds.includes(question.questionId))
+      ? <p className="lesson-actions"><a href="#/practice" data-nav-intent="normal">利用できる演習問題を選ぶ</a></p>
+      : <p className="lesson-actions">この単元の演習は準備中です。</p>}
   </section>
 }

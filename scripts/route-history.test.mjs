@@ -81,3 +81,22 @@ test('history state validates route, entry, draft, position and flat frames', ()
   assert.equal(withDraft.draft, 'unfinished response')
   assert.equal(withDraft.scrollY, 88)
 })
+
+test('separate history entries for the same practice instance keep independent drafts', () => {
+  const route = { kind: 'practice-id', instanceId: 'same-instance' }
+  const hash = routeToHash(route)
+  const first = updateRouteHistoryState(
+    createRouteHistoryState(route, hash, { entryId: 'first-entry' }),
+    { draft: 'choice-A' },
+  )
+  const second = navigateRouteHistory(first, route, hash, 'normal', { entryId: 'second-entry' })
+  const secondDraft = updateRouteHistoryState(second, { draft: ' 1.030 ' })
+
+  assert.equal(first.routeHash, secondDraft.routeHash)
+  assert.equal(first.route.instanceId, secondDraft.route.instanceId)
+  assert.notEqual(first.entryId, secondDraft.entryId)
+  assert.equal(first.draft, 'choice-A')
+  assert.equal(secondDraft.draft, ' 1.030 ')
+  assert.equal(validateRouteHistoryState(first, hash).draft, 'choice-A')
+  assert.equal(validateRouteHistoryState(secondDraft, hash).draft, ' 1.030 ')
+})
