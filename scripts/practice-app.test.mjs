@@ -83,6 +83,29 @@ function linkFor(host, text) {
   return [...host.querySelectorAll('a')].find((anchor) => anchor.textContent.includes(text))
 }
 
+function assertProgressReviewEvidence(host, attemptId, instanceId) {
+  const progress = host.querySelector('.progress-view')
+  assert.ok(progress, 'expected the progress view to render')
+
+  const candidate = progress.querySelector('[aria-label="基本統計量の誤答候補"]')
+  assert.ok(candidate, 'expected the saved variance mistake to appear as a review candidate')
+  assert.match(candidate.textContent, /この節を指定した誤答：1回/u)
+  assert.match(candidate.textContent, /復習先への総訪問：1回/u)
+  assert.match(candidate.textContent, /代表誤答からの訪問：1回/u)
+  assert.equal(linkFor(candidate, '基本統計量：範囲と分散')?.getAttribute('href'),
+    '#/lesson/descriptive-statistics/variance')
+  assert.equal(linkFor(candidate, '誤答と復習先を見る')?.getAttribute('href'),
+    routeToHash({ kind: 'feedback-id', attemptId }))
+  assert.equal(linkFor(candidate, '同じ出題へ戻る')?.getAttribute('href'),
+    routeToHash({ kind: 'practice-id', instanceId }))
+
+  const visits = progress.querySelector('[aria-label="基本統計量への復習訪問"]')
+  assert.ok(visits, 'expected the recorded variance visit to appear')
+  assert.match(visits.textContent, /総訪問：1回/u)
+  assert.equal(linkFor(visits, '基本統計量：範囲と分散')?.getAttribute('href'),
+    '#/lesson/descriptive-statistics/variance')
+}
+
 function linkForRoute(host, route) {
   return [...host.querySelectorAll('a')].find((anchor) => anchor.getAttribute('href') === routeToHash(route))
 }
@@ -514,6 +537,7 @@ test('P2 learning journey keeps the same question through review, progress, and 
     await click(linkFor(app.host, '進捗'))
     assert.match(app.host.querySelector('.progress-view').textContent, /回答試行：2回（正答 1回・誤答 1回）/u)
     assert.match(app.host.querySelector('.progress-view').textContent, /正答割合：1 \/ 2回（50\.0%）/u)
+    assertProgressReviewEvidence(app.host, incorrect.attemptId, instance.instanceId)
     const exported = exportLocalData(() => window.localStorage)
     const expected = JSON.parse(exported)
 
@@ -533,10 +557,12 @@ test('P2 learning journey keeps the same question through review, progress, and 
     const progressText = app.host.querySelector('.progress-view').textContent
     assert.match(progressText, /回答試行：2回（正答 1回・誤答 1回）/u)
     assert.match(progressText, /正答割合：1 \/ 2回（50\.0%）/u)
+    assertProgressReviewEvidence(app.host, incorrect.attemptId, instance.instanceId)
     assert.deepEqual(JSON.parse(exportLocalData(() => app.dom.window.localStorage)), expected)
     await app.remount()
     assert.equal(app.dom.window.location.hash, '#/progress')
     assert.match(app.host.querySelector('.progress-view').textContent, /回答試行：2回（正答 1回・誤答 1回）/u)
+    assertProgressReviewEvidence(app.host, incorrect.attemptId, instance.instanceId)
     assert.deepEqual(JSON.parse(exportLocalData(() => app.dom.window.localStorage)), expected)
   } finally {
     await app?.close()

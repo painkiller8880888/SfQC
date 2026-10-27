@@ -98,7 +98,7 @@ graph LR
 |---|---|---|
 | 実ブラウザーで学習ループを通し、表示・採点・復習先・復帰・進捗を確認 | ローカルproduction previewでPASS。画面往復、同一出題の誤答1.030から正答1.013への再回答、進捗・reload、JSON file往復を確認。 | Issueが指定する公開URLで同じ主要操作を実測（merge後）。 |
 | 同じinstanceの再回答と別seed類題を区別 | 自動journeyで同一snapshot/instance・別attemptを確認し、既存生成問題テストで別seedを確認。ローカルUIでも同じ問題への再回答を確認。 | 公開ブラウザーQAで別seed類題も開始し、同じ出題とは別instanceであることを確認（merge後）。 |
-| CIのinstall/build、ロジック・リンク・保存互換・統合回帰 | `npm ci`、`npm run build`、97テストと横断journeyが成功（実装head `1865ddb`）。計画書更新後も[PR CI run](https://github.com/painkiller8880888/SfQC/actions/runs/40471829445)がhead `4d0650e`でbuild success。PRではdeploy jobをskipする。 | 公開deployはmerge後に実施し、対象SHAのartifactとPagesを照合。 |
+| CIのinstall/build、ロジック・リンク・保存互換・統合回帰 | `npm ci`、`npm run build`、97テストと横断journeyが成功（実装head `1865ddb`）。計画書更新後も[PR CI run](https://github.com/painkiller8880888/SfQC/actions/runs/40471829445)がhead `4d0650e`でbuild success。さらにhead `49b83cd35a4331776ec324a259439202adf40c68`に対応する[CI run 40472194368](https://github.com/painkiller8880888/SfQC/actions/runs/40472194368)もbuild success（PRのためdeploy jobはskip）。 | 公開deployはmerge後に実施し、対象SHAのartifactとPagesを照合。 |
 | main deployと公開Pagesの直接表示・reload・asset・主要操作 | 未確認。 | merge後、対象merge SHAの最新成功deploy/artifactと配信assetを照合し、公開QAを実施。 |
 | 検査環境・未確認・仕様限界・未収録範囲・P3引継ぎを記録し、根拠なくPASSにしない | 本記録でローカル結果、320px検証、公開QA残件、未収録範囲・P3境界を記録。 | 公開QAの最終結果と証拠をIssue #28とPR #42へ追加（merge後）。Issueは完了条件を満たすまでopen。 |
 
