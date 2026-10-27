@@ -1,8 +1,8 @@
 name = "plan_reviewer"
 description = "実装計画を独立した視点からレビューし、欠陥、考慮漏れ、矛盾、不要な作業、リスクを指摘するエージェント。"
 
-model = "gpt-6-astra"
-model_reasoning_effort = "high"
+model = "gpt-6.1-sol"
+model_reasoning_effort = "xhigh"
 
 sandbox_mode = "read-only"
 
