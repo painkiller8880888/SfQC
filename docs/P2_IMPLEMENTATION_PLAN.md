@@ -77,3 +77,19 @@ graph LR
 - 公式出題範囲すべてをまだ収録しない。前提マップが保留・対象外とする信頼性工学SRC-0056〜0059、計測項目SRC-0060〜0061、測定誤差SRC-0064などは、範囲と教材深度を別途決める。
 - 習熟度の推定、復習間隔の最適化、QC検定2級の合格確率の推定はP2に含めず、根拠のある記録・表示の後にP3以降で検討する。PWAとクラウドアカウントも対象外。
 - P2の完了判断は#28で行う。平均・分散・標準偏差の独立検算、学習ループの往復、同一出題と別seed出題の区別、保存互換、CIと公開Pagesでの実地確認を記録する。
+
+## G5 統合受入の検証記録（PR #42提出時点・2026-10-27）
+
+[Issue #28](https://github.com/painkiller8880888/SfQC/issues/28)の受入に向けたPR [#42](https://github.com/painkiller8880888/SfQC/pull/42)の提出時点の記録。ローカルの自動検査とproduction previewでは学習ループを確認した。mainへのmerge、Pages deploy、公開URLのasset照合・公開ブラウザー検証は未実施であり、G5とP2は完了していない。Issue #28はopenのままとする。
+
+| 確認 | 結果 | 根拠・境界 |
+|---|---|---|
+| 自動検査・production build | PASS | `npm run build`（`npm run check`、型検査、Node.jsテスト97件、本番build、出力検査を含む）。依存関係はlockfileどおりに`npm ci`で導入した。 |
+| 横断アプリテスト | PASS | `node --test scripts/practice-app.test.mjs` 7件。異なるjsdom保存領域でJSON export/importの往復を含む。 |
+| ローカルproduction preview | PASS | Vivaldi / Windowsで`/SfQC/`を開き、学習マップ→分散解説・SVG→固定数値問題→誤答feedback→Σの任意復習→復習stackで同じfeedbackへ戻る→同じ出題に正答、を実操作した。同じ出題IDと入力値1.030の保持、正答1.013を確認。公開Pagesの証拠には数えない。 |
+| 進捗・reload | PASS | 誤答・正答の2試行、正答割合1/2（50.0%）、誤答候補と復習訪問を画面で確認。reload後も出題snapshot 1件、解答試行2件、復習イベント2件が残った。 |
+| 狭い表示幅・キーボード | 部分確認 | ブラウザー400% zoom（約322 CSS px相当）でページ幅に合わせて表示され、TabでJSON書出しボタンへフォーカスできた。正確な320px viewportは未計測。 |
+| ブラウザーUIからのJSON file操作 | 未確認 | production previewのデータ管理画面に書出し・読込み操作があることを確認。ファイルの実ダウンロードとfile pickerによる読込みは操作していない。JSONの内容保持と別保存先への復元は横断アプリテストで検査した。 |
+| 公開GitHub Pages | 未確認（merge後） | QA対象merge SHAを含む最新成功deploy runとPages artifactを照合し、公開HTML・assetのURL/status/SHA-256、hash付き直アクセス・reload・主要ブラウザー操作を実測する。結果と未確認範囲はIssue #28とPR #42に追記する。 |
+
+仕様上の未収録範囲、保存・オフラインの保証境界とP3への習熟度・復習スケジューラ引継ぎは、上記「共通の確認事項と後続課題」に従う。公開QAが完了し受入証拠をIssue #28へ記録するまで、PASSとして扱わない。
