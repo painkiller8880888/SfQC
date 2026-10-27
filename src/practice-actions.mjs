@@ -3,6 +3,7 @@ import { createQuestionInstance } from './question-contract.mjs'
 import { generateQuestionContent } from './question-generator.mjs'
 import { gradeQuestionAnswer } from './question-grading.mjs'
 import { questionRegistry, getQuestionDefinition } from './question-registry.mjs'
+import { parseLessonRef } from './lesson-contract.mjs'
 import { LocalDataError, readLocalData, saveLocalData } from './local-data.mjs'
 
 export function availablePracticeQuestions() {
@@ -105,4 +106,25 @@ export function submitPracticeAnswer(instance, answer) {
     answerAttempts: [...current.data.answerAttempts, attempt],
   })
   return { status: 'saved', attempt: saved.data.answerAttempts.at(-1), data: saved.data, raw: saved.raw }
+}
+
+export function recordReviewEvent(targetRef, sourceAttemptId) {
+  if (!parseLessonRef(targetRef)) throw new TypeError('復習先の形式が正しくありません。')
+  const current = readWritableData()
+  const sourceAttempt = current.data.answerAttempts.find((attempt) => attempt.attemptId === sourceAttemptId)
+  if (!sourceAttempt || sourceAttempt.gradingResult.isCorrect) {
+    throw new TypeError('保存済みの誤答から復習を開始できません。')
+  }
+
+  const event = {
+    reviewEventId: uniqueValue(new Set(current.data.reviewEvents.map((item) => item.reviewEventId))),
+    targetRef,
+    sourceAttemptId,
+    reviewedAt: new Date().toISOString(),
+  }
+  const saved = saveLocalData({
+    ...current.data,
+    reviewEvents: [...current.data.reviewEvents, event],
+  })
+  return { event: saved.data.reviewEvents.at(-1), data: saved.data, raw: saved.raw }
 }

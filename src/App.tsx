@@ -21,7 +21,7 @@ import {
   readLocalData,
   type LocalData,
 } from './local-data.mjs'
-import { availablePracticeQuestions, createPracticeInstance, createSimilarPractice, submitPracticeAnswer } from './practice-actions.mjs'
+import { availablePracticeQuestions, createPracticeInstance, createSimilarPractice, recordReviewEvent, submitPracticeAnswer } from './practice-actions.mjs'
 import { PracticeQuestionView, PracticeSelectionView } from './practice-view'
 import type { ReadonlyQuestionInstance } from './question-contract.mjs'
 import { LessonMap, LessonReference, LessonRouteContent, lessonRefLabel } from './lesson-view'
@@ -126,6 +126,7 @@ function App() {
   ))
   const [storedData, setStoredData] = useState<StoredLocalData>(() => view.storedData)
   const [dataMessage, setDataMessage] = useState('')
+  const [reviewMessage, setReviewMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [practiceError, setPracticeError] = useState('')
   const [practiceBusy, setPracticeBusy] = useState(false)
@@ -211,6 +212,15 @@ function App() {
     const currentView = viewRef.current
     const currentState = validateRouteHistoryState(window.history.state, window.location.hash)
       ?? currentView.historyState
+    const sourceFrame = currentState.returnStack.find((frame) => frame.route.kind === 'feedback-id')
+    const sourceAttemptRoute = sourceFrame?.route.kind === 'feedback-id' ? sourceFrame.route : null
+    const savedSourceAttempt = sourceAttemptRoute && currentView.storedData.status === 'ok'
+      ? currentView.storedData.data.answerAttempts.find((attempt) => attempt.attemptId === sourceAttemptRoute.attemptId)
+      : null
+    const sourceAttemptId = intent !== 'review' ? null
+      : currentView.resolved.status === 'feedback'
+        ? currentView.resolved.attempt.gradingResult.isCorrect ? null : currentView.resolved.attempt.attemptId
+        : savedSourceAttempt && !savedSourceAttempt.gradingResult.isCorrect ? savedSourceAttempt.attemptId : null
     let options: { attemptId?: string; answer?: string } = {}
     if (intent === 'resume') {
       if (currentView.resolved.status !== 'feedback'
@@ -240,6 +250,14 @@ function App() {
     } catch {
       setDataMessage('ブラウザー履歴に復帰情報を保存できませんでした。現在の画面に留まっています。')
       return false
+    }
+    setReviewMessage('')
+    if (intent === 'review' && sourceAttemptId && route.kind === 'lesson-id') {
+      try {
+        recordReviewEvent(route.lessonId + (route.sectionId ? '#' + route.sectionId : ''), sourceAttemptId)
+      } catch {
+        setReviewMessage('復習先には移動しましたが、誤答からの復習訪問を保存できませんでした。保存データを確認してください。')
+      }
     }
     lastHandledRef.current = hash + '\u0000' + nextState.entryId
     resolveCurrentLocation(intent, nextState)
@@ -465,6 +483,7 @@ function App() {
     lastHandledRef.current = initial.historyState.routeHash + '\u0000' + initial.historyState.entryId
 
     const handleLocationChange = () => {
+      setReviewMessage('')
       const hash = window.location.hash
       const rawState = window.history.state
       const structuralState = validateRouteHistoryState(rawState, hash)
@@ -669,6 +688,7 @@ function App() {
             このURLの復帰情報は利用できないため、保存データとURLだけで画面を開きました。読書位置や復習経路の一部は復元できないことがあります。
           </p>
         )}
+        {reviewMessage && <p className="storage-alert" role="status" aria-live="polite">{reviewMessage}</p>}
         {pendingPracticeNavigation && (
           <section className="practice-recovery" role="status" aria-live="polite">
             <p>{pendingPracticeNavigation.message}</p>

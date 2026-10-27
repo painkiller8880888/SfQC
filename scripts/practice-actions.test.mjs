@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createQuestionInstance } from '../src/question-contract.mjs'
-import { createPracticeInstance, createSimilarPractice, submitPracticeAnswer, availablePracticeQuestions } from '../src/practice-actions.mjs'
+import { createPracticeInstance, createSimilarPractice, recordReviewEvent, submitPracticeAnswer, availablePracticeQuestions } from '../src/practice-actions.mjs'
 import { LOCAL_DATA_MAX_INSTANCES, LocalDataError, readLocalData, serializeLocalData } from '../src/local-data.mjs'
 import { getQuestionDefinition, questionRegistry } from '../src/question-registry.mjs'
 
@@ -102,5 +102,45 @@ test('write failure and the 500-snapshot limit never report a saved answer or du
     )
     assert.equal(storage.value, fullBefore)
     assert.equal(readLocalData().data.questionInstances.length, LOCAL_DATA_MAX_INSTANCES)
+  })
+})
+
+test('review events append only for saved wrong attempts and preserve all existing records', () => {
+  const storage = memoryStorage()
+  withStorage(storage, () => {
+    const started = createPracticeInstance('q-desc-var-num-001')
+    const wrong = submitPracticeAnswer(started.instance, '1.030')
+    const correct = submitPracticeAnswer(started.instance, '1.013')
+    assert.equal(wrong.status, 'saved')
+    assert.equal(correct.status, 'saved')
+    const before = readLocalData().data
+
+    const first = recordReviewEvent('descriptive-statistics#variance', wrong.attempt.attemptId)
+    const second = recordReviewEvent('descriptive-statistics#variance', wrong.attempt.attemptId)
+    assert.equal(first.event.targetRef, 'descriptive-statistics#variance')
+    assert.equal(first.event.sourceAttemptId, wrong.attempt.attemptId)
+    assert.match(first.event.reviewedAt, /^\d{4}-\d{2}-\d{2}T/u)
+    assert.notEqual(first.event.reviewEventId, second.event.reviewEventId)
+
+    const after = readLocalData().data
+    assert.deepEqual(after.questionInstances, before.questionInstances)
+    assert.deepEqual(after.answerAttempts, before.answerAttempts)
+    assert.equal(after.reviewEvents.length, 2)
+    assert.deepEqual(after.reviewEvents[0], first.event)
+    assert.deepEqual(after.reviewEvents[1], second.event)
+
+    const savedRaw = storage.value
+    assert.throws(() => recordReviewEvent('not a lesson ref', wrong.attempt.attemptId), TypeError)
+    assert.throws(() => recordReviewEvent('descriptive-statistics#variance', 'missing-attempt'), TypeError)
+    assert.throws(() => recordReviewEvent('descriptive-statistics#variance', correct.attempt.attemptId), TypeError)
+    assert.equal(storage.value, savedRaw)
+
+    storage.failWrites = true
+    assert.throws(
+      () => recordReviewEvent('math-algebra-sigma#sigma', wrong.attempt.attemptId),
+      (error) => error instanceof LocalDataError && error.code === 'storage-write-failed',
+    )
+    assert.equal(storage.value, savedRaw)
+    assert.equal(readLocalData().data.reviewEvents.length, 2)
   })
 })
