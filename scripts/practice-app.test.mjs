@@ -247,3 +247,54 @@ test('generated practice creates a separate seed and records the numeric input e
     await app.close()
   }
 })
+
+test('practice recovery clears after leaving its history entry and submitting again after browser back', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const originalPushState = window.history.pushState.bind(window.history)
+    let failNextFeedbackNavigation = true
+    window.history.pushState = (state, title, url) => {
+      const hash = new URL(url, window.location.href).hash
+      if (failNextFeedbackNavigation && hash.startsWith('#/feedback/')) {
+        failNextFeedbackNavigation = false
+        throw new window.DOMException('history unavailable', 'SecurityError')
+      }
+      originalPushState(state, title, url)
+    }
+
+    const option = questionOption(app.host, 'q-desc-var-sc-001')
+    await click(buttonFor(option, 'この問題を始める'))
+    const instance = readLocalData().data.questionInstances[0]
+    const practiceHash = routeToHash({ kind: 'practice-id', instanceId: instance.instanceId })
+    assert.equal(window.location.hash, practiceHash)
+
+    const radioA = [...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'A')
+    await click(radioA)
+    await click(buttonFor(app.host, '回答を送信する'))
+    assert.equal(readLocalData().data.answerAttempts.length, 1)
+    assert.match(app.host.textContent, /回答は保存済みですが/u)
+    assert.equal(window.location.hash, practiceHash)
+
+    await click(app.host.querySelector('.site-brand'))
+    assert.equal(window.location.hash, '#/map')
+    await waitForHistory(window, 'back')
+    assert.equal(window.location.hash, practiceHash)
+    assert.equal(app.host.querySelector('.practice-recovery'), null)
+
+    const submit = buttonFor(app.host, '回答を送信する')
+    assert.ok(submit)
+    assert.equal(submit.disabled, false)
+    const radioB = [...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'B')
+    await click(radioB)
+    await click(submit)
+
+    const attempts = readLocalData().data.answerAttempts
+    assert.equal(attempts.length, 2)
+    assert.equal(attempts[1].answer, 'B')
+    assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: attempts[1].attemptId }))
+    assert.equal(app.host.querySelector('.practice-recovery'), null)
+  } finally {
+    await app.close()
+  }
+})

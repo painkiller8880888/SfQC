@@ -129,7 +129,7 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [practiceError, setPracticeError] = useState('')
   const [practiceBusy, setPracticeBusy] = useState(false)
-  const [pendingPracticeNavigation, setPendingPracticeNavigation] = useState<{ route: AppRoute; message: string } | null>(null)
+  const [pendingPracticeNavigation, setPendingPracticeNavigation] = useState<{ route: AppRoute; message: string; sourceEntryId: string } | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null)
   const viewRef = useRef(view)
@@ -160,6 +160,8 @@ function App() {
   const practiceQuestions = availablePracticeQuestions()
 
   const publishRouteView = (next: RouteView) => {
+    setPendingPracticeNavigation((pending) =>
+      pending?.sourceEntryId === next.historyState.entryId ? pending : null)
     viewRef.current = next
     setView(next)
     setStoredData(next.storedData)
@@ -304,7 +306,7 @@ function App() {
     if (pushNavigation(route, routeToHash(route), 'normal')) {
       setPendingPracticeNavigation(null)
     } else {
-      setPendingPracticeNavigation({ route, message })
+      setPendingPracticeNavigation({ route, message, sourceEntryId: viewRef.current.historyState.entryId })
     }
   }
 
@@ -362,7 +364,10 @@ function App() {
   }
 
   const handleSubmitPractice = (instance: ReadonlyQuestionInstance, answer: string) => {
-    if (practiceBusyRef.current || pendingPracticeNavigation?.route.kind === 'feedback-id') return
+    if (practiceBusyRef.current || (
+      pendingPracticeNavigation?.sourceEntryId === viewRef.current.historyState.entryId
+      && pendingPracticeNavigation.route.kind === 'feedback-id'
+    )) return
     practiceBusyRef.current = true
     setPracticeBusy(true)
     setPracticeError('')
@@ -392,7 +397,7 @@ function App() {
   }
 
   const handleRetryPracticeNavigation = () => {
-    if (!pendingPracticeNavigation) return
+    if (!pendingPracticeNavigation || pendingPracticeNavigation.sourceEntryId !== viewRef.current.historyState.entryId) return
     if (pushNavigation(
       pendingPracticeNavigation.route,
       routeToHash(pendingPracticeNavigation.route),
