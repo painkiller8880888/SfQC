@@ -1,5 +1,13 @@
 export type LessonRef = string
 export type ParsedLessonRef = { lessonId: string; sectionId: string | null }
+export declare const lessonDomains: {
+  readonly 'math-foundations': '数学の基礎'
+  readonly 'data-description': 'データ・記述統計'
+  readonly 'probability-distributions': '確率・確率分布'
+  readonly 'statistical-analysis': '統計分析・推測'
+  readonly 'quality-methods': '品質管理手法'
+}
+export type LessonDomain = keyof typeof lessonDomains
 
 export type InlineLessonRef = {
   label: string
@@ -65,6 +73,7 @@ export type OptionalReview = {
 type LessonBase = {
   lessonId: string
   title: string
+  domain: LessonDomain
   learningObjectives: string[]
   declaredSectionIds: string[]
   commonPrerequisites: LessonRef[]

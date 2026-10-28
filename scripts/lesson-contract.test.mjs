@@ -365,4 +365,12 @@ test('unknown keys, undefined values, malformed IDs, and invalid revisions are r
   const malformedId = copy(lessonRegistryFixture)
   lesson(malformedId, 'descriptive-statistics').revision = 1.5
   assert.equal(validateLessonRegistry(malformedId), false)
+
+  const missingDomain = copy(lessonRegistryFixture)
+  delete lesson(missingDomain, 'descriptive-statistics').domain
+  assert.equal(validateLessonRegistry(missingDomain), false)
+
+  const unknownDomain = copy(lessonRegistryFixture)
+  lesson(unknownDomain, 'descriptive-statistics').domain = 'other'
+  assert.equal(validateLessonRegistry(unknownDomain), false)
 })
