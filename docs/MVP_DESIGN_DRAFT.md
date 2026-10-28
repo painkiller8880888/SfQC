@@ -4,6 +4,8 @@
 > 作成日: 2026-10-21
 > 対応Issue: [#3 — 教材・問題スキーマと主要画面の学習導線](https://github.com/painkiller8880888/SfQC/issues/3)
 
+> この文書はP1時点の概念設計とID参照の背景を記録します。教材registry・validatorの実装正本はソースコード、現行のlesson ID・section ID・前提関係は`src/lesson-registry.mjs`です。curriculum資料は教育上の照合基準であり、P2.1の5分野分類の実装正本と表現はIssue #45で決定します。
+
 ## 1. 目的と境界
 
 この文書は、P1の基盤実装へ渡すために、教材・問題が持つ情報と、誤答から前提を復習して元の学習へ戻る動きを定義する。プロジェクト全体の教育方針は[基本方針](PROJECT_CHARTER_DRAFT.md)、教材単元・公式項目の対応と前提条件は[対応表](curriculum/SYLLABUS_MAPPING_DRAFT.md)および[前提マップ](curriculum/PREREQUISITE_MAP_DRAFT.md)を参照する。
