@@ -6,6 +6,8 @@
 
 - `.codex/config.toml` - 作業におけるモデル選択についての設定
 - `docs/` — プロジェクトの実装計画
+- [`docs/P2_1_IMPLEMENTATION_PLAN.md`](docs/P2_1_IMPLEMENTATION_PLAN.md) — 現行P2.1の実装順序と依存関係
+- [`docs/legacy/README.md`](docs/legacy/README.md) — P2の履歴資料と文書の優先順位
 
 ## Commands
 
@@ -57,3 +59,9 @@ subagent が作業結果を返す際は、少なくとも以下をまとめる�
 - 実装時のリスク
 
 ## Structure
+
+## 文書の優先順位
+
+- P2.1の方針・進捗は[親Issue #43](https://github.com/painkiller8880888/SfQC/issues/43)、実装順序は[現行計画](docs/P2_1_IMPLEMENTATION_PLAN.md)、個別の受入条件は各Issueを参照します。
+- `docs/legacy/`と旧パスの案内スタブは過去の判断・検証記録です。現行タスクの指示として使いません。
+- `docs/PROJECT_CHARTER_DRAFT.md`の教育方針とcurriculum資料は参照します。同文書§6の初期進捗案と§9の暫定フェーズ案よりも、P2.1の進捗・順序ではIssue #43と現行計画を優先します。教材データの実装正本は`src/lesson-registry.mjs`、curriculumとの整合検査は`scripts/lesson-curriculum.test.mjs`です。
