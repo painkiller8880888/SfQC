@@ -4,6 +4,14 @@ const sourceItemIdPattern = /^SRC-\d{4}$/u
 const rendererRefPattern = /^code:[a-z0-9]+(?:-[a-z0-9]+)*$/u
 const lessonRefPattern = /^([a-z0-9]+(?:-[a-z0-9]+)*)(?:#([a-z0-9]+(?:-[a-z0-9]+)*))?$/u
 
+export const lessonDomains = Object.freeze({
+  'math-foundations': '数学の基礎',
+  'data-description': 'データ・記述統計',
+  'probability-distributions': '確率・確率分布',
+  'statistical-analysis': '統計分析・推測',
+  'quality-methods': '品質管理手法',
+})
+
 function isRecord(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return false
@@ -192,11 +200,12 @@ function isSource(value, officialSourceItemIds) {
 
 function isLessonBase(value) {
   const keys = [
-    'lessonId', 'title', 'learningObjectives', 'declaredSectionIds', 'commonPrerequisites',
+    'lessonId', 'title', 'domain', 'learningObjectives', 'declaredSectionIds', 'commonPrerequisites',
     'conditionalPrerequisites', 'optionalReviews', 'questionIds', 'sourceItemIds', 'sourceRefs', 'revision',
   ]
   return typeof value.lessonId === 'string' && idPattern.test(value.lessonId)
     && isText(value.title)
+    && typeof value.domain === 'string' && Object.hasOwn(lessonDomains, value.domain)
     && isArray(value.learningObjectives) && value.learningObjectives.length > 0 && value.learningObjectives.every(isText)
     && isUniqueTextArray(value.declaredSectionIds, idPattern)
     && isUniqueTextArray(value.commonPrerequisites, lessonRefPattern)
@@ -213,14 +222,14 @@ function isLesson(value) {
   if (!isRecord(value) || !isLessonBase(value)) return false
   if (value.availability === 'planned') {
     return hasOnlyKeys(value, [
-      'availability', 'lessonId', 'title', 'learningObjectives', 'declaredSectionIds',
+      'availability', 'lessonId', 'title', 'domain', 'learningObjectives', 'declaredSectionIds',
       'commonPrerequisites', 'conditionalPrerequisites', 'optionalReviews', 'questionIds',
       'sourceItemIds', 'sourceRefs', 'revision',
     ])
   }
   if (value.availability === 'included') {
     return hasOnlyKeys(value, [
-      'availability', 'lessonId', 'title', 'learningObjectives', 'declaredSectionIds',
+      'availability', 'lessonId', 'title', 'domain', 'learningObjectives', 'declaredSectionIds',
       'commonPrerequisites', 'conditionalPrerequisites', 'optionalReviews', 'questionIds',
       'sourceItemIds', 'sourceRefs', 'revision', 'sections', 'figures',
     ])
