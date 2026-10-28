@@ -77,3 +77,29 @@ graph LR
 - 公式出題範囲すべてをまだ収録しない。前提マップが保留・対象外とする信頼性工学SRC-0056〜0059、計測項目SRC-0060〜0061、測定誤差SRC-0064などは、範囲と教材深度を別途決める。
 - 習熟度の推定、復習間隔の最適化、QC検定2級の合格確率の推定はP2に含めず、根拠のある記録・表示の後にP3以降で検討する。PWAとクラウドアカウントも対象外。
 - P2の完了判断は#28で行う。平均・分散・標準偏差の独立検算、学習ループの往復、同一出題と別seed出題の区別、保存互換、CIと公開Pagesでの実地確認を記録する。
+
+## G5 統合受入の検証記録（PR #42更新時点・2026-10-27）
+
+[Issue #28](https://github.com/painkiller8880888/SfQC/issues/28)の受入に向けたPR [#42](https://github.com/painkiller8880888/SfQC/pull/42)の更新時点（2026-10-27）の記録。ローカルの自動検査、production preview、ブラウザーのJSONファイル操作では学習ループと保存往復を確認した。mainへのmerge、Pages deploy、公開URLのasset照合・公開ブラウザー検証は未実施であり、G5とP2は完了していない。Issue #28はopenのままとする。
+
+| 確認 | 結果 | 根拠・境界 |
+|---|---|---|
+| 自動検査・production build | PASS | `npm run build`（`npm run check`、型検査、Node.jsテスト97件、本番build、出力検査を含む）。依存関係はlockfileどおりに`npm ci`で導入した。 |
+| 横断アプリテスト | PASS | `node --test scripts/practice-app.test.mjs` 7件。異なるjsdom保存領域でJSON export/importの往復を含む。 |
+| ローカルproduction preview | PASS | Vivaldi / Windowsで`/SfQC/`を開き、学習マップ→分散解説・SVG→固定数値問題→誤答feedback→Σの任意復習→復習stackで同じfeedbackへ戻る→同じ出題に正答、を実操作した。同じ出題IDと入力値1.030の保持、正答1.013を確認。公開Pagesの証拠には数えない。 |
+| 進捗・reload | PASS | 誤答・正答の2試行、正答割合1/2（50.0%）、誤答候補と復習訪問を画面で確認。reload後も出題snapshot 1件、解答試行2件、復習イベント2件が残った。 |
+| 狭い表示幅・キーボード | PASS（ローカル320px） | Vivaldi DevToolsのレスポンシブ表示で320×800を設定し、Consoleの`window.innerWidth`は320、進捗画面の`document.documentElement.scrollWidth`と`document.body.scrollWidth`も320だった。データ管理、分散解説、演習フォーム、誤答feedbackを同じ幅で表示し、折返し・操作欄を目視確認した。Tabフォーカスは別途400% zoom（約1,288÷4＝322 CSS px相当）でJSON書出しボタンに確認済み。公開版でも320pxとキーボードを確認する。 |
+| ブラウザーUIからのJSON file操作 | PASS（ローカルpreview） | 合成データで「JSONを書き出す」を実行し、`sfqc-backup.json`（2.66 KB）のダウンロードを確認。別の空のlocalhost originでfile pickerから選び、画面にsnapshot 1件・解答試行2件・復習イベント2件の復元を確認した。進捗は正答1/2（50.0%）、誤答候補1件、復習訪問1件で、reload後も件数と進捗が保持された。既存ファイルは置換していない。これは公開Pagesの確認には数えない。 |
+| 公開GitHub Pages | 未確認（merge後） | QA対象merge SHAを含む最新成功deploy runとPages artifactを照合し、公開HTML・assetのURL/status/SHA-256、hash付き直アクセス・reload・主要ブラウザー操作を実測する。結果と未確認範囲はIssue #28とPR #42に追記する。 |
+
+### Issue #28の完了条件と現在の扱い
+
+| 条件 | PR #42更新時点 | 残る作業 |
+|---|---|---|
+| 実ブラウザーで学習ループを通し、表示・採点・復習先・復帰・進捗を確認 | ローカルproduction previewでPASS。画面往復、同一出題の誤答1.030から正答1.013への再回答、進捗・reload、JSON file往復を確認。 | Issueが指定する公開URLで同じ主要操作を実測（merge後）。 |
+| 同じinstanceの再回答と別seed類題を区別 | 自動journeyで同一snapshot/instance・別attemptを確認し、既存生成問題テストで別seedを確認。ローカルUIでも同じ問題への再回答を確認。 | 公開ブラウザーQAで別seed類題も開始し、同じ出題とは別instanceであることを確認（merge後）。 |
+| CIのinstall/build、ロジック・リンク・保存互換・統合回帰 | `npm ci`、`npm run build`、97テストと横断journeyが成功（実装head `1865ddb`）。計画書更新後も[PR CI run](https://github.com/painkiller8880888/SfQC/actions/runs/40471829445)がhead `4d0650e`でbuild success。さらにhead `49b83cd35a4331776ec324a259439202adf40c68`に対応する[CI run 40472194368](https://github.com/painkiller8880888/SfQC/actions/runs/40472194368)もbuild success（PRのためdeploy jobはskip）。 | 公開deployはmerge後に実施し、対象SHAのartifactとPagesを照合。 |
+| main deployと公開Pagesの直接表示・reload・asset・主要操作 | 未確認。 | merge後、対象merge SHAの最新成功deploy/artifactと配信assetを照合し、公開QAを実施。 |
+| 検査環境・未確認・仕様限界・未収録範囲・P3引継ぎを記録し、根拠なくPASSにしない | 本記録でローカル結果、320px検証、公開QA残件、未収録範囲・P3境界を記録。 | 公開QAの最終結果と証拠をIssue #28とPR #42へ追加（merge後）。Issueは完了条件を満たすまでopen。 |
+
+仕様上の未収録範囲、保存・オフラインの保証境界とP3への習熟度・復習スケジューラ引継ぎは、上記「共通の確認事項と後続課題」に従う。公開QAが完了し受入証拠をIssue #28へ記録するまで、PASSとして扱わない。

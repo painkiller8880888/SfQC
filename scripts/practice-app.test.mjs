@@ -3,7 +3,7 @@ import test from 'node:test'
 import { act, createElement } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
-import { readLocalData } from '../src/local-data.mjs'
+import { exportLocalData, importLocalData, readLocalData } from '../src/local-data.mjs'
 import { createRouteHistoryState, navigateRouteHistory } from '../src/route-history.mjs'
 import { routeToHash } from '../src/resolve-screen.mjs'
 
@@ -81,6 +81,29 @@ function buttonFor(host, text) {
 
 function linkFor(host, text) {
   return [...host.querySelectorAll('a')].find((anchor) => anchor.textContent.includes(text))
+}
+
+function assertProgressReviewEvidence(host, attemptId, instanceId) {
+  const progress = host.querySelector('.progress-view')
+  assert.ok(progress, 'expected the progress view to render')
+
+  const candidate = progress.querySelector('[aria-label="基本統計量の誤答候補"]')
+  assert.ok(candidate, 'expected the saved variance mistake to appear as a review candidate')
+  assert.match(candidate.textContent, /この節を指定した誤答：1回/u)
+  assert.match(candidate.textContent, /復習先への総訪問：1回/u)
+  assert.match(candidate.textContent, /代表誤答からの訪問：1回/u)
+  assert.equal(linkFor(candidate, '基本統計量：範囲と分散')?.getAttribute('href'),
+    '#/lesson/descriptive-statistics/variance')
+  assert.equal(linkFor(candidate, '誤答と復習先を見る')?.getAttribute('href'),
+    routeToHash({ kind: 'feedback-id', attemptId }))
+  assert.equal(linkFor(candidate, '同じ出題へ戻る')?.getAttribute('href'),
+    routeToHash({ kind: 'practice-id', instanceId }))
+
+  const visits = progress.querySelector('[aria-label="基本統計量への復習訪問"]')
+  assert.ok(visits, 'expected the recorded variance visit to appear')
+  assert.match(visits.textContent, /総訪問：1回/u)
+  assert.equal(linkFor(visits, '基本統計量：範囲と分散')?.getAttribute('href'),
+    '#/lesson/descriptive-statistics/variance')
 }
 
 function linkForRoute(host, route) {
@@ -457,6 +480,92 @@ test('wrong feedback logs review links, keeps their origin through nested lesson
     assert.equal(JSON.stringify(readLocalData().data.questionInstances[0]), snapshot)
   } finally {
     await app.close()
+  }
+})
+
+test('P2 learning journey keeps the same question through review, progress, and JSON restore', async () => {
+  let app = await createHarness()
+  try {
+    const { window } = app.dom
+    const variance = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
+    await click(linkFor(app.host, '学習マップ'))
+    await click(linkForRoute(app.host, variance))
+    assert.ok(app.host.querySelector('.variance-figure svg[role="img"]'))
+    assert.match(app.host.querySelector('.variance-figure').textContent, /偏差平方和/u)
+
+    await click(linkFor(app.host, '利用できる演習問題を選ぶ'))
+    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
+    const instance = readLocalData().data.questionInstances[0]
+    const snapshot = JSON.stringify(instance)
+    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
+    await click(buttonFor(app.host, '回答を送信する'))
+    const incorrect = readLocalData().data.answerAttempts[0]
+    assert.equal(incorrect.answer, '1.030')
+    assert.equal(incorrect.gradingResult.isCorrect, false)
+
+    const sigma = { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' }
+    const powers = { kind: 'lesson-id', lessonId: 'math-powers-roots', sectionId: null }
+    const arithmetic = { kind: 'lesson-id', lessonId: 'math-arithmetic', sectionId: null }
+    await click(linkForRoute(app.host, variance))
+    await click(linkForRoute(app.host, sigma))
+    await click(linkForRoute(app.host, powers))
+    await click(linkForRoute(app.host, arithmetic))
+    assert.deepEqual(readLocalData().data.reviewEvents.map((event) => event.targetRef), [
+      'descriptive-statistics#variance', 'math-algebra-sigma#sigma', 'math-powers-roots', 'math-arithmetic',
+    ])
+    assert.ok(readLocalData().data.reviewEvents.every((event) => event.sourceAttemptId === incorrect.attemptId))
+
+    for (const route of [powers, sigma, variance, { kind: 'feedback-id', attemptId: incorrect.attemptId }]) {
+      await click(linkFor(app.host, '1段戻る'))
+      assert.equal(window.location.hash, routeToHash(route))
+    }
+    await click(linkFor(app.host, '同じ出題を再開する'))
+    assert.equal(window.location.hash, routeToHash({ kind: 'practice-id', instanceId: instance.instanceId }))
+    const input = app.host.querySelector('input[type="text"]')
+    assert.equal(input.value, '1.030')
+    await changeTextInput(window, input, '1.013')
+    await click(buttonFor(app.host, '回答を送信する'))
+    const data = readLocalData().data
+    const correct = data.answerAttempts[1]
+    assert.equal(correct.answer, '1.013')
+    assert.equal(correct.gradingResult.isCorrect, true)
+    assert.notEqual(correct.attemptId, incorrect.attemptId)
+    assert.ok(data.answerAttempts.every((attempt) => attempt.instanceId === instance.instanceId))
+    assert.equal(JSON.stringify(data.questionInstances[0]), snapshot)
+    assert.match(app.host.textContent, /正解です。/u)
+
+    await click(linkFor(app.host, '進捗'))
+    assert.match(app.host.querySelector('.progress-view').textContent, /回答試行：2回（正答 1回・誤答 1回）/u)
+    assert.match(app.host.querySelector('.progress-view').textContent, /正答割合：1 \/ 2回（50\.0%）/u)
+    assertProgressReviewEvidence(app.host, incorrect.attemptId, instance.instanceId)
+    const exported = exportLocalData(() => window.localStorage)
+    const expected = JSON.parse(exported)
+
+    const originalApp = app
+    app = null
+    await originalApp.close()
+    app = await createHarness()
+    assert.equal(readLocalData().status, 'missing')
+    const imported = await importLocalData(
+      { size: Buffer.byteLength(exported), text: async () => exported },
+      () => assert.fail('a missing destination must not ask to replace data'),
+      () => app.dom.window.localStorage,
+    )
+    assert.equal(imported.status, 'imported')
+    assert.deepEqual(imported.data, expected)
+    await app.remountAt('#/progress')
+    const progressText = app.host.querySelector('.progress-view').textContent
+    assert.match(progressText, /回答試行：2回（正答 1回・誤答 1回）/u)
+    assert.match(progressText, /正答割合：1 \/ 2回（50\.0%）/u)
+    assertProgressReviewEvidence(app.host, incorrect.attemptId, instance.instanceId)
+    assert.deepEqual(JSON.parse(exportLocalData(() => app.dom.window.localStorage)), expected)
+    await app.remount()
+    assert.equal(app.dom.window.location.hash, '#/progress')
+    assert.match(app.host.querySelector('.progress-view').textContent, /回答試行：2回（正答 1回・誤答 1回）/u)
+    assertProgressReviewEvidence(app.host, incorrect.attemptId, instance.instanceId)
+    assert.deepEqual(JSON.parse(exportLocalData(() => app.dom.window.localStorage)), expected)
+  } finally {
+    await app?.close()
   }
 })
 
