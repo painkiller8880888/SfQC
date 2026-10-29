@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 
 const html = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8')
+await assert.rejects(access(new URL('../dist/map-poc.html', import.meta.url)), { code: 'ENOENT' },
+  'the development-only map PoC must not be published')
 assert.match(html, /lang="ja"/, 'production HTML should declare Japanese')
 
 const notFoundHtml = await readFile(new URL('../dist/404.html', import.meta.url), 'utf8')
