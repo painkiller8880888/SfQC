@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   Background,
@@ -19,11 +18,10 @@ function MapPoc() {
   const { fitView } = useReactFlow()
   const [nodes, setNodes, onNodesChange] = useNodesState<MapPocNode>(initialGraph.nodes)
   const [edges, , onEdgesChange] = useEdgesState(initialGraph.edges)
-  const [selectedTitle, setSelectedTitle] = useState('')
+  const selectedTitle = nodes.find((node) => node.selected)?.data.label ?? ''
 
   function resetLayout() {
     setNodes(createMapPocGraph().nodes)
-    setSelectedTitle('')
     window.requestAnimationFrame(() => void fitView({ padding: 0.14, duration: 180 }))
   }
 
@@ -46,13 +44,12 @@ function MapPoc() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onNodeClick={(_, node) => setSelectedTitle(node.data.label)}
           nodesConnectable={false}
           edgesReconnectable={false}
           deleteKeyCode={null}
           fitView
           fitViewOptions={{ padding: 0.14 }}
-          minZoom={0.12}
+          minZoom={0.05}
           maxZoom={2}
         >
           <Background gap={24} />
