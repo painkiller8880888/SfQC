@@ -16,17 +16,20 @@ import '@xyflow/react/dist/style.css'
 import './lesson-map-view.css'
 import { createMapPocGraph, type MapPocNode } from './map-poc-graph.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
+import type { ManualProgressCommand, ManualProgressState } from './manual-progress.mjs'
 import { LessonDetailCard } from './lesson-view'
 
 type LessonMapViewProps = {
   viewport: Viewport | null
   selectedLessonId: string | null
+  manualProgress: ManualProgressState
+  onManualProgressAction: (lessonId: string, action: ManualProgressCommand) => void
   onViewportChange: (viewport: Viewport) => void
   onSelectionChange: (lessonId: string | null) => void
   clearSelectionRef: { current: (() => void) | null }
 }
 
-function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, onViewportChange, onSelectionChange, clearSelectionRef }: LessonMapViewProps) {
+function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manualProgress, onManualProgressAction, onViewportChange, onSelectionChange, clearSelectionRef }: LessonMapViewProps) {
   const graph = useMemo(() => createMapPocGraph(), [])
   const [nodes, setNodes, onNodesChange] = useNodesState<MapPocNode>(graph.nodes.map((node) => ({
     ...node,
@@ -186,6 +189,8 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, onVi
       {selectedLesson && <LessonDetailCard
         key={selectedLesson.lessonId}
         lesson={selectedLesson}
+        manualProgress={manualProgress[selectedLesson.lessonId]}
+        onManualProgressAction={(action) => onManualProgressAction(selectedLesson.lessonId, action)}
         headingRef={detailHeadingRef}
         onClose={() => clearSelection(true)}
       />}

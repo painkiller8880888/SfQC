@@ -799,6 +799,87 @@ test('integrated learning map details use available lesson references and existi
   }
 })
 
+test('manual map progress stays separate from practice data, supports explicit controls, and resets on reload', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const savedPracticeData = window.localStorage.getItem('sfqc:local-data')
+    await click(linkFor(app.host, '学習マップ'))
+
+    assert.match(app.host.textContent, /手動完了 0 \/ 34/u)
+    assert.match(app.host.querySelector('.map-toolbar').textContent, /手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。/u)
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    let detail = app.host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：未開始/u)
+    assert.match(detail.textContent, /手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。/u)
+
+    await click(buttonFor(detail, 'Start'))
+    await settleEffects(window)
+    detail = app.host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
+    assert.equal(buttonFor(detail, 'Start'), undefined)
+    assert.equal(window.document.activeElement, buttonFor(detail, 'Mark completed'))
+
+    for (const checkbox of detail.querySelectorAll('input[type="checkbox"]')) await click(checkbox)
+    detail = app.host.querySelector('.lesson-detail-card')
+    assert.ok([...detail.querySelectorAll('input[type="checkbox"]')].every((checkbox) => checkbox.checked))
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
+    assert.match(app.host.textContent, /手動完了 0 \/ 34/u)
+
+    await click(buttonFor(detail, 'Mark completed'))
+    await settleEffects(window)
+    detail = app.host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：完了/u)
+    assert.match(app.host.textContent, /手動完了 1 \/ 34/u)
+    assert.equal(window.document.activeElement, buttonFor(detail, 'Reopen'))
+    await click(detail.querySelector('input[type="checkbox"]'))
+    detail = app.host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：完了/u)
+    assert.match(app.host.textContent, /手動完了 1 \/ 34/u)
+
+    await click(buttonFor(detail, 'Reopen'))
+    await settleEffects(window)
+    detail = app.host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
+    assert.equal(detail.querySelector('input[type="checkbox"]').checked, false)
+    assert.match(app.host.textContent, /手動完了 0 \/ 34/u)
+    assert.equal(window.document.activeElement, buttonFor(detail, 'Mark completed'))
+
+    await click(app.host.querySelector('.react-flow__node[data-id="math-arithmetic"]'))
+    detail = app.host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：未開始/u)
+    assert.ok([...detail.querySelectorAll('input[type="checkbox"]')].every((checkbox) => !checkbox.checked))
+    await click(buttonFor(detail, 'Mark completed'))
+    await settleEffects(window)
+    assert.match(app.host.textContent, /手動完了 1 \/ 34/u)
+
+    await click(buttonFor(app.host, 'Reopen'))
+    await settleEffects(window)
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    detail = app.host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
+    assert.equal(detail.querySelector('input[type="checkbox"]').checked, false)
+
+    await click(linkFor(detail, '解説を読む'))
+    await click(linkFor(app.host, '学習マップ'))
+    assert.match(app.host.querySelector('.lesson-detail-card .manual-progress-status').textContent, /手動進捗：学習中/u)
+    await click(buttonFor(app.host, '教材一覧'))
+    await click(buttonFor(app.host, 'マップ表示'))
+    assert.match(app.host.querySelector('.lesson-detail-card .manual-progress-status').textContent, /手動進捗：学習中/u)
+
+    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
+    await app.remountAt('#/map')
+    assert.match(app.host.textContent, /手動完了 0 \/ 34/u)
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    detail = app.host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：未開始/u)
+    assert.ok([...detail.querySelectorAll('input[type="checkbox"]')].every((checkbox) => !checkbox.checked))
+    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
+  } finally {
+    await app.close()
+  }
+})
+
 test('integrated learning map resets detail scrolling when the selected lesson changes', async () => {
   const app = await createHarness()
   try {

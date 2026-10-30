@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from 'react'
+import { useRef, type ReactNode, type RefObject } from 'react'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { availablePracticeQuestions } from './practice-actions.mjs'
 import { parseLessonRef, type IncludedLessonDefinition, type LessonDefinition, type LessonRegistry } from './lesson-contract.mjs'
@@ -6,6 +6,7 @@ import { routeToHash, type AppRoute } from './resolve-screen.mjs'
 import type { NavigationIntent } from './route-history.mjs'
 import { FigureRef } from './figures/figure-ref'
 import type { ProgressData } from './progress-data.mjs'
+import type { ManualLessonProgress, ManualProgressCommand } from './manual-progress.mjs'
 
 export function resolveLessonRef(reference: string, registry: LessonRegistry = lessonRegistry): AppRoute | null {
   const parsed = parseLessonRef(reference)
@@ -176,14 +177,24 @@ function LessonCard({ lesson, registry, progress }: {
   </article>
 }
 
-export function LessonDetailCard({ lesson, registry = lessonRegistry, headingRef, onClose }: {
+export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProgress, onManualProgressAction, headingRef, onClose }: {
   lesson: LessonDefinition
   registry?: LessonRegistry
+  manualProgress: ManualLessonProgress
+  onManualProgressAction: (action: ManualProgressCommand) => void
   headingRef?: RefObject<HTMLHeadingElement | null>
   onClose: () => void
 }) {
   const hasPractice = lesson.availability === 'included'
     && availablePracticeQuestions().some((question) => lesson.questionIds.includes(question.questionId))
+  const markCompletedRef = useRef<HTMLButtonElement>(null)
+  const reopenRef = useRef<HTMLButtonElement>(null)
+  const applyProgressAction = (action: ManualProgressCommand, nextActionRef: RefObject<HTMLButtonElement | null>) => {
+    onManualProgressAction(action)
+    window.requestAnimationFrame(() => nextActionRef.current?.focus({ preventScroll: true }))
+  }
+  const manualStatus = manualProgress.status === 'not-started' ? '未開始'
+    : manualProgress.status === 'started' ? '学習中' : '完了'
 
   return <aside className="lesson-detail-card" aria-labelledby={`lesson-detail-title-${lesson.lessonId}`}>
     <header className="lesson-detail-header">
@@ -198,7 +209,26 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, headingRef
     <div className="lesson-detail-content">
       <section aria-labelledby={`lesson-detail-objectives-${lesson.lessonId}`}>
         <h3 id={`lesson-detail-objectives-${lesson.lessonId}`}>学習目標</h3>
-        <ul>{lesson.learningObjectives.map((objective) => <li key={objective}>{objective}</li>)}</ul>
+        <ul className="lesson-objectives">{lesson.learningObjectives.map((objective, index) => <li key={objective}>
+          <label className="lesson-objective-check">
+            <input
+              type="checkbox"
+              checked={manualProgress.checks[index] ?? false}
+              onChange={(event) => onManualProgressAction({ type: 'check', index, checked: event.currentTarget.checked })}
+            />
+            <span>{objective}</span>
+          </label>
+        </li>)}</ul>
+      </section>
+      <section className="manual-progress-controls" aria-labelledby={`manual-progress-title-${lesson.lessonId}`}>
+        <h3 id={`manual-progress-title-${lesson.lessonId}`}>手動進捗</h3>
+        <p className="manual-progress-status" aria-live="polite">手動進捗：{manualStatus}</p>
+        <p className="manual-progress-notice">手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。</p>
+        <div className="manual-progress-actions">
+          {manualProgress.status === 'not-started' && <button type="button" onClick={() => applyProgressAction({ type: 'start' }, markCompletedRef)}>Start</button>}
+          {manualProgress.status !== 'completed' && <button ref={markCompletedRef} type="button" onClick={() => applyProgressAction({ type: 'complete' }, reopenRef)}>Mark completed</button>}
+          {manualProgress.status === 'completed' && <button ref={reopenRef} type="button" onClick={() => applyProgressAction({ type: 'reopen' }, markCompletedRef)}>Reopen</button>}
+        </div>
       </section>
       <ReferenceGroups lesson={lesson} registry={registry} />
       <nav className="lesson-detail-actions" aria-label={`${lesson.title}の関連画面`}>

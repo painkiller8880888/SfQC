@@ -160,6 +160,64 @@
   padding-inline-start: 1.5rem;
 }
 
+.lesson-detail-content > section > .lesson-objectives {
+  padding-inline-start: 0;
+  list-style: none;
+}
+
+.lesson-objective-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-block: 0.35rem;
+}
+
+.lesson-objective-check input {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin: 0.25rem 0 0;
+}
+
+.manual-progress-controls {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.manual-progress-controls .manual-progress-status,
+.manual-progress-controls .manual-progress-notice {
+  margin: 0.4rem 0 0;
+}
+
+.manual-progress-controls .manual-progress-notice {
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.manual-progress-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.manual-progress-actions button {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #64748b;
+  border-radius: 0.4rem;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.manual-progress-actions button:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+}
+
 .lesson-detail-actions {
   display: grid;
   gap: 0.5rem;
