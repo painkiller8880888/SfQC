@@ -17,7 +17,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
   })
   const previousWindow = globalThis.window
   try {
-    const { LessonMap, LessonReference, LessonRouteContent, ProgressView, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
+    const { LessonDetailCard, LessonMap, LessonReference, LessonRouteContent, ProgressView, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
     const render = (component, props = {}) => renderToStaticMarkup(createElement(component, props))
     const emptyData = { schemaVersion: 2, questionInstances: [], answerAttempts: [], reviewEvents: [] }
     const emptyProgress = deriveProgress(emptyData, lessonRegistry, Date.parse('2026-10-27T00:00:00.000Z'))
@@ -90,6 +90,30 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.doesNotMatch(conditional, /<a\b/u)
 
     const descriptive = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'descriptive-statistics')
+    const descriptiveCard = render(LessonDetailCard, { lesson: descriptive, onClose: () => {} })
+    assert.match(descriptiveCard, /<h2[^>]*>基本統計量<\/h2>/u)
+    assert.match(descriptiveCard, /収録済み：4 \/ 4 節/u)
+    assert.match(descriptiveCard, /学習目標/u)
+    assert.match(descriptiveCard, /href="#\/lesson\/descriptive-statistics" data-nav-intent="normal">解説を読む/u)
+    assert.match(descriptiveCard, /href="#\/practice" data-nav-intent="normal">演習問題一覧を開く（全単元共通）/u)
+    assert.match(descriptiveCard, /href="#\/progress" data-nav-intent="normal">全単元の演習記録・集計を見る/u)
+    assert.match(descriptiveCard, /共通必須前提/u)
+    assert.match(descriptiveCard, /任意復習/u)
+    assert.doesNotMatch(descriptiveCard, /方法条件付き必須/u)
+
+    const planned = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'mean-inference')
+    const plannedCard = render(LessonDetailCard, { lesson: planned, onClose: () => {} })
+    assert.match(plannedCard, /母平均の区間推定・検定/u)
+    assert.match(plannedCard, /未収録/u)
+    assert.match(plannedCard, /方法条件付き必須/u)
+    assert.match(plannedCard, /適用条件/u)
+    assert.doesNotMatch(plannedCard, /href="#\/lesson\/mean-inference/u)
+    assert.doesNotMatch(plannedCard, /href="#\/practice"/u)
+
+    const arithmetic = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'math-arithmetic')
+    const arithmeticCard = render(LessonDetailCard, { lesson: arithmetic, onClose: () => {} })
+    assert.doesNotMatch(arithmeticCard, /演習問題一覧を開く/u)
+
     const variance = render(LessonRouteContent, {
       lesson: descriptive,
       sectionId: 'variance',
