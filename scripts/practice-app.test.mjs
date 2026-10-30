@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { act, createElement } from 'react'
+import { act, createElement, StrictMode } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
 import { exportLocalData, importLocalData, readLocalData } from '../src/local-data.mjs'
+import { serializeBackup } from '../src/backup.mjs'
 import { createRouteHistoryState, navigateRouteHistory } from '../src/route-history.mjs'
 import { routeToHash } from '../src/resolve-screen.mjs'
+import { createInitialMapState, MAP_STATE_KEY, saveMapState } from '../src/map-state.mjs'
+import { lessonRegistry } from '../src/lesson-registry.mjs'
 
 const globalKeys = [
   'window', 'document', 'navigator', 'Element', 'HTMLElement', 'Node', 'Event', 'MouseEvent',
@@ -18,7 +21,7 @@ class TestResizeObserver {
   disconnect() {}
 }
 
-async function createHarness() {
+async function createHarness({ strict = false } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://sfqc.test/SfQC/#/practice',
     pretendToBeVisual: true,
@@ -65,7 +68,8 @@ async function createHarness() {
   const { createRoot } = await import('react-dom/client')
   const host = dom.window.document.getElementById('root')
   let root = createRoot(host)
-  const mount = async () => act(async () => root.render(createElement(App)))
+  const renderApp = () => root.render(strict ? createElement(StrictMode, null, createElement(App)) : createElement(App))
+  const mount = async () => act(async () => renderApp())
   const unmount = async () => act(async () => root.unmount())
   await mount()
 
@@ -799,7 +803,7 @@ test('integrated learning map details use available lesson references and existi
   }
 })
 
-test('manual map progress stays separate from practice data, supports explicit controls, and resets on reload', async () => {
+test('manual map progress stays separate from practice data, supports explicit controls, and persists on reload', async () => {
   const app = await createHarness()
   try {
     const { window } = app.dom
@@ -812,11 +816,11 @@ test('manual map progress stays separate from practice data, supports explicit c
     await click(linkFor(app.host, '学習マップ'))
 
     assert.match(app.host.textContent, /手動完了 0 \/ 34/u)
-    assert.match(app.host.querySelector('.map-toolbar').textContent, /手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。/u)
+    assert.match(app.host.querySelector('.map-toolbar').textContent, /手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。/u)
     await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
     let detail = app.host.querySelector('.lesson-detail-card')
     assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：未開始/u)
-    assert.match(detail.textContent, /手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。/u)
+    assert.match(detail.textContent, /手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。/u)
 
     await click(buttonFor(detail, 'Start'))
     await settleEffects(window)
@@ -880,6 +884,7 @@ test('manual map progress stays separate from practice data, supports explicit c
     assert.ok(buttonFor(detail, 'Mark completed'))
     assert.equal(buttonFor(detail, 'Reopen'), undefined)
     assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
+    assert.ok(window.localStorage.getItem(MAP_STATE_KEY))
 
     await click(linkFor(detail, '演習問題一覧を開く（全単元共通）'))
     assert.equal(window.location.hash, '#/practice')
@@ -931,12 +936,119 @@ test('manual map progress stays separate from practice data, supports explicit c
 
     assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
     await app.remountAt('#/map')
-    assert.match(app.host.textContent, /手動完了 0 \/ 34/u)
+    assert.match(app.host.textContent, /手動完了 1 \/ 34/u)
     await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
     detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：未開始/u)
-    assert.ok([...detail.querySelectorAll('input[type="checkbox"]')].every((checkbox) => !checkbox.checked))
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：完了/u)
+    assert.deepEqual([...detail.querySelectorAll('input[type="checkbox"]')].map((checkbox) => checkbox.checked), checkedObjectives)
     assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
+  } finally {
+    await app.close()
+  }
+})
+
+test('StrictMode manual progress writes once per user action and failed writes do not update the UI', async () => {
+  const app = await createHarness({ strict: true })
+  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
+  const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
+  try {
+    const { window } = app.dom
+    const storage = window.localStorage
+    const original = storagePrototype.setItem
+    let writes = 0
+    let rejectWrites = false
+    Object.defineProperty(storagePrototype, 'setItem', {
+      configurable: true,
+      writable: true,
+      value: function (key, value) {
+        if (key === MAP_STATE_KEY) {
+          writes++
+          if (rejectWrites) throw new Error('quota')
+        }
+        return original.call(this, key, value)
+      },
+    })
+    assert.equal(storage.getItem(MAP_STATE_KEY), null)
+    assert.equal(writes, 0)
+    await click(linkFor(app.host, '学習マップ'))
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    let detail = app.host.querySelector('.lesson-detail-card')
+    await click(buttonFor(detail, 'Start'))
+    await settleEffects(window)
+    assert.equal(writes, 1)
+    assert.match(app.host.querySelector('.manual-progress-status').textContent, /学習中/u)
+
+    rejectWrites = true
+    detail = app.host.querySelector('.lesson-detail-card')
+    await click(detail.querySelector('input[type="checkbox"]'))
+    await settleEffects(window)
+    assert.equal(writes, 2)
+    assert.equal(app.host.querySelector('.lesson-detail-card input[type="checkbox"]').checked, false)
+    assert.match(app.host.querySelector('.map-route-messages').textContent, /保存できませんでした/u)
+  } finally {
+    if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
+    await app.close()
+  }
+})
+
+test('manual progress rejects an old tab write after another tab changes map state', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    const external = createInitialMapState(lessonRegistry)
+    const id = 'descriptive-statistics'
+    external.lessons[id] = { ...external.lessons[id], status: 'completed', completedAt: '2026-10-30T02:00:00.000Z' }
+    saveMapState(external, null, lessonRegistry, () => window.localStorage)
+    const raw = window.localStorage.getItem(MAP_STATE_KEY)
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
+    await settleEffects(window)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), raw)
+    assert.match(app.host.querySelector('.lesson-detail-card .manual-progress-status').textContent, /完了/u)
+    assert.match(app.host.querySelector('.map-route-messages').textContent, /別の画面で手動進捗が変更/u)
+  } finally {
+    await app.close()
+  }
+})
+
+test('data manager imports integrated backups and keeps map progress when importing a legacy file', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const prompts = []
+    window.confirm = (message) => { prompts.push(message); return true }
+    await click(linkFor(app.host, 'データ管理'))
+    assert.ok(buttonFor(app.host, '全データを書き出し'))
+    assert.ok(buttonFor(app.host, '演習記録のみを書き出し（schema v2）'))
+
+    const map = createInitialMapState(lessonRegistry)
+    map.lessons['descriptive-statistics'] = {
+      ...map.lessons['descriptive-statistics'], status: 'completed', completedAt: '2026-10-30T03:00:00.000Z',
+    }
+    const integrated = serializeBackup(JSON.parse(exportLocalData(() => window.localStorage)), map)
+    const input = app.host.querySelector('#backup-file')
+    const loadFile = async (contents) => {
+      Object.defineProperty(input, 'files', {
+        configurable: true,
+        value: [new window.File([contents], 'backup.json', { type: 'application/json' })],
+      })
+      await act(async () => input.dispatchEvent(new window.Event('change', { bubbles: true })))
+      await settleEffects(window)
+    }
+    await loadFile(integrated)
+    assert.equal(prompts.length, 1)
+    assert.match(prompts[0], /未保存/u)
+    assert.match(prompts[0], /手動完了 1単元/u)
+    assert.match(app.host.querySelector('.data-message').textContent, /演習記録と手動進捗・配置を復元/u)
+    const savedMapRaw = window.localStorage.getItem(MAP_STATE_KEY)
+    assert.ok(savedMapRaw)
+
+    await loadFile(exportLocalData(() => window.localStorage))
+    assert.equal(prompts.length, 2)
+    assert.match(prompts[1], /手動進捗と配置は維持/u)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), savedMapRaw)
+    assert.match(app.host.querySelector('.data-message').textContent, /演習記録のみを復元/u)
   } finally {
     await app.close()
   }

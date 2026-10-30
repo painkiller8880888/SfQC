@@ -34,6 +34,16 @@ npm run preview -- --host 127.0.0.1
 
 previewは `http://127.0.0.1:4173/SfQC/` で確認できます。`check`はTypeScriptの型検査、画面URL解決・問題契約・ブラウザ内データ保存とJSON復元のテストを実行し、`build`は`check`・production build・生成HTML/404ページの検査を実行します。技術選定と検証結果は[技術選定記録](docs/TECH_STACK_DECISION.md)を参照してください。
 
+## 破損データの保守復旧
+
+`sfqc-recovery-raw`形式の救出ファイルは保全専用で、アプリの通常の読み込み操作では復元できません。保守者が復旧する場合は、同じブラウザープロファイルで対象アプリのoriginを開き、開発者ツールのApplication（またはStorage）> Local Storageから次のキーを個別に扱います。
+
+- `raw["sfqc:local-data"]`を`sfqc:local-data`の値へ、その文字列のまま設定します。
+- `raw["sfqc:map-state:v1"]`を`sfqc:map-state:v1`の値へ、その文字列のまま設定します。
+- 対応する値が`null`なら、そのキーを削除します。空文字やJSON文字列の`"null"`は代わりに使いません。
+
+救出ファイルの外側JSONをキーの値として貼り付けず、元ファイルは編集せず保管してください。片方ずつ設定または削除した後にアプリを再読み込みし、データ管理画面で保存状態を確認します。
+
 ## CI と GitHub Pages
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) は `main` 向けPRで `npm ci` と `npm run build` を実行し、`main` へのpushで同じ検査の後に `dist/` をGitHub Pagesへdeployします。PRからはdeployしません。Actionsタブで各workflowの結果を確認できます。公開先は [https://painkiller8880888.github.io/SfQC/](https://painkiller8880888.github.io/SfQC/) です。
