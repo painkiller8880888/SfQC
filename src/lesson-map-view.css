@@ -1,3 +1,14 @@
+.map-graph-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.map-graph-layout.has-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+}
+
 .map-graph-view {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -77,8 +88,113 @@
   box-shadow: 0 0 0 2px #0f766e;
 }
 
+.lesson-detail-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid #cbd5e1;
+  background: #fff;
+}
+
+.lesson-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.lesson-detail-header h2 {
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.35;
+}
+
+.lesson-detail-header h2:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 3px;
+}
+
+.lesson-detail-header .lesson-status {
+  margin: 0.25rem 0 0;
+}
+
+.lesson-detail-close {
+  flex: 0 0 auto;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #64748b;
+  border-radius: 0.4rem;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.lesson-detail-close:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.lesson-detail-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0.25rem 0.75rem 1rem;
+  overflow-wrap: anywhere;
+}
+
+.lesson-detail-content > section > h3 {
+  margin: 0.75rem 0 0;
+  font-size: 1rem;
+}
+
+.lesson-detail-content > section > ul {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 1.5rem;
+}
+
+.lesson-detail-actions {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #cbd5e1;
+}
+
+.lesson-detail-actions a {
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .map-graph-layout.has-detail {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(18rem, 1fr) minmax(0, min(35vh, 18rem, calc(100% - 18rem)));
+  }
+
+  .map-graph-view {
+    grid-template-rows: auto minmax(12rem, 1fr);
+  }
+
+  .lesson-detail-card {
+    grid-row: 2;
+    border-top: 1px solid #cbd5e1;
+    border-left: 0;
+  }
+}
+
 @media (max-width: 480px) {
   .map-graph-toolbar {
     padding: 0.5rem;
+  }
+
+  .lesson-detail-header {
+    padding: 0.5rem 0.75rem;
   }
 }

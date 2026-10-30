@@ -167,6 +167,21 @@ async function settleEffects(window) {
   await act(async () => new Promise((resolve) => window.setTimeout(resolve, 30)))
 }
 
+async function pressKey(window, target, key) {
+  let event
+  await act(async () => {
+    event = new window.KeyboardEvent('keydown', {
+      key,
+      code: key === ' ' ? 'Space' : key,
+      bubbles: true,
+      cancelable: true,
+    })
+    target.dispatchEvent(event)
+    await new Promise((resolve) => window.requestAnimationFrame(resolve))
+  })
+  return event
+}
+
 test('fixed practice saves drafts per history entry, preserves attempts, and retries a saved result navigation', async () => {
   const app = await createHarness()
   try {
@@ -701,6 +716,7 @@ test('integrated learning map switches views and restores graph selection and vi
     const lessonNode = [...app.host.querySelectorAll('.react-flow__node')]
       .find((node) => node.textContent.includes('基本統計量'))
     assert.ok(lessonNode)
+    assert.equal(app.host.querySelector('.lesson-detail-card'), null)
     const selectedId = lessonNode.dataset.id
     await click(lessonNode)
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
@@ -743,6 +759,192 @@ test('integrated learning map switches views and restores graph selection and vi
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
     assert.equal(app.host.querySelector('.react-flow__node.selected').dataset.id, selectedId)
     assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, relayoutTransform)
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map details use available lesson references and existing routes', async () => {
+  const app = await createHarness()
+  try {
+    await click(linkFor(app.host, '学習マップ'))
+    const descriptiveNode = [...app.host.querySelectorAll('.react-flow__node')]
+      .find((node) => node.dataset.id === 'descriptive-statistics')
+    await click(descriptiveNode)
+    const detail = app.host.querySelector('.lesson-detail-card')
+    assert.ok(detail)
+    assert.match(detail.textContent, /学習目標/u)
+    assert.match(detail.textContent, /共通必須前提/u)
+    assert.match(detail.textContent, /任意復習/u)
+    assert.equal(linkFor(detail, '解説を読む')?.getAttribute('href'), '#/lesson/descriptive-statistics')
+    assert.equal(linkFor(detail, '演習問題一覧を開く（全単元共通）')?.getAttribute('href'), '#/practice')
+    assert.equal(linkFor(detail, '全単元の演習記録・集計を見る')?.getAttribute('href'), '#/progress')
+
+    await click(linkFor(detail, '演習問題一覧を開く（全単元共通）'))
+    assert.equal(app.dom.window.location.hash, '#/practice')
+    await click(linkFor(app.host, '学習マップ'))
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
+    assert.ok(app.host.querySelector('.lesson-detail-card'))
+
+    await click(linkFor(app.host.querySelector('.lesson-detail-card'), '解説を読む'))
+    assert.equal(app.dom.window.location.hash, '#/lesson/descriptive-statistics')
+    assert.match(app.host.querySelector('.lesson-panel').textContent, /学習目標/u)
+    await click(linkFor(app.host, '学習マップ'))
+    assert.ok(app.host.querySelector('.lesson-detail-card'))
+
+    await click(linkFor(app.host.querySelector('.lesson-detail-card'), '全単元の演習記録・集計を見る'))
+    assert.equal(app.dom.window.location.hash, '#/progress')
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map resets detail scrolling when the selected lesson changes', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    const firstContent = app.host.querySelector('.lesson-detail-content')
+    firstContent.scrollTop = 400
+    assert.equal(firstContent.scrollTop, 400)
+
+    await click(app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
+    const secondContent = app.host.querySelector('.lesson-detail-content')
+    assert.notEqual(secondContent, firstContent)
+    assert.equal(secondContent.scrollTop, 0)
+
+    secondContent.scrollTop = 400
+    const nextNode = app.host.querySelector('.react-flow__node[data-id="math-arithmetic"]')
+    nextNode.focus()
+    await pressKey(window, nextNode, 'Enter')
+    assert.equal(window.document.activeElement, app.host.querySelector('.lesson-detail-header h2'))
+    assert.equal(app.host.querySelector('.lesson-detail-content').scrollTop, 0)
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map shifts the viewport only when the selected node is clipped', async () => {
+  const app = await createHarness()
+  try {
+    await click(linkFor(app.host, '学習マップ'))
+    await settleEffects(app.dom.window)
+    const canvas = app.host.querySelector('.map-canvas')
+    const viewport = app.host.querySelector('.react-flow__viewport')
+    const canvasRect = (width) => ({ left: 0, top: 0, right: width, bottom: 600, width, height: 600 })
+    canvas.getBoundingClientRect = () => canvasRect(app.host.querySelector('.map-graph-layout.has-detail') ? 900 : 1200)
+
+    const visibleNode = app.host.querySelector('.react-flow__node[data-id="math-arithmetic"]')
+    visibleNode.getBoundingClientRect = () => ({ left: 300, top: 100, right: 572, bottom: 160, width: 272, height: 60 })
+    const beforeVisibleSelection = viewport.style.transform
+    await click(visibleNode)
+    await settleEffects(app.dom.window)
+    assert.equal(viewport.style.transform, beforeVisibleSelection)
+
+    await click(buttonFor(app.host, '閉じる'))
+    await settleEffects(app.dom.window)
+    const clippedNode = app.host.querySelector('.react-flow__node[data-id="control-charts"]')
+    clippedNode.getBoundingClientRect = () => ({ left: 880, top: 100, right: 1152, bottom: 160, width: 272, height: 60 })
+    const beforeCorrection = viewport.style.transform
+    await click(clippedNode)
+    await settleEffects(app.dom.window)
+    const afterCorrection = viewport.style.transform
+    const transformValues = (value) => value.match(/translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\) scale\(([\d.]+)\)/u)
+    const beforeValues = transformValues(beforeCorrection)
+    const afterValues = transformValues(afterCorrection)
+    assert.ok(beforeValues, beforeCorrection)
+    assert.ok(afterValues, afterCorrection)
+    assert.equal(afterValues[3], beforeValues[3])
+    assert.ok(Number(afterValues[1]) < Number(beforeValues[1]))
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map keyboard focus and Escape work throughout the map', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+    const node = [...app.host.querySelectorAll('.react-flow__node')]
+      .find((item) => item.dataset.id === 'mean-inference')
+    node.focus()
+    await pressKey(window, node, 'Enter')
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
+    assert.equal(window.document.activeElement, app.host.querySelector('.lesson-detail-header h2'))
+    assert.match(app.host.querySelector('.lesson-detail-card').textContent, /未収録/u)
+    assert.match(app.host.querySelector('.lesson-detail-card').textContent, /方法条件付き必須/u)
+    assert.doesNotMatch(app.host.querySelector('.lesson-detail-card').innerHTML, /href="#\/lesson\/mean-inference/u)
+    assert.equal(linkFor(app.host.querySelector('.lesson-detail-card'), '演習問題一覧を開く（全単元共通）'), undefined)
+
+    await pressKey(window, node, ' ')
+    assert.equal(window.document.activeElement, app.host.querySelector('.lesson-detail-header h2'))
+
+    const escapeFrom = async (getTarget) => {
+      const selected = app.host.querySelector('.react-flow__node[data-id="mean-inference"]')
+      await click(selected)
+      const target = getTarget()
+      target.focus()
+      const event = await pressKey(window, target, 'Escape')
+      assert.equal(event.defaultPrevented, true)
+      assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
+      assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
+    }
+
+    await escapeFrom(() => app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
+    await escapeFrom(() => linkFor(app.host.querySelector('.lesson-detail-card'), '全単元の演習記録・集計を見る'))
+    await escapeFrom(() => buttonFor(app.host, 'Re-layout'))
+    await escapeFrom(() => buttonFor(app.host, 'マップ表示'))
+
+    await click(app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
+    await click(buttonFor(app.host, '閉じる'))
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
+    assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map cancels pending focus on close, view change, and route change', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+    const node = app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]')
+    await click(node)
+    node.focus()
+    await act(async () => {
+      const detailHeading = app.host.querySelector('.lesson-detail-header h2')
+      node.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))
+      buttonFor(app.host, '閉じる').click()
+      await new Promise((resolve) => window.requestAnimationFrame(resolve))
+      assert.notEqual(window.document.activeElement, detailHeading)
+    })
+    assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
+
+    await click(node)
+    node.focus()
+    await act(async () => {
+      const detailHeading = app.host.querySelector('.lesson-detail-header h2')
+      node.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))
+      buttonFor(app.host, '教材一覧').click()
+      await new Promise((resolve) => window.setTimeout(resolve, 30))
+      assert.notEqual(window.document.activeElement, detailHeading)
+    })
+    assert.equal(app.host.querySelector('.lesson-detail-card'), null)
+
+    await click(buttonFor(app.host, 'マップ表示'))
+    const selectedNode = app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]')
+    selectedNode.focus()
+    await act(async () => {
+      const detailHeading = app.host.querySelector('.lesson-detail-header h2')
+      selectedNode.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))
+      linkFor(app.host, '進捗').click()
+      await new Promise((resolve) => window.setTimeout(resolve, 30))
+      assert.notEqual(window.document.activeElement, detailHeading)
+    })
+    assert.equal(app.dom.window.location.hash, '#/progress')
   } finally {
     await app.close()
   }

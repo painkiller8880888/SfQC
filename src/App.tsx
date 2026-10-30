@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { Viewport } from '@xyflow/react'
 import {
   resolveRoute,
@@ -138,6 +138,7 @@ function App() {
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null)
   const mapViewportRef = useRef<Viewport | null>(null)
   const selectedLessonIdRef = useRef<string | null>(null)
+  const clearMapSelectionRef = useRef<(() => void) | null>(null)
   const mapGraphContentRef = useRef<HTMLDivElement>(null)
   const mapListContentRef = useRef<HTMLDivElement>(null)
   const mapGraphButtonRef = useRef<HTMLButtonElement>(null)
@@ -600,6 +601,18 @@ function App() {
     }
   }
 
+  const handleMapKeyDownCapture = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Escape' || selectedLessonIdRef.current === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (mapView === 'graph') {
+      if (clearMapSelectionRef.current) clearMapSelectionRef.current()
+      else selectedLessonIdRef.current = null
+    } else {
+      selectedLessonIdRef.current = null
+    }
+  }
+
   const routeMessages = <>
     {storageIssue && (
       <p className="storage-alert" role="alert">
@@ -732,7 +745,7 @@ function App() {
       </header>
 
       {screen === 'map' ? (
-        <main className="map-workspace">
+        <main className="map-workspace" onKeyDownCapture={handleMapKeyDownCapture}>
           <div className="map-route-messages">{routeMessages}</div>
           {view.historyState.returnStack.length > 0 && (
             <nav className="return-navigation map-return-navigation" aria-label="復習から戻る">
@@ -771,6 +784,7 @@ function App() {
                 selectedLessonId={selectedLessonIdRef.current}
                 onViewportChange={onMapMove}
                 onSelectionChange={onMapSelectionChange}
+                clearSelectionRef={clearMapSelectionRef}
               />
             </div>
           ) : (

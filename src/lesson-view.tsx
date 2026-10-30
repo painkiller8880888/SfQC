@@ -176,6 +176,42 @@ function LessonCard({ lesson, registry, progress }: {
   </article>
 }
 
+export function LessonDetailCard({ lesson, registry = lessonRegistry, headingRef, onClose }: {
+  lesson: LessonDefinition
+  registry?: LessonRegistry
+  headingRef?: RefObject<HTMLHeadingElement | null>
+  onClose: () => void
+}) {
+  const hasPractice = lesson.availability === 'included'
+    && availablePracticeQuestions().some((question) => lesson.questionIds.includes(question.questionId))
+
+  return <aside className="lesson-detail-card" aria-labelledby={`lesson-detail-title-${lesson.lessonId}`}>
+    <header className="lesson-detail-header">
+      <div>
+        <h2 id={`lesson-detail-title-${lesson.lessonId}`} ref={headingRef} tabIndex={-1}>{lesson.title}</h2>
+        <p className="lesson-status">{lesson.availability === 'included'
+          ? `収録済み：${lesson.sections.length} / ${lesson.declaredSectionIds.length} 節`
+          : '未収録'}</p>
+      </div>
+      <button type="button" className="lesson-detail-close" onClick={onClose} aria-label={`${lesson.title}の詳細を閉じる`}>閉じる</button>
+    </header>
+    <div className="lesson-detail-content">
+      <section aria-labelledby={`lesson-detail-objectives-${lesson.lessonId}`}>
+        <h3 id={`lesson-detail-objectives-${lesson.lessonId}`}>学習目標</h3>
+        <ul>{lesson.learningObjectives.map((objective) => <li key={objective}>{objective}</li>)}</ul>
+      </section>
+      <ReferenceGroups lesson={lesson} registry={registry} />
+      <nav className="lesson-detail-actions" aria-label={`${lesson.title}の関連画面`}>
+        {lesson.availability === 'included' && <InternalLink
+          route={{ kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: null }}
+        >解説を読む</InternalLink>}
+        {hasPractice && <InternalLink route={{ kind: 'practice' }}>演習問題一覧を開く（全単元共通）</InternalLink>}
+        <InternalLink route={{ kind: 'progress' }}>全単元の演習記録・集計を見る</InternalLink>
+      </nav>
+    </div>
+  </aside>
+}
+
 export function LessonMap({ registry = lessonRegistry, progress }: {
   registry?: LessonRegistry
   progress: ProgressData | null
