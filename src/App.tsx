@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react'
+import type { Viewport } from '@xyflow/react'
 import {
   resolveRoute,
   routeToHash,
@@ -27,6 +28,7 @@ import type { ReadonlyQuestionInstance } from './question-contract.mjs'
 import { resolveRouteData } from './route-data.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { LessonMap, LessonReference, LessonRouteContent, ProgressView, lessonRefLabel } from './lesson-view'
+import { LessonMapView } from './lesson-map-view'
 import { deriveProgress } from './progress-data.mjs'
 import {
   applyRouteNavigationEffect,
@@ -131,13 +133,26 @@ function App() {
   const [practiceError, setPracticeError] = useState('')
   const [practiceBusy, setPracticeBusy] = useState(false)
   const [pendingPracticeNavigation, setPendingPracticeNavigation] = useState<{ route: AppRoute; message: string; sourceEntryId: string } | null>(null)
+  const [mapView, setMapView] = useState<'graph' | 'list'>('graph')
   const headingRef = useRef<HTMLHeadingElement>(null)
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null)
+  const mapViewportRef = useRef<Viewport | null>(null)
+  const selectedLessonIdRef = useRef<string | null>(null)
+  const mapGraphContentRef = useRef<HTMLDivElement>(null)
+  const mapListContentRef = useRef<HTMLDivElement>(null)
+  const mapGraphButtonRef = useRef<HTMLButtonElement>(null)
+  const mapListButtonRef = useRef<HTMLButtonElement>(null)
   const viewRef = useRef(view)
   const navigationIdRef = useRef(0)
   const lastHandledRef = useRef('')
   const busyRef = useRef(false)
   const practiceBusyRef = useRef(false)
+  const onMapMove = useCallback((viewport: Viewport) => {
+    mapViewportRef.current = viewport
+  }, [])
+  const onMapSelectionChange = useCallback((lessonId: string | null) => {
+    selectedLessonIdRef.current = lessonId
+  }, [])
   const screen = screenForRoute(view.route)
   const current = screens[screen]
   const entityTitle = view.resolved.status === 'lesson'
@@ -574,6 +589,37 @@ function App() {
     }
   }, [storedData])
 
+  const changeMapView = (next: 'graph' | 'list') => {
+    const focusedContent = mapView === 'graph' ? mapGraphContentRef.current : mapListContentRef.current
+    const returnFocus = focusedContent?.contains(document.activeElement) ?? false
+    setMapView(next)
+    if (returnFocus) {
+      window.requestAnimationFrame(() => {
+        (next === 'graph' ? mapGraphButtonRef.current : mapListButtonRef.current)?.focus()
+      })
+    }
+  }
+
+  const routeMessages = <>
+    {storageIssue && (
+      <p className="storage-alert" role="alert">
+        {storageIssue.message} 保存データを空として扱ったり、自動で上書きしたりしません。データ管理画面で確認してください。
+      </p>
+    )}
+    {view.historyWarning && (
+      <p className="storage-alert" role="status">
+        このURLの復帰情報は利用できないため、保存データとURLだけで画面を開きました。読書位置や復習経路の一部は復元できないことがあります。
+      </p>
+    )}
+    {reviewMessage && <p className="storage-alert" role="status" aria-live="polite">{reviewMessage}</p>}
+    {pendingPracticeNavigation && (
+      <section className="practice-recovery" role="status" aria-live="polite">
+        <p>{pendingPracticeNavigation.message}</p>
+        <button type="button" onClick={handleRetryPracticeNavigation}>保存済みの画面を開く</button>
+      </section>
+    )}
+  </>
+
   const renderLessonRoute = () => {
     if (view.route.kind !== 'lesson-id') return null
     if (view.resolved.status === 'data-error') return <RouteProblem message="保存データに問題があるため、このID付き画面を解決できません。データ管理画面で保存状態を確認してください。" />
@@ -658,7 +704,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell" onClick={handleInternalClick}>
+    <div className={`app-shell${screen === 'map' ? ` map-app-shell${mapView === 'list' ? ' map-list-layout' : ''}` : ''}`} onClick={handleInternalClick}>
       <button
         type="button"
         className="skip-link"
@@ -685,31 +731,62 @@ function App() {
         </nav>
       </header>
 
+      {screen === 'map' ? (
+        <main className="map-workspace">
+          <div className="map-route-messages">{routeMessages}</div>
+          {view.historyState.returnStack.length > 0 && (
+            <nav className="return-navigation map-return-navigation" aria-label="復習から戻る">
+              <a href={view.historyState.returnStack.at(-1)?.routeHash} data-nav-intent="return">1段戻る</a>
+            </nav>
+          )}
+          <header className="map-toolbar">
+            <div className="map-heading">
+              <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
+              <p>{current.description}</p>
+            </div>
+            <div className="map-toolbar-actions">
+              <div className="map-mode-toggle" role="group" aria-label="学習マップの表示">
+                <button
+                  ref={mapGraphButtonRef}
+                  type="button"
+                  className="map-mode-button"
+                  aria-pressed={mapView === 'graph'}
+                  onClick={() => changeMapView('graph')}
+                >マップ表示</button>
+                <button
+                  ref={mapListButtonRef}
+                  type="button"
+                  className="map-mode-button"
+                  aria-pressed={mapView === 'list'}
+                  onClick={() => changeMapView('list')}
+                >教材一覧</button>
+              </div>
+              <a className="map-license-link" aria-label="使用ライブラリのライセンス" href={import.meta.env.BASE_URL + 'third-party-licenses.txt'}>ライセンス</a>
+            </div>
+          </header>
+          {mapView === 'graph' ? (
+            <div className="map-graph-content" ref={mapGraphContentRef}>
+              <LessonMapView
+                viewport={mapViewportRef.current}
+                selectedLessonId={selectedLessonIdRef.current}
+                onViewportChange={onMapMove}
+                onSelectionChange={onMapSelectionChange}
+              />
+            </div>
+          ) : (
+            <div className="map-list-content" ref={mapListContentRef}>
+              <article className="screen map-list-screen"><LessonMap progress={progress} /></article>
+            </div>
+          )}
+        </main>
+      ) : (
       <main className="page-content">
-        {storageIssue && (
-          <p className="storage-alert" role="alert">
-            {storageIssue.message} 保存データを空として扱ったり、自動で上書きしたりしません。データ管理画面で確認してください。
-          </p>
-        )}
-        {view.historyWarning && (
-          <p className="storage-alert" role="status">
-            このURLの復帰情報は利用できないため、保存データとURLだけで画面を開きました。読書位置や復習経路の一部は復元できないことがあります。
-          </p>
-        )}
-        {reviewMessage && <p className="storage-alert" role="status" aria-live="polite">{reviewMessage}</p>}
-        {pendingPracticeNavigation && (
-          <section className="practice-recovery" role="status" aria-live="polite">
-            <p>{pendingPracticeNavigation.message}</p>
-            <button type="button" onClick={handleRetryPracticeNavigation}>保存済みの画面を開く</button>
-          </section>
-        )}
+        {routeMessages}
         <article className="screen">
           <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
           <p className="description">{current.description}</p>
 
-          {screen === 'map' ? (
-            <LessonMap progress={progress} />
-          ) : screen === 'data' ? (
+          {screen === 'data' ? (
             <section className="data-panel" aria-labelledby="data-title">
               <h2 id="data-title">保存データ</h2>
               <p>出題snapshot：{hasCounts ? storedData.data.questionInstances.length + '件' : '読み込みエラー'}</p>
@@ -796,6 +873,7 @@ function App() {
           </footer>
         </article>
       </main>
+      )}
     </div>
   )
 }

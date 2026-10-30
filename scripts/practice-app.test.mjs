@@ -9,8 +9,14 @@ import { routeToHash } from '../src/resolve-screen.mjs'
 
 const globalKeys = [
   'window', 'document', 'navigator', 'Element', 'HTMLElement', 'Node', 'Event', 'MouseEvent',
-  'IS_REACT_ACT_ENVIRONMENT',
+  'ResizeObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'getComputedStyle', 'IS_REACT_ACT_ENVIRONMENT',
 ]
+
+class TestResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
 
 async function createHarness() {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
@@ -18,6 +24,9 @@ async function createHarness() {
     pretendToBeVisual: true,
   })
   const previousGlobals = new Map(globalKeys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
+  const previousMetrics = new Map(['offsetWidth', 'offsetHeight'].map((key) => [
+    key, Object.getOwnPropertyDescriptor(dom.window.HTMLElement.prototype, key),
+  ]))
   const globals = {
     window: dom.window,
     document: dom.window.document,
@@ -27,12 +36,26 @@ async function createHarness() {
     Node: dom.window.Node,
     Event: dom.window.Event,
     MouseEvent: dom.window.MouseEvent,
+    ResizeObserver: TestResizeObserver,
+    requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
+    cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
+    getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
     IS_REACT_ACT_ENVIRONMENT: true,
   }
   for (const [key, value] of Object.entries(globals)) {
     Object.defineProperty(globalThis, key, { value, configurable: true, writable: true })
   }
   dom.window.scrollTo = () => {}
+  dom.window.document.head.insertAdjacentHTML('beforeend', '<style>.react-flow__pane { z-index: 1 }</style>')
+  for (const [key, dimension] of [['offsetWidth', 1024], ['offsetHeight', 640]]) {
+    Object.defineProperty(dom.window.HTMLElement.prototype, key, {
+      configurable: true,
+      get() {
+        const inlineSize = Number.parseFloat(this.style?.[key === 'offsetWidth' ? 'width' : 'height'] ?? '')
+        return Number.isFinite(inlineSize) ? inlineSize : this.classList?.contains('react-flow') ? dimension : 0
+      },
+    })
+  }
   const server = await createServer({
     configFile: 'vite.config.ts',
     server: { middlewareMode: true, hmr: false },
@@ -70,6 +93,10 @@ async function createHarness() {
         const descriptor = previousGlobals.get(key)
         if (descriptor) Object.defineProperty(globalThis, key, descriptor)
         else delete globalThis[key]
+      }
+      for (const [key, descriptor] of previousMetrics) {
+        if (descriptor) Object.defineProperty(dom.window.HTMLElement.prototype, key, descriptor)
+        else delete dom.window.HTMLElement.prototype[key]
       }
     },
   }
@@ -489,6 +516,7 @@ test('P2 learning journey keeps the same question through review, progress, and 
     const { window } = app.dom
     const variance = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
     await click(linkFor(app.host, '学習マップ'))
+    await click(buttonFor(app.host, '教材一覧'))
     await click(linkForRoute(app.host, variance))
     assert.ok(app.host.querySelector('.variance-figure svg[role="img"]'))
     assert.match(app.host.querySelector('.variance-figure').textContent, /偏差平方和/u)
@@ -630,6 +658,7 @@ test('map and progress show derived observations, and progress links use normal 
     assert.equal(attempt.gradingResult.feedback.lessonRef, 'descriptive-statistics#variance')
 
     await click(linkFor(app.host, '学習マップ'))
+    await click(buttonFor(app.host, '教材一覧'))
     const descriptiveCard = [...app.host.querySelectorAll('.lesson-card')]
       .find((card) => card.querySelector('h3').textContent.includes('基本統計量'))
     assert.match(descriptiveCard.textContent, /状態：回答記録あり/u)
@@ -655,6 +684,61 @@ test('map and progress show derived observations, and progress links use normal 
     assert.equal(window.history.state.resumeAttemptId, null)
     assert.equal(app.host.querySelector('input[type="text"]').value, '')
     assert.equal(readLocalData().data.reviewEvents.length, 0)
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map switches views and restores graph selection and viewport across navigation', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+
+    assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
+    assert.ok(app.host.querySelector('#page-title'))
+
+    const lessonNode = [...app.host.querySelectorAll('.react-flow__node')]
+      .find((node) => node.textContent.includes('基本統計量'))
+    assert.ok(lessonNode)
+    const selectedId = lessonNode.dataset.id
+    await click(lessonNode)
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
+    assert.equal(app.host.querySelector('.map-selection').textContent, `選択中: ${lessonNode.textContent}`)
+
+    const viewport = app.host.querySelector('.react-flow__viewport')
+    const beforeZoom = viewport.style.transform
+    await click(app.host.querySelector('.react-flow__controls-zoomin'))
+    const zoomedTransform = viewport.style.transform
+    assert.notEqual(zoomedTransform, beforeZoom)
+
+    await click(app.host.querySelector('.react-flow__controls-zoomin'))
+    await click(app.host.querySelector('.react-flow__controls-zoomin'))
+    await click(buttonFor(app.host, '全体表示'))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 220)))
+    const fitViewTransform = app.host.querySelector('.react-flow__viewport').style.transform
+
+    const listButton = buttonFor(app.host, '教材一覧')
+    listButton.focus()
+    await click(listButton)
+    assert.equal(window.document.activeElement, listButton)
+    assert.ok(app.host.querySelector('.lesson-card'))
+    await click(buttonFor(app.host, 'マップ表示'))
+    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, fitViewTransform)
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
+    assert.equal(app.host.querySelector('.react-flow__node.selected').dataset.id, selectedId)
+
+    await click(buttonFor(app.host, 'Re-layout'))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 220)))
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
+    assert.equal(app.host.querySelector('.react-flow__node.selected').dataset.id, selectedId)
+    const relayoutTransform = app.host.querySelector('.react-flow__viewport').style.transform
+
+    await click(linkFor(app.host, '進捗'))
+    await click(linkFor(app.host, '学習マップ'))
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
+    assert.equal(app.host.querySelector('.react-flow__node.selected').dataset.id, selectedId)
+    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, relayoutTransform)
   } finally {
     await app.close()
   }

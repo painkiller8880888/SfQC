@@ -96,11 +96,11 @@ Service WorkerやPWAは導入していないため、ブラウザに読み込み
 
 READMEの`npm ci`、`npm run check`、`npm run build`、`npm run preview -- --host 127.0.0.1`で導入・型検査・build・previewを再現できる。`build`は型検査とproduction build後に生成HTMLのasset参照を確認する。`vite preview`はproduction buildのローカル確認用で、production serverとして使うものではない。実際のGitHub Pages公開はIssue #6の範囲である。別のテストフレームワークは追加していない。
 
-## Issue #46 React Flow + Dagre PoC
+## Issue #46/#47 React Flow + Dagre
 
-開発用の独立ページ`map-poc.html`で、registryから導出した共通必須前提グラフをReact Flowで表示し、Dagreで配置する。`@xyflow/react` 12.12.0と`@dagrejs/dagre` 3.1.3は2026-10-28にnpmの安定版とMITライセンスを確認し、PoC専用の`devDependencies`として固定した。React FlowはReact/React DOM 17以上をpeer dependencyとし、現行React 19を満たす。上流情報は[React Flow on npm](https://www.npmjs.com/package/@xyflow/react)、[React Flow repository and license](https://github.com/xyflow/xyflow/tree/main/packages/react)、[Dagre on npm](https://www.npmjs.com/package/@dagrejs/dagre)、[Dagre repository and license](https://github.com/dagrejs/dagre)を参照。ランタイムと推移依存のライセンスは[`public/third-party-licenses.txt`](../public/third-party-licenses.txt)に記録した。
+Issue #46では、registryから導出した共通必須前提グラフをReact Flowで表示し、Dagreで配置する独立PoCを検証した。Issue #47でこの描画を既存`#/map`へ統合し、productionでは全画面グラフと既存`LessonMap`を使う教材一覧を切り替えられる。`@xyflow/react` 12.12.0と`@dagrejs/dagre` 3.1.3は2026-10-28にnpmの安定版とMITライセンスを確認し、production `dependencies`として固定した。React FlowはReact/React DOM 17以上をpeer dependencyとし、現行React 19を満たす。上流情報は[React Flow on npm](https://www.npmjs.com/package/@xyflow/react)、[React Flow repository and license](https://github.com/xyflow/xyflow/tree/main/packages/react)、[Dagre on npm](https://www.npmjs.com/package/@dagrejs/dagre)、[Dagre repository and license](https://github.com/dagrejs/dagre)を参照。ランタイムと推移依存のライセンスは[`public/third-party-licenses.txt`](../public/third-party-licenses.txt)に記録した。
 
-通常のVite buildは既存`index.html`だけをentryにするため、PoCのHTML・JavaScript・CSSはGitHub Pagesへ含めない。PoCは`src/main.tsx`や既存`#/map`からimportせず、通常buildの成果物検査でもPoC HTMLが出力されないことを確認する。PoC専用の一時production previewはIssue #46の手動検証にだけ使い、恒久build設定には加えない。
+GitHub Pagesは引き続き既存`index.html`だけをentryにし、別のPoC HTMLは含めない。グラフのviewportと選択はAppのメモリ内でroute・表示切替をまたいで保持する。再表示時のノード座標はDagre初期配置へ戻る。配置の永続化は後続Issue #51の範囲とする。
 
 ## 参照資料
 
