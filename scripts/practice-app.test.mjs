@@ -799,6 +799,69 @@ test('integrated learning map details use available lesson references and existi
   }
 })
 
+test('integrated learning map resets detail scrolling when the selected lesson changes', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    const firstContent = app.host.querySelector('.lesson-detail-content')
+    firstContent.scrollTop = 400
+    assert.equal(firstContent.scrollTop, 400)
+
+    await click(app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
+    const secondContent = app.host.querySelector('.lesson-detail-content')
+    assert.notEqual(secondContent, firstContent)
+    assert.equal(secondContent.scrollTop, 0)
+
+    secondContent.scrollTop = 400
+    const nextNode = app.host.querySelector('.react-flow__node[data-id="math-arithmetic"]')
+    nextNode.focus()
+    await pressKey(window, nextNode, 'Enter')
+    assert.equal(window.document.activeElement, app.host.querySelector('.lesson-detail-header h2'))
+    assert.equal(app.host.querySelector('.lesson-detail-content').scrollTop, 0)
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map shifts the viewport only when the selected node is clipped', async () => {
+  const app = await createHarness()
+  try {
+    await click(linkFor(app.host, '学習マップ'))
+    await settleEffects(app.dom.window)
+    const canvas = app.host.querySelector('.map-canvas')
+    const viewport = app.host.querySelector('.react-flow__viewport')
+    const canvasRect = (width) => ({ left: 0, top: 0, right: width, bottom: 600, width, height: 600 })
+    canvas.getBoundingClientRect = () => canvasRect(app.host.querySelector('.map-graph-layout.has-detail') ? 900 : 1200)
+
+    const visibleNode = app.host.querySelector('.react-flow__node[data-id="math-arithmetic"]')
+    visibleNode.getBoundingClientRect = () => ({ left: 300, top: 100, right: 572, bottom: 160, width: 272, height: 60 })
+    const beforeVisibleSelection = viewport.style.transform
+    await click(visibleNode)
+    await settleEffects(app.dom.window)
+    assert.equal(viewport.style.transform, beforeVisibleSelection)
+
+    await click(buttonFor(app.host, '閉じる'))
+    await settleEffects(app.dom.window)
+    const clippedNode = app.host.querySelector('.react-flow__node[data-id="control-charts"]')
+    clippedNode.getBoundingClientRect = () => ({ left: 880, top: 100, right: 1152, bottom: 160, width: 272, height: 60 })
+    const beforeCorrection = viewport.style.transform
+    await click(clippedNode)
+    await settleEffects(app.dom.window)
+    const afterCorrection = viewport.style.transform
+    const transformValues = (value) => value.match(/translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\) scale\(([\d.]+)\)/u)
+    const beforeValues = transformValues(beforeCorrection)
+    const afterValues = transformValues(afterCorrection)
+    assert.ok(beforeValues, beforeCorrection)
+    assert.ok(afterValues, afterCorrection)
+    assert.equal(afterValues[3], beforeValues[3])
+    assert.ok(Number(afterValues[1]) < Number(beforeValues[1]))
+  } finally {
+    await app.close()
+  }
+})
+
 test('integrated learning map keyboard focus and Escape work throughout the map', async () => {
   const app = await createHarness()
   try {

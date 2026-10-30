@@ -172,11 +172,7 @@
   line-height: 1.6;
 }
 
-@media (max-width: 480px) {
-  .map-graph-toolbar {
-    padding: 0.5rem;
-  }
-
+@media (max-width: 768px) {
   .map-graph-layout.has-detail {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(18rem, 1fr) minmax(0, min(35vh, 18rem, calc(100% - 18rem)));
@@ -190,6 +186,12 @@
     grid-row: 2;
     border-top: 1px solid #cbd5e1;
     border-left: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .map-graph-toolbar {
+    padding: 0.5rem;
   }
 
   .lesson-detail-header {

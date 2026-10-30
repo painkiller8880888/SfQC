@@ -33,7 +33,8 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, onVi
     selected: node.id === initialSelectedLessonId,
   })))
   const [edges, , onEdgesChange] = useEdgesState(graph.edges)
-  const { fitView, getNodes } = useReactFlow()
+  const { fitView, getNodes, getViewport, setViewport } = useReactFlow()
+  const mapCanvasRef = useRef<HTMLElement>(null)
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
   const fitViewButtonRef = useRef<HTMLButtonElement>(null)
   const pendingKeyboardFocusRef = useRef<string | null>(null)
@@ -111,6 +112,33 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, onVi
     if (viewport === null) void fitView({ padding: 0.14 })
   }, [fitView, viewport])
 
+  useEffect(() => {
+    if (!selectedLessonId) return
+    const frame = window.requestAnimationFrame(() => {
+      const canvas = mapCanvasRef.current
+      const node = canvas?.querySelector<HTMLElement>(`.react-flow__node[data-id="${selectedLessonId}"]`)
+      if (!canvas || !node) return
+      const canvasRect = canvas.getBoundingClientRect()
+      const nodeRect = node.getBoundingClientRect()
+      const offset = (start: number, end: number, visibleStart: number, visibleEnd: number) => {
+        if (end - start > visibleEnd - visibleStart) return visibleStart - start
+        if (start < visibleStart) return visibleStart - start
+        if (end > visibleEnd) return visibleEnd - end
+        return 0
+      }
+      const x = offset(nodeRect.left, nodeRect.right, canvasRect.left, canvasRect.right)
+      const y = offset(nodeRect.top, nodeRect.bottom, canvasRect.top, canvasRect.bottom)
+      if (x === 0 && y === 0) return
+      const currentViewport = getViewport()
+      void setViewport({
+        x: currentViewport.x + x,
+        y: currentViewport.y + y,
+        zoom: currentViewport.zoom,
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [getViewport, selectedLessonId, setViewport])
+
   const resetLayout = () => {
     const selectedId = nodes.find((node) => node.selected)?.id ?? null
     const nextGraph = createMapPocGraph()
@@ -128,7 +156,7 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, onVi
             <button type="button" onClick={resetLayout}>Re-layout</button>
           </div>
         </div>
-        <section className="map-canvas" aria-label="教材単元の依存関係">
+        <section ref={mapCanvasRef} className="map-canvas" aria-label="教材単元の依存関係">
           <ReactFlow<MapPocNode>
             nodes={nodes}
             edges={edges}
@@ -156,6 +184,7 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, onVi
         </section>
       </div>
       {selectedLesson && <LessonDetailCard
+        key={selectedLesson.lessonId}
         lesson={selectedLesson}
         headingRef={detailHeadingRef}
         onClose={() => clearSelection(true)}
