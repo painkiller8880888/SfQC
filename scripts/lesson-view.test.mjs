@@ -7,6 +7,7 @@ import { lessonRegistry } from '../src/lesson-registry.mjs'
 import { questionRegistry } from '../src/question-registry.mjs'
 import { deriveProgress } from '../src/progress-data.mjs'
 import { gradeQuestionAnswer } from '../src/question-grading.mjs'
+import { createInitialManualProgress } from '../src/manual-progress.mjs'
 import { fixedInstance } from './question-contract.fixture.mjs'
 
 test('registry-driven map, references, lesson blocks, and app routes render only available lessons', async () => {
@@ -90,10 +91,21 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.doesNotMatch(conditional, /<a\b/u)
 
     const descriptive = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'descriptive-statistics')
-    const descriptiveCard = render(LessonDetailCard, { lesson: descriptive, onClose: () => {} })
+    const manualProgress = createInitialManualProgress(lessonRegistry)
+    const descriptiveCard = render(LessonDetailCard, {
+      lesson: descriptive,
+      manualProgress: manualProgress[descriptive.lessonId],
+      onManualProgressAction: () => {},
+      onClose: () => {},
+    })
     assert.match(descriptiveCard, /<h2[^>]*>基本統計量<\/h2>/u)
     assert.match(descriptiveCard, /収録済み：4 \/ 4 節/u)
     assert.match(descriptiveCard, /学習目標/u)
+    assert.match(descriptiveCard, /手動進捗：未開始/u)
+    assert.match(descriptiveCard, /手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。/u)
+    assert.equal((descriptiveCard.match(/type="checkbox"/gu) ?? []).length, descriptive.learningObjectives.length)
+    assert.match(descriptiveCard, />Start<\/button>/u)
+    assert.match(descriptiveCard, />Mark completed<\/button>/u)
     assert.match(descriptiveCard, /href="#\/lesson\/descriptive-statistics" data-nav-intent="normal">解説を読む/u)
     assert.match(descriptiveCard, /href="#\/practice" data-nav-intent="normal">演習問題一覧を開く（全単元共通）/u)
     assert.match(descriptiveCard, /href="#\/progress" data-nav-intent="normal">全単元の演習記録・集計を見る/u)
@@ -102,7 +114,12 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.doesNotMatch(descriptiveCard, /方法条件付き必須/u)
 
     const planned = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'mean-inference')
-    const plannedCard = render(LessonDetailCard, { lesson: planned, onClose: () => {} })
+    const plannedCard = render(LessonDetailCard, {
+      lesson: planned,
+      manualProgress: manualProgress[planned.lessonId],
+      onManualProgressAction: () => {},
+      onClose: () => {},
+    })
     assert.match(plannedCard, /母平均の区間推定・検定/u)
     assert.match(plannedCard, /未収録/u)
     assert.match(plannedCard, /方法条件付き必須/u)
@@ -111,7 +128,12 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.doesNotMatch(plannedCard, /href="#\/practice"/u)
 
     const arithmetic = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'math-arithmetic')
-    const arithmeticCard = render(LessonDetailCard, { lesson: arithmetic, onClose: () => {} })
+    const arithmeticCard = render(LessonDetailCard, {
+      lesson: arithmetic,
+      manualProgress: manualProgress[arithmetic.lessonId],
+      onManualProgressAction: () => {},
+      onClose: () => {},
+    })
     assert.doesNotMatch(arithmeticCard, /演習問題一覧を開く/u)
 
     const variance = render(LessonRouteContent, {

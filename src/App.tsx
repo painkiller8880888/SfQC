@@ -31,6 +31,12 @@ import { LessonMap, LessonReference, LessonRouteContent, ProgressView, lessonRef
 import { LessonMapView } from './lesson-map-view'
 import { deriveProgress } from './progress-data.mjs'
 import {
+  countCompletedManualProgress,
+  createInitialManualProgress,
+  updateManualProgress,
+  type ManualProgressCommand,
+} from './manual-progress.mjs'
+import {
   applyRouteNavigationEffect,
   refreshRouteView,
   resolveRouteView,
@@ -127,6 +133,7 @@ function App() {
     window.location.hash, window.history.state, 'initial', 0,
   ))
   const [storedData, setStoredData] = useState<StoredLocalData>(() => view.storedData)
+  const [manualProgress, setManualProgress] = useState(() => createInitialManualProgress(lessonRegistry))
   const [dataMessage, setDataMessage] = useState('')
   const [reviewMessage, setReviewMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -154,6 +161,12 @@ function App() {
   const onMapSelectionChange = useCallback((lessonId: string | null) => {
     selectedLessonIdRef.current = lessonId
   }, [])
+  const onManualProgressAction = useCallback((lessonId: string, command: ManualProgressCommand) => {
+    const action = command.type === 'complete'
+      ? { ...command, completedAt: new Date().toISOString() }
+      : command
+    setManualProgress((currentProgress) => updateManualProgress(currentProgress, lessonId, action))
+  }, [])
   const screen = screenForRoute(view.route)
   const current = screens[screen]
   const entityTitle = view.resolved.status === 'lesson'
@@ -175,6 +188,7 @@ function App() {
     || storedData.status === 'legacy' || storedData.status === 'migration-failed'
   const canWritePracticeData = storedData.status === 'missing' || storedData.status === 'ok' || storedData.status === 'legacy'
   const practiceQuestions = availablePracticeQuestions()
+  const manualCompletedCount = countCompletedManualProgress(manualProgress, lessonRegistry)
   const progress = useMemo(() => {
     if (storedData.status === 'invalid' || storedData.status === 'unreadable') return null
     return deriveProgress(storedData.data, lessonRegistry, Date.now())
@@ -756,6 +770,8 @@ function App() {
             <div className="map-heading">
               <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
               <p>{current.description}</p>
+              <p className="manual-progress-count">手動完了 {manualCompletedCount} / {lessonRegistry.lessons.length}</p>
+              <p className="manual-progress-notice">手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。</p>
             </div>
             <div className="map-toolbar-actions">
               <div className="map-mode-toggle" role="group" aria-label="学習マップの表示">
@@ -782,6 +798,8 @@ function App() {
               <LessonMapView
                 viewport={mapViewportRef.current}
                 selectedLessonId={selectedLessonIdRef.current}
+                manualProgress={manualProgress}
+                onManualProgressAction={onManualProgressAction}
                 onViewportChange={onMapMove}
                 onSelectionChange={onMapSelectionChange}
                 clearSelectionRef={clearMapSelectionRef}

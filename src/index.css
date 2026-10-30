@@ -779,6 +779,16 @@ h1 {
   line-height: 1.5;
 }
 
+.map-heading .manual-progress-count {
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+.map-heading .manual-progress-notice {
+  max-width: 38rem;
+  font-size: 0.875rem;
+}
+
 .map-toolbar-actions,
 .map-mode-toggle {
   display: flex;
