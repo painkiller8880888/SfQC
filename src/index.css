@@ -715,6 +715,150 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.map-app-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  min-height: 280px;
+  overflow: hidden;
+}
+
+.map-app-shell:not(.map-list-layout) .site-header {
+  width: 100%;
+  max-width: none;
+  padding-block: 0.75rem;
+}
+
+.map-workspace {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.map-route-messages:empty {
+  display: none;
+}
+
+.map-route-messages {
+  grid-row: 1;
+}
+
+.map-route-messages > .storage-alert,
+.map-route-messages > .practice-recovery {
+  margin: 0.5rem auto;
+  width: min(calc(100% - 2rem), 50rem);
+}
+
+.map-return-navigation {
+  grid-row: 2;
+  margin: 0.25rem 1rem;
+}
+
+.map-toolbar {
+  grid-row: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  min-width: 0;
+  padding: 0.75rem clamp(1rem, 4vw, 2rem);
+  border-bottom: 1px solid #dbe5dc;
+  background: #fff;
+}
+
+.map-heading h1 {
+  font-size: clamp(1.35rem, 4vw, 2rem);
+  line-height: 1.25;
+}
+
+.map-heading p {
+  margin: 0.35rem 0 0;
+  color: #50635a;
+  line-height: 1.5;
+}
+
+.map-toolbar-actions,
+.map-mode-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.map-mode-button[aria-pressed="true"] {
+  border-color: #43775e;
+  background: #e4efe7;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+.map-license-link {
+  padding: 0.5rem;
+}
+
+.map-graph-content {
+  grid-row: 4;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.map-list-layout {
+  display: block;
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+.map-list-layout .map-workspace {
+  display: block;
+  min-height: 0;
+}
+
+.map-list-layout .map-list-content {
+  padding: clamp(1.25rem, 5vw, 4rem);
+}
+
+.map-list-screen {
+  margin-inline: auto;
+}
+
+@media (max-width: 480px) {
+  .map-app-shell:not(.map-list-layout) .site-header {
+    padding: 0.5rem;
+  }
+
+  .map-app-shell:not(.map-list-layout) .site-brand {
+    display: none;
+  }
+
+  .map-app-shell:not(.map-list-layout) .primary-nav {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 0.35rem;
+  }
+
+  .map-app-shell:not(.map-list-layout) .primary-nav a {
+    padding-inline: 0.5rem;
+  }
+
+  .map-toolbar {
+    padding: 0.5rem;
+  }
+
+  .map-license-link {
+    padding-inline: 0.35rem;
+  }
+
+  .map-toolbar-actions,
+  .map-mode-toggle {
+    gap: 0.35rem;
+  }
+}
+
 @media (max-width: 480px) {
   .practice-panel {
     padding: 0.75rem;
