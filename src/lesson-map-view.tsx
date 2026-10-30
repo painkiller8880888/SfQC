@@ -8,6 +8,7 @@ import {
   useNodesState,
   useReactFlow,
   type OnMove,
+  type NodeMouseHandler,
   type OnSelectionChangeFunc,
   type Viewport,
 } from '@xyflow/react'
@@ -35,6 +36,13 @@ function LessonGraph({ viewport, selectedLessonId, onViewportChange, onSelection
   const handleSelectionChange: OnSelectionChangeFunc<MapPocNode> = useCallback(({ nodes: selectedNodes }) => {
     onSelectionChange(selectedNodes[0]?.id ?? null)
   }, [onSelectionChange])
+  const handleShiftDeselect: NodeMouseHandler<MapPocNode> = useCallback((event, node) => {
+    if (event.shiftKey && node.selected) {
+      setNodes((currentNodes) => currentNodes.map((currentNode) => (
+        currentNode.selected ? { ...currentNode, selected: false } : currentNode
+      )))
+    }
+  }, [setNodes])
   const handleInit = useCallback(() => {
     if (viewport === null) void fitView({ padding: 0.14 })
   }, [fitView, viewport])
@@ -62,6 +70,7 @@ function LessonGraph({ viewport, selectedLessonId, onViewportChange, onSelection
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onMove={handleMove}
+          onNodeClick={handleShiftDeselect}
           onSelectionChange={handleSelectionChange}
           onInit={handleInit}
           nodesConnectable={false}

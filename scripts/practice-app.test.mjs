@@ -755,7 +755,35 @@ test('integrated learning map Re-layout keeps an empty selection empty', async (
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
     assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
 
+    await click(buttonFor(app.host, '教材一覧'))
+    await click(buttonFor(app.host, 'マップ表示'))
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
+    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
+
     await click(buttonFor(app.host, 'Re-layout'))
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
+    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map Shift-click clears the selected node', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+    const lessonNode = [...app.host.querySelectorAll('.react-flow__node')]
+      .find((node) => node.textContent.includes('基本統計量'))
+    await click(lessonNode)
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
+
+    await act(async () => {
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Shift', code: 'ShiftLeft', bubbles: true }))
+      lessonNode.dispatchEvent(new window.MouseEvent('click', { bubbles: true, shiftKey: true }))
+      window.dispatchEvent(new window.KeyboardEvent('keyup', { key: 'Shift', code: 'ShiftLeft', bubbles: true }))
+    })
+
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
     assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
   } finally {
