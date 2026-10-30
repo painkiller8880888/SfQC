@@ -712,13 +712,17 @@ test('integrated learning map switches views and restores graph selection and vi
     const zoomedTransform = viewport.style.transform
     assert.notEqual(zoomedTransform, beforeZoom)
 
+    const listButton = buttonFor(app.host, '教材一覧')
+    await click(listButton)
+    await click(buttonFor(app.host, 'マップ表示'))
+    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, zoomedTransform)
+
     await click(app.host.querySelector('.react-flow__controls-zoomin'))
     await click(app.host.querySelector('.react-flow__controls-zoomin'))
     await click(buttonFor(app.host, '全体表示'))
     await act(async () => new Promise((resolve) => window.setTimeout(resolve, 220)))
     const fitViewTransform = app.host.querySelector('.react-flow__viewport').style.transform
 
-    const listButton = buttonFor(app.host, '教材一覧')
     listButton.focus()
     await click(listButton)
     assert.equal(window.document.activeElement, listButton)
@@ -739,6 +743,21 @@ test('integrated learning map switches views and restores graph selection and vi
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
     assert.equal(app.host.querySelector('.react-flow__node.selected').dataset.id, selectedId)
     assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, relayoutTransform)
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map Re-layout keeps an empty selection empty', async () => {
+  const app = await createHarness()
+  try {
+    await click(linkFor(app.host, '学習マップ'))
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
+    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
+
+    await click(buttonFor(app.host, 'Re-layout'))
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
+    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
   } finally {
     await app.close()
   }

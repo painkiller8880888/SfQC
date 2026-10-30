@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import {
   Background,
   Controls,
@@ -7,7 +7,6 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
-  useViewport,
   type OnMove,
   type OnSelectionChangeFunc,
   type Viewport,
@@ -31,10 +30,8 @@ function LessonGraph({ viewport, selectedLessonId, onViewportChange, onSelection
   })))
   const [edges, , onEdgesChange] = useEdgesState(graph.edges)
   const { fitView } = useReactFlow()
-  const currentViewport = useViewport()
   const selectedTitle = nodes.find((node) => node.selected)?.data.label ?? ''
   const handleMove: OnMove = useCallback((_, nextViewport) => onViewportChange(nextViewport), [onViewportChange])
-  useEffect(() => onViewportChange(currentViewport), [currentViewport, onViewportChange])
   const handleSelectionChange: OnSelectionChangeFunc<MapPocNode> = useCallback(({ nodes: selectedNodes }) => {
     onSelectionChange(selectedNodes[0]?.id ?? null)
   }, [onSelectionChange])
