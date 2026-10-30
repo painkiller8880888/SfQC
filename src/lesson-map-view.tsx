@@ -23,13 +23,14 @@ type LessonMapViewProps = {
   viewport: Viewport | null
   selectedLessonId: string | null
   manualProgress: ManualProgressState
+  manualProgressDisabled?: boolean
   onManualProgressAction: (lessonId: string, action: ManualProgressCommand) => void
   onViewportChange: (viewport: Viewport) => void
   onSelectionChange: (lessonId: string | null) => void
   clearSelectionRef: { current: (() => void) | null }
 }
 
-function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manualProgress, onManualProgressAction, onViewportChange, onSelectionChange, clearSelectionRef }: LessonMapViewProps) {
+function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manualProgress, manualProgressDisabled, onManualProgressAction, onViewportChange, onSelectionChange, clearSelectionRef }: LessonMapViewProps) {
   const graph = useMemo(() => createMapPocGraph(), [])
   const [nodes, setNodes, onNodesChange] = useNodesState<MapPocNode>(graph.nodes.map((node) => ({
     ...node,
@@ -190,6 +191,7 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
         key={selectedLesson.lessonId}
         lesson={selectedLesson}
         manualProgress={manualProgress[selectedLesson.lessonId]}
+        manualProgressDisabled={manualProgressDisabled}
         onManualProgressAction={(action) => onManualProgressAction(selectedLesson.lessonId, action)}
         headingRef={detailHeadingRef}
         onClose={() => clearSelection(true)}

@@ -14,14 +14,8 @@ import {
   type NavigationIntent,
   type RouteHistoryState,
 } from './route-history.mjs'
-import {
-  exportLocalData,
-  importLocalData,
-  LocalDataError,
-  migrateLocalData,
-  readLocalData,
-  type LocalData,
-} from './local-data.mjs'
+import { exportBackup, exportLegacyLocalData, importBackup } from './backup.mjs'
+import { LocalDataError, migrateLocalData, readLocalData, type LocalData } from './local-data.mjs'
 import { availablePracticeQuestions, createPracticeInstance, createSimilarPractice, recordReviewEvent, submitPracticeAnswer } from './practice-actions.mjs'
 import { PracticeQuestionView, PracticeSelectionView } from './practice-view'
 import type { ReadonlyQuestionInstance } from './question-contract.mjs'
@@ -32,10 +26,16 @@ import { LessonMapView } from './lesson-map-view'
 import { deriveProgress } from './progress-data.mjs'
 import {
   countCompletedManualProgress,
-  createInitialManualProgress,
   updateManualProgress,
   type ManualProgressCommand,
 } from './manual-progress.mjs'
+import {
+  createInitialMapState,
+  MapStateError,
+  readMapState,
+  saveMapState,
+  type MapState,
+} from './map-state.mjs'
 import {
   applyRouteNavigationEffect,
   refreshRouteView,
@@ -94,8 +94,8 @@ const screens: Record<ScreenKind, {
   },
   data: {
     title: 'データ管理',
-    description: 'ブラウザ内の出題・解答・復習記録を管理する画面です。',
-    placeholder: '出題snapshot、解答試行、復習イベントをJSONで書き出し・読み込みできます。',
+    description: 'ブラウザー内の演習記録と手動進捗を管理する画面です。',
+    placeholder: '演習記録・手動進捗・配置を統合バックアップで書き出し・読み込みできます。',
     links: [{ label: '進捗を見る', href: '#/progress' }],
   },
   'not-found': {
@@ -133,7 +133,16 @@ function App() {
     window.location.hash, window.history.state, 'initial', 0,
   ))
   const [storedData, setStoredData] = useState<StoredLocalData>(() => view.storedData)
-  const [manualProgress, setManualProgress] = useState(() => createInitialManualProgress(lessonRegistry))
+  const [mapStateRead, setMapStateRead] = useState(() => readMapState(lessonRegistry))
+  const initialMapState = mapStateRead.status === 'missing' || mapStateRead.status === 'ok' || mapStateRead.status === 'migrated'
+    ? mapStateRead.state : createInitialMapState(lessonRegistry)
+  const [manualProgress, setManualProgress] = useState(() => initialMapState.lessons)
+  const [mapStateConfirmed, setMapStateConfirmed] = useState(() => ['missing', 'ok', 'migrated'].includes(mapStateRead.status))
+  const initialMapMessage = mapStateRead.status === 'migrated' && mapStateRead.changedLessonIds.length
+    ? `教材改訂を検出しました。${mapStateRead.changedLessonIds.length}単元の自己点検を再確認してください。内容は次の手動操作時に保存されます。`
+    : mapStateRead.status === 'invalid' || mapStateRead.status === 'unsupported' || mapStateRead.status === 'unreadable'
+      ? mapStateRead.error.message : ''
+  const [mapStateMessage, setMapStateMessage] = useState(initialMapMessage)
   const [dataMessage, setDataMessage] = useState('')
   const [reviewMessage, setReviewMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -151,6 +160,10 @@ function App() {
   const mapGraphButtonRef = useRef<HTMLButtonElement>(null)
   const mapListButtonRef = useRef<HTMLButtonElement>(null)
   const viewRef = useRef(view)
+  const mapStateRef = useRef<MapState>(initialMapState)
+  const mapStateReadRef = useRef(mapStateRead)
+  const expectedMapRawRef = useRef(mapStateRead.raw ?? null)
+  const mapStateConfirmedRef = useRef(['missing', 'ok', 'migrated'].includes(mapStateRead.status))
   const navigationIdRef = useRef(0)
   const lastHandledRef = useRef('')
   const busyRef = useRef(false)
@@ -161,11 +174,55 @@ function App() {
   const onMapSelectionChange = useCallback((lessonId: string | null) => {
     selectedLessonIdRef.current = lessonId
   }, [])
+
+  const publishMapStateRead = (next: ReturnType<typeof readMapState>) => {
+    mapStateReadRef.current = next
+    setMapStateRead(next)
+    if (next.status === 'missing' || next.status === 'ok' || next.status === 'migrated') {
+      mapStateRef.current = next.state
+      expectedMapRawRef.current = next.raw
+      mapStateConfirmedRef.current = true
+      setMapStateConfirmed(true)
+      setManualProgress(next.state.lessons)
+      if (next.status === 'migrated' && next.changedLessonIds.length) {
+        setMapStateMessage(`教材改訂を検出しました。${next.changedLessonIds.length}単元の自己点検を再確認してください。内容は次の手動操作時に保存されます。`)
+      } else {
+        setMapStateMessage('')
+      }
+    } else {
+      setMapStateMessage('error' in next ? next.error.message : '手動進捗を読み取れません。')
+    }
+  }
+
+  const refreshMapState = () => publishMapStateRead(readMapState(lessonRegistry))
+
   const onManualProgressAction = useCallback((lessonId: string, command: ManualProgressCommand) => {
+    const currentRead = mapStateReadRef.current
+    if (!['missing', 'ok', 'migrated'].includes(currentRead.status)) {
+      setMapStateMessage('手動進捗を確認できないため、編集と保存を停止しています。データ管理画面で保存状態を確認してください。')
+      return
+    }
     const action = command.type === 'complete'
       ? { ...command, completedAt: new Date().toISOString() }
       : command
-    setManualProgress((currentProgress) => updateManualProgress(currentProgress, lessonId, action))
+    const lessons = updateManualProgress(mapStateRef.current.lessons, lessonId, action)
+    if (lessons === mapStateRef.current.lessons) return
+    const candidate: MapState = { ...mapStateRef.current, lessons: lessons as MapState['lessons'] }
+    try {
+      const result = saveMapState(candidate, expectedMapRawRef.current, lessonRegistry)
+      mapStateRef.current = result.state
+      expectedMapRawRef.current = result.raw
+      const read = { status: 'ok' as const, raw: result.raw, state: result.state, changedLessonIds: [] }
+      mapStateReadRef.current = read
+      setMapStateRead(read)
+      setManualProgress(result.state.lessons)
+      setMapStateConfirmed(true)
+      mapStateConfirmedRef.current = true
+      if (currentRead.status !== 'migrated') setMapStateMessage('')
+    } catch (error) {
+      if (error instanceof MapStateError && error.code === 'storage-changed') refreshMapState()
+      setMapStateMessage(error instanceof Error ? error.message : '手動進捗を保存できませんでした。')
+    }
   }, [])
   const screen = screenForRoute(view.route)
   const current = screens[screen]
@@ -187,6 +244,21 @@ function App() {
   const hasCounts = storedData.status === 'missing' || storedData.status === 'ok'
     || storedData.status === 'legacy' || storedData.status === 'migration-failed'
   const canWritePracticeData = storedData.status === 'missing' || storedData.status === 'ok' || storedData.status === 'legacy'
+  const mapStateUnavailable = mapStateRead.status === 'invalid' || mapStateRead.status === 'unsupported' || mapStateRead.status === 'unreadable'
+  const canExportCombined = !storageError && !mapStateUnavailable
+  const canExportPractice = !storageError
+  const mapStateStatusLabel = mapStateRead.status === 'missing' ? '未作成（初期値）'
+    : mapStateRead.status === 'ok' ? '保存済み'
+      : mapStateRead.status === 'migrated' ? '教材改訂を反映（次回操作時に保存）'
+        : mapStateRead.status === 'invalid' ? '破損または容量超過'
+          : mapStateRead.status === 'unsupported' ? '未対応の保存形式'
+            : '読み込み不能'
+  const manualProgressDisabled = mapStateUnavailable
+  const manualProgressNotice = mapStateUnavailable
+    ? mapStateConfirmed
+      ? '手動進捗の保存状態を確認できません。画面には最後に確認した値を表示し、編集と保存を停止しています。'
+      : '手動進捗の保存状態を確認できません。画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'
+    : '手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。'
   const practiceQuestions = availablePracticeQuestions()
   const manualCompletedCount = countCompletedManualProgress(manualProgress, lessonRegistry)
   const progress = useMemo(() => {
@@ -319,22 +391,35 @@ function App() {
     pushNavigation(resolveRoute(url.hash), url.hash, intent)
   }
 
-  const handleExport = () => {
+  const requestDownload = (json: string, filename: string) => {
+    let url: string | null = null
+    try {
+      url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.click()
+      window.setTimeout(() => { if (url) URL.revokeObjectURL(url) }, 0)
+      return true
+    } catch {
+      if (url) URL.revokeObjectURL(url)
+      return false
+    }
+  }
+
+  const handleExport = (kind: 'combined' | 'practice') => {
     if (busyRef.current) return
     busyRef.current = true
     setBusy(true)
     setDataMessage('')
     try {
-      const json = exportLocalData()
-      const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'sfqc-backup.json'
-      link.click()
-      window.setTimeout(() => URL.revokeObjectURL(url), 0)
-      setDataMessage('JSONファイルの書き出しを開始しました。')
+      const json = kind === 'combined' ? exportBackup() : exportLegacyLocalData()
+      if (!requestDownload(json, kind === 'combined' ? 'sfqc-backup.json' : 'sfqc-practice-v2.json')) {
+        throw new Error('JSONファイルを書き出せませんでした。')
+      }
+      setDataMessage(kind === 'combined' ? '全データの書き出しを開始しました。' : '演習記録のみの書き出しを開始しました。')
     } catch (error) {
-      setDataMessage(error instanceof LocalDataError ? error.message : '書き出しに失敗しました。')
+      setDataMessage(error instanceof Error ? error.message : '書き出しに失敗しました。')
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -474,24 +559,57 @@ function App() {
     setBusy(true)
     setDataMessage('')
     try {
-      const result = await importLocalData(file, ({ damaged, existingCounts, importCounts }) => {
-        const imported = importCounts.questionInstances + '件のsnapshot、' + importCounts.answerAttempts + '件の解答試行、' + importCounts.reviewEvents + '件の復習イベント'
-        return window.confirm(damaged
-          ? '現在の保存データは破損しているか、このアプリでは対応していない形式のため、通常の方法で読み出し・バックアップできません。元の保存データは元に戻せません。選択したファイル（' + imported + '）で置き換えますか？'
-          : '保存済みの全データを置き換えます。現在はsnapshot ' + existingCounts?.questionInstances + '件、解答試行 ' + existingCounts?.answerAttempts + '件、復習イベント ' + existingCounts?.reviewEvents + '件です。選択したファイル（' + imported + '）で置き換えますか？')
+      const result = await importBackup(file, (state) => {
+        if (state.kind === 'legacy') {
+          const imported = state.importCounts.questionInstances + '件のsnapshot、' + state.importCounts.answerAttempts + '件の解答試行、' + state.importCounts.reviewEvents + '件の復習イベント'
+          return window.confirm(state.damaged
+            ? '現在の演習記録は破損しているか未対応形式のため、通常の方法で読み出せません。選択したファイル（' + imported + '）で演習記録のみを置き換えますか？手動進捗と配置は維持します。'
+            : '演習記録のみを置き換えます。現在はsnapshot ' + state.existingCounts?.questionInstances + '件、解答試行 ' + state.existingCounts?.answerAttempts + '件、復習イベント ' + state.existingCounts?.reviewEvents + '件です。選択したファイル（' + imported + '）を読み込みますか？手動進捗と配置は維持します。')
+        }
+        const existingPractice = state.existing.localData
+        const existingMap = state.existing.mapState
+        const imported = state.imported.localData
+        const mapImported = state.imported.mapState.completedLessons
+        const statusLabel = (status: string) => ({
+          missing: '未保存', ok: '保存済み', migrated: '教材改訂を反映中',
+          damaged: '破損', unsupported: '未対応形式', unreadable: '読み込み不能',
+        }[status] ?? status)
+        return window.confirm(
+          '全データを統合バックアップで置き換えます。現在の演習記録は' + statusLabel(existingPractice.status)
+          + '（snapshot ' + existingPractice.counts.questionInstances + '件、解答試行 ' + existingPractice.counts.answerAttempts
+          + '件、復習イベント ' + existingPractice.counts.reviewEvents + '件）、手動進捗は' + statusLabel(existingMap.status)
+          + '（完了 ' + existingMap.completedLessons + '単元）です。選択したファイルの演習記録 '
+          + imported.questionInstances + '件・解答試行 ' + imported.answerAttempts + '件・復習イベント '
+          + imported.reviewEvents + '件、手動完了 ' + mapImported + '単元で置き換えますか？',
+        )
+      }, {
+        requestRecoveryDownload: (json) => requestDownload(json, 'sfqc-recovery-raw.json'),
+        confirmRecovery: () => window.confirm('元データの保全ファイルのダウンロード要求を出しました。ブラウザーは実際にファイルへ保存されたかを確認できません。保全ファイルを保存できたことを確認した場合だけ続行してください。'),
       })
       if (result.status === 'cancelled') {
-        setDataMessage('復元をキャンセルしました。保存データは変更されていません。')
+        setDataMessage('復元をキャンセルしました。演習記録と手動進捗は変更されていません。')
       } else {
         const importedData = { status: 'ok' as const, raw: result.raw, data: result.data }
         refreshRouteWithData(importedData)
-        setDataMessage('snapshot ' + result.data.questionInstances.length + '件、解答試行 ' + result.data.answerAttempts.length + '件、復習イベント ' + result.data.reviewEvents.length + '件を復元しました。')
+        if (result.kind === 'backup') {
+          const importedMapState = { status: 'ok' as const, raw: result.mapRaw, state: result.mapState, changedLessonIds: [] }
+          publishMapStateRead(importedMapState)
+          if (result.changedLessonIds.length) {
+            setMapStateMessage(`教材改訂により、${result.changedLessonIds.length}単元の自己点検を未確認にしました。`)
+          }
+          setDataMessage('演習記録と手動進捗・配置を復元しました。')
+        } else {
+          setDataMessage('演習記録のみを復元しました。手動進捗と配置は維持しました。')
+        }
       }
     } catch (error) {
-      setDataMessage(error instanceof LocalDataError ? error.message : '復元に失敗しました。')
-      if (error instanceof LocalDataError && error.code === 'storage-changed') {
-        refreshRouteWithData(readLocalData())
-      }
+      const message = error instanceof Error ? error.message : '復元に失敗しました。'
+      setDataMessage(message + (error && typeof error === 'object' && 'recoveryRequired' in error && error.recoveryRequired
+        ? ' ' + ('recoveryDownloadFailed' in error && error.recoveryDownloadFailed
+          ? '救出ファイルを書き出せませんでした。保存状態を直ちに確認してください。'
+          : '救出rawファイルを保存し、READMEの保守復旧手順を確認してください。') : ''))
+      refreshRouteWithData(readLocalData())
+      refreshMapState()
     } finally {
       input.value = ''
       busyRef.current = false
@@ -633,6 +751,12 @@ function App() {
         {storageIssue.message} 保存データを空として扱ったり、自動で上書きしたりしません。データ管理画面で確認してください。
       </p>
     )}
+    {mapStateUnavailable && <p className="storage-alert" role="alert">
+      {mapStateMessage || '手動進捗を確認できません。'} {mapStateConfirmed
+        ? '画面には最後に確認した値を表示し、編集と保存を停止しています。'
+        : '画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'}
+    </p>}
+    {!mapStateUnavailable && mapStateMessage && <p className="storage-alert" role="status" aria-live="polite">{mapStateMessage}</p>}
     {view.historyWarning && (
       <p className="storage-alert" role="status">
         このURLの復帰情報は利用できないため、保存データとURLだけで画面を開きました。読書位置や復習経路の一部は復元できないことがあります。
@@ -771,7 +895,7 @@ function App() {
               <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
               <p>{current.description}</p>
               <p className="manual-progress-count">手動完了 {manualCompletedCount} / {lessonRegistry.lessons.length}</p>
-              <p className="manual-progress-notice">手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。</p>
+              <p className="manual-progress-notice">{manualProgressNotice}</p>
             </div>
             <div className="map-toolbar-actions">
               <div className="map-mode-toggle" role="group" aria-label="学習マップの表示">
@@ -799,6 +923,7 @@ function App() {
                 viewport={mapViewportRef.current}
                 selectedLessonId={selectedLessonIdRef.current}
                 manualProgress={manualProgress}
+                manualProgressDisabled={manualProgressDisabled}
                 onManualProgressAction={onManualProgressAction}
                 onViewportChange={onMapMove}
                 onSelectionChange={onMapSelectionChange}
@@ -824,10 +949,14 @@ function App() {
               <p>出題snapshot：{hasCounts ? storedData.data.questionInstances.length + '件' : '読み込みエラー'}</p>
               <p>解答試行：{hasCounts ? storedData.data.answerAttempts.length + '件' : '読み込みエラー'}</p>
               <p>復習イベント：{hasCounts ? storedData.data.reviewEvents.length + '件' : '読み込みエラー'}</p>
-              <p>このデータはこのブラウザ内に保存され、サーバーへ送信されません。バックアップは安全な場所に保管してください。</p>
+              <p>手動進捗・自己点検：{mapStateStatusLabel}{!mapStateUnavailable ? `（手動完了 ${manualCompletedCount} / ${lessonRegistry.lessons.length}）` : ''}</p>
+              <p>データはこのブラウザー内に保存され、サーバーへ送信されません。統合バックアップは演習記録・手動進捗・配置を含みます。演習記録のみの書き出しも選べます。</p>
               <div className="data-actions">
-                <button type="button" onClick={handleExport} disabled={busy || storageError}>
-                  JSONを書き出す
+                <button type="button" onClick={() => handleExport('combined')} disabled={busy || !canExportCombined}>
+                  全データを書き出し
+                </button>
+                <button type="button" onClick={() => handleExport('practice')} disabled={busy || !canExportPractice}>
+                  演習記録のみを書き出し（schema v2）
                 </button>
                 <label htmlFor="backup-file">JSONを読み込む</label>
                 <input
@@ -838,7 +967,7 @@ function App() {
                   disabled={busy}
                 />
               </div>
-              <p className="data-limit">schemaVersion 2 · snapshot最大500件 · JSONはUTF-8で2 MiBまで</p>
+              <p className="data-limit">演習記録：schemaVersion 2・snapshot最大500件・JSONはUTF-8で2 MiBまで。手動進捗：独立保存領域・64 KiBまで。</p>
               <p>容量上限を超えるときは未編集バックアップを保存し、複製したJSONを整理してから読み込みます。snapshotを除く場合は参照する解答試行も、解答試行を除く場合は参照する復習イベントも一緒に除いてください。保存履歴は自動削除しません。</p>
               <p className="data-message" role="status" aria-live="polite">{dataMessage}</p>
             </section>

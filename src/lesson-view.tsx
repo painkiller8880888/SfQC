@@ -177,10 +177,11 @@ function LessonCard({ lesson, registry, progress }: {
   </article>
 }
 
-export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProgress, onManualProgressAction, headingRef, onClose }: {
+export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProgress, manualProgressDisabled = false, onManualProgressAction, headingRef, onClose }: {
   lesson: LessonDefinition
   registry?: LessonRegistry
   manualProgress: ManualLessonProgress
+  manualProgressDisabled?: boolean
   onManualProgressAction: (action: ManualProgressCommand) => void
   headingRef?: RefObject<HTMLHeadingElement | null>
   onClose: () => void
@@ -214,6 +215,7 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
             <input
               type="checkbox"
               checked={manualProgress.checks[index] ?? false}
+              disabled={manualProgressDisabled}
               onChange={(event) => onManualProgressAction({ type: 'check', index, checked: event.currentTarget.checked })}
             />
             <span>{objective}</span>
@@ -223,11 +225,11 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
       <section className="manual-progress-controls" aria-labelledby={`manual-progress-title-${lesson.lessonId}`}>
         <h3 id={`manual-progress-title-${lesson.lessonId}`}>手動進捗</h3>
         <p className="manual-progress-status" aria-live="polite">手動進捗：{manualStatus}</p>
-        <p className="manual-progress-notice">手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。</p>
+        <p className="manual-progress-notice">手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。</p>
         <div className="manual-progress-actions">
-          {manualProgress.status === 'not-started' && <button type="button" onClick={() => applyProgressAction({ type: 'start' }, markCompletedRef)}>Start</button>}
-          {manualProgress.status !== 'completed' && <button ref={markCompletedRef} type="button" onClick={() => applyProgressAction({ type: 'complete' }, reopenRef)}>Mark completed</button>}
-          {manualProgress.status === 'completed' && <button ref={reopenRef} type="button" onClick={() => applyProgressAction({ type: 'reopen' }, markCompletedRef)}>Reopen</button>}
+          {manualProgress.status === 'not-started' && <button type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'start' }, markCompletedRef)}>Start</button>}
+          {manualProgress.status !== 'completed' && <button ref={markCompletedRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'complete' }, reopenRef)}>Mark completed</button>}
+          {manualProgress.status === 'completed' && <button ref={reopenRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'reopen' }, markCompletedRef)}>Reopen</button>}
         </div>
       </section>
       <ReferenceGroups lesson={lesson} registry={registry} />

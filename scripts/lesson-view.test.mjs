@@ -102,7 +102,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.match(descriptiveCard, /収録済み：4 \/ 4 節/u)
     assert.match(descriptiveCard, /学習目標/u)
     assert.match(descriptiveCard, /手動進捗：未開始/u)
-    assert.match(descriptiveCard, /手動進捗とチェックは一時的です。ページを再読み込みするとリセットされます。演習記録の保存状態とは別です。/u)
+    assert.match(descriptiveCard, /手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。/u)
     assert.equal((descriptiveCard.match(/type="checkbox"/gu) ?? []).length, descriptive.learningObjectives.length)
     assert.match(descriptiveCard, />Start<\/button>/u)
     assert.match(descriptiveCard, />Mark completed<\/button>/u)
