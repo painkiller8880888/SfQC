@@ -7,7 +7,7 @@ import { exportLocalData, importLocalData, readLocalData } from '../src/local-da
 import { serializeBackup } from '../src/backup.mjs'
 import { createRouteHistoryState, navigateRouteHistory } from '../src/route-history.mjs'
 import { routeToHash } from '../src/resolve-screen.mjs'
-import { createInitialMapState, MAP_STATE_KEY, saveMapState } from '../src/map-state.mjs'
+import { createInitialMapState, MAP_STATE_KEY, readMapState, saveMapState } from '../src/map-state.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 
 const globalKeys = [
@@ -987,6 +987,86 @@ test('StrictMode manual progress writes once per user action and failed writes d
     assert.match(app.host.querySelector('.map-route-messages').textContent, /保存できませんでした/u)
   } finally {
     if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
+    await app.close()
+  }
+})
+
+test('manual progress stops editing when the post-write map-state readback is unavailable', async () => {
+  const app = await createHarness()
+  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
+  const originalGetDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'getItem')
+  const originalSetDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
+  const originalGet = storagePrototype.getItem
+  const originalSet = storagePrototype.setItem
+  let writes = 0
+  let failNextMapRead = false
+  try {
+    const { window } = app.dom
+    Object.defineProperty(storagePrototype, 'getItem', {
+      configurable: true,
+      writable: true,
+      value: function (key) {
+        if (key === MAP_STATE_KEY && failNextMapRead) {
+          failNextMapRead = false
+          throw new Error('blocked')
+        }
+        return originalGet.call(this, key)
+      },
+    })
+    Object.defineProperty(storagePrototype, 'setItem', {
+      configurable: true,
+      writable: true,
+      value: function (key, value) {
+        if (key === MAP_STATE_KEY) {
+          writes++
+          originalSet.call(this, key, value)
+          failNextMapRead = true
+          return
+        }
+        return originalSet.call(this, key, value)
+      },
+    })
+    await click(linkFor(app.host, '学習マップ'))
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    let detail = app.host.querySelector('.lesson-detail-card')
+    await click(buttonFor(detail, 'Start'))
+    await settleEffects(window)
+    detail = app.host.querySelector('.lesson-detail-card')
+    assert.equal(writes, 1)
+    assert.equal(buttonFor(detail, 'Start')?.disabled, true)
+    assert.ok([...detail.querySelectorAll('input[type="checkbox"]')].every((input) => input.disabled))
+    assert.match(app.host.querySelector('.map-route-messages').textContent, /読み取れません/u)
+
+    await click(buttonFor(detail, 'Start'))
+    assert.equal(writes, 1)
+    assert.equal(readMapState(lessonRegistry, () => window.localStorage).status, 'ok')
+  } finally {
+    if (originalGetDescriptor) Object.defineProperty(storagePrototype, 'getItem', originalGetDescriptor)
+    if (originalSetDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalSetDescriptor)
+    await app.close()
+  }
+})
+
+test('manual progress clears the migration save reminder after a successful action', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const state = createInitialMapState(lessonRegistry)
+    const lessonId = 'descriptive-statistics'
+    state.lessons[lessonId] = {
+      ...state.lessons[lessonId], lessonRevision: state.lessons[lessonId].lessonRevision + 1,
+      checks: state.lessons[lessonId].checks.map(() => true),
+    }
+    window.localStorage.setItem(MAP_STATE_KEY, JSON.stringify(state))
+    await app.remountAt('#/map')
+    assert.match(app.host.querySelector('.map-route-messages').textContent, /次の手動操作時に保存されます/u)
+
+    await click(app.host.querySelector(`.react-flow__node[data-id="${lessonId}"]`))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Start'))
+    await settleEffects(window)
+    assert.doesNotMatch(app.host.querySelector('.map-route-messages').textContent, /次の手動操作時に保存されます/u)
+    assert.equal(readMapState(lessonRegistry, () => window.localStorage).status, 'ok')
+  } finally {
     await app.close()
   }
 })

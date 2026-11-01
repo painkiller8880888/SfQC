@@ -67,6 +67,61 @@ test('corrupt, unsupported, oversize and storage conflicts never overwrite exist
   assert.throws(() => serializeMapState({ ...read.state, positions: Object.fromEntries(Array.from({ length: 2000 }, (_, i) => ['lesson-' + i, { x: i, y: i }])) }), (error) => error.code === 'too-large')
 })
 
+test('map-state migration rejects an expanded state over 64 KiB and preserves the source raw', () => {
+  const state = createInitialMapState(lessonRegistry)
+  const raw = serializeMapState(state)
+  const currentBytes = new TextEncoder().encode(raw).byteLength
+  const registry = {
+    ...lessonRegistry,
+    lessons: [...lessonRegistry.lessons, {
+      lessonId: 'future-large', revision: 1,
+      learningObjectives: ['x'.repeat(MAP_STATE_MAX_BYTES - currentBytes + 1)],
+    }],
+  }
+  const storage = storageWith(raw)
+  const read = readMapState(registry, () => storage)
+  assert.equal(read.status, 'invalid')
+  assert.equal(read.error.code, 'too-large')
+  assert.equal(read.raw, raw)
+  assert.equal(storage.getItem(MAP_STATE_KEY), raw)
+})
+
+test('map-state save verifies the post-write value and fails when readback is unavailable', () => {
+  let raw = null
+  let failRead = false
+  const storage = {
+    getItem() {
+      if (failRead) {
+        failRead = false
+        throw new Error('blocked')
+      }
+      return raw
+    },
+    setItem(_key, value) {
+      raw = value
+      failRead = true
+    },
+    removeItem() { raw = null },
+  }
+  const state = createInitialMapState(lessonRegistry)
+  assert.throws(() => saveMapState(state, null, lessonRegistry, () => storage), (error) => error.code === 'storage-unavailable')
+  assert.equal(raw, serializeMapState(state))
+})
+
+test('map-state save does not report success when a different valid value is stored', () => {
+  const competing = createInitialMapState(lessonRegistry)
+  competing.lessons[lessonRegistry.lessons[0].lessonId].status = 'started'
+  let raw = null
+  const storage = {
+    getItem: () => raw,
+    setItem: () => { raw = serializeMapState(competing) },
+    removeItem: () => { raw = null },
+  }
+  const state = createInitialMapState(lessonRegistry)
+  assert.throws(() => saveMapState(state, null, lessonRegistry, () => storage), (error) => error.code === 'storage-changed')
+  assert.equal(raw, serializeMapState(competing))
+})
+
 test('map state accepts exactly 64 KiB of UTF-8 and rejects one byte more', () => {
   const state = createInitialMapState(lessonRegistry)
   state.lessons['future-topic'] = {

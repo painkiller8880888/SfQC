@@ -218,9 +218,15 @@ function App() {
       setManualProgress(result.state.lessons)
       setMapStateConfirmed(true)
       mapStateConfirmedRef.current = true
-      if (currentRead.status !== 'migrated') setMapStateMessage('')
+      setMapStateMessage('')
     } catch (error) {
-      if (error instanceof MapStateError && error.code === 'storage-changed') refreshMapState()
+      if (error instanceof MapStateError && error.code === 'storage-unavailable') {
+        const unreadable = { status: 'unreadable' as const, error }
+        mapStateReadRef.current = unreadable
+        setMapStateRead(unreadable)
+      } else if (error instanceof MapStateError && error.code !== 'storage-write-failed') {
+        refreshMapState()
+      }
       setMapStateMessage(error instanceof Error ? error.message : '手動進捗を保存できませんでした。')
     }
   }, [])

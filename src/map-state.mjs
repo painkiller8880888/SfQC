@@ -161,7 +161,9 @@ export function parseMapState(text, registry) {
   } catch {
     fail('invalid-json', '手動進捗のJSONを解析できません。')
   }
-  return migrateMapState(validateMapState(value), registry)
+  const migrated = migrateMapState(validateMapState(value), registry)
+  serializeMapState(migrated.state)
+  return migrated
 }
 
 export function serializeMapState(value) {
@@ -221,5 +223,8 @@ export function saveMapState(value, expectedRaw, registry, getStorage = () => wi
   } catch {
     fail('storage-write-failed', '手動進捗を保存できませんでした。既存データはそのままです。')
   }
-  return { status: 'saved', state: value, raw }
+  const saved = readMapState(registry, () => storage)
+  if (saved.status === 'unreadable' || saved.status === 'invalid' || saved.status === 'unsupported') throw saved.error
+  if (saved.raw !== raw) fail('storage-changed', '保存後の確認で別の画面による更新を検出しました。最新の状態を確認してから操作してください。')
+  return { status: 'saved', state: saved.state, raw: saved.raw }
 }
