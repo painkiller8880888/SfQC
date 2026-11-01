@@ -17,5 +17,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "src/lesson-registry.mjs", "src/lesson-graph.mjs", "src/map-poc-graph.mjs", "src/question-registry.mjs", "src/question-generator.mjs", "scripts/question-contract.fixture.mjs", "scripts/lesson-contract.fixture.mjs", "scripts/lesson-graph.typecheck.mjs", "src/question-grading.mjs", "scripts/question-grading.typecheck.mjs", "src/manual-progress.mjs"]
+  "include": ["vite.config.ts", "src/lesson-registry.mjs", "src/lesson-graph.mjs", "src/map-poc-graph.mjs", "src/question-registry.mjs", "src/question-generator.mjs", "scripts/question-contract.fixture.mjs", "scripts/lesson-contract.fixture.mjs", "scripts/lesson-graph.typecheck.mjs", "src/question-grading.mjs", "scripts/question-grading.typecheck.mjs", "src/manual-progress.mjs", "src/map-state.d.mts", "src/backup.d.mts"]
 }
