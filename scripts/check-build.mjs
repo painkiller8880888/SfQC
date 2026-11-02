@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { access, readFile } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
 
 const html = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8')
 await assert.rejects(access(new URL('../dist/map-poc.html', import.meta.url)), { code: 'ENOENT' },
@@ -16,10 +16,13 @@ const assets = [...html.matchAll(/(?:src|href)="(\/SfQC\/assets\/[^"]+)"/g)]
 assert.ok(assets.some((url) => url.endsWith('.js')), 'production JavaScript should use the Pages base path')
 assert.ok(assets.some((url) => url.endsWith('.css')), 'production CSS should use the Pages base path')
 
-const javascript = await readFile(new URL(`../dist/${assets.find((url) => url.endsWith('.js')).slice('/SfQC/'.length)}`, import.meta.url), 'utf8')
+const assetsDirectory = new URL('../dist/assets/', import.meta.url)
+const javascript = await Promise.all((await readdir(assetsDirectory, { recursive: true }))
+  .filter((file) => /\.(?:[cm]?js)$/u.test(file))
+  .map((file) => readFile(new URL(file.replaceAll('\\', '/'), assetsDirectory), 'utf8')))
 const stylesheet = await readFile(new URL(`../dist/${assets.find((url) => url.endsWith('.css')).slice('/SfQC/'.length)}`, import.meta.url), 'utf8')
-assert.match(javascript, /map-graph-view/, 'production JavaScript should include the integrated lesson map')
-assert.doesNotMatch(javascript, /map-author-editor|分野編集/u, 'production JavaScript must not include the development-only domain editor')
+assert.match(javascript.join('\n'), /map-graph-view/, 'production JavaScript should include the integrated lesson map')
+assert.doesNotMatch(javascript.join('\n'), /map-author-editor|分野編集/u, 'production JavaScript must not include the development-only domain editor')
 assert.match(stylesheet, /react-flow/, 'production CSS should include React Flow styles')
 
 for (const url of assets) {
