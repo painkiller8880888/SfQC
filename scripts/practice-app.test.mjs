@@ -8,6 +8,7 @@ import { serializeBackup } from '../src/backup.mjs'
 import { createRouteHistoryState, navigateRouteHistory } from '../src/route-history.mjs'
 import { routeToHash } from '../src/resolve-screen.mjs'
 import { createInitialMapState, MAP_STATE_KEY, readMapState, saveMapState } from '../src/map-state.mjs'
+import { createMapPocGraph } from '../src/map-poc-graph.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 
 const globalKeys = [
@@ -21,7 +22,7 @@ class TestResizeObserver {
   disconnect() {}
 }
 
-async function createHarness({ strict = false } = {}) {
+async function createHarness({ strict = false, confirm = () => true } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://sfqc.test/SfQC/#/practice',
     pretendToBeVisual: true,
@@ -49,6 +50,7 @@ async function createHarness({ strict = false } = {}) {
     Object.defineProperty(globalThis, key, { value, configurable: true, writable: true })
   }
   dom.window.scrollTo = () => {}
+  dom.window.confirm = confirm
   dom.window.document.head.insertAdjacentHTML('beforeend', '<style>.react-flow__pane { z-index: 1 }</style>')
   for (const [key, dimension] of [['offsetWidth', 1024], ['offsetHeight', 640]]) {
     Object.defineProperty(dom.window.HTMLElement.prototype, key, {
@@ -76,6 +78,7 @@ async function createHarness({ strict = false } = {}) {
   return {
     dom,
     host,
+    loadModule: (id) => server.ssrLoadModule(id),
     mount,
     unmount,
     async remountAt(hash) {
@@ -184,6 +187,16 @@ async function pressKey(window, target, key) {
     await new Promise((resolve) => window.requestAnimationFrame(resolve))
   })
   return event
+}
+
+function renderedPosition(node) {
+  const match = node.style.transform.match(/translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/u)
+  assert.ok(match, `expected node position transform, got: ${node.style.transform}`)
+  return { x: Number(match[1]), y: Number(match[2]) }
+}
+
+function savedMap(window) {
+  return readMapState(lessonRegistry, () => window.localStorage).state
 }
 
 test('fixed practice saves drafts per history entry, preserves attempts, and retries a saved result navigation', async () => {
@@ -1300,6 +1313,232 @@ test('integrated learning map Re-layout keeps an empty selection empty', async (
     await click(buttonFor(app.host, 'Re-layout'))
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
     assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
+  } finally {
+    await app.close()
+  }
+})
+
+test('map position snapshot helpers keep dragging live until a confirmed position change', async () => {
+  const app = await createHarness()
+  try {
+    const { applyMapNodeChanges, mapPositions, samePositions, shouldSaveMapLayout } = await app.loadModule('/src/lesson-map-view.tsx')
+    const nodes = createMapPocGraph().nodes
+    const id = 'descriptive-statistics'
+    const original = nodes.find((node) => node.id === id).position
+    const live = applyMapNodeChanges(nodes, [{
+      type: 'position', id, position: { x: original.x + 17, y: original.y + 9 }, dragging: true,
+    }])
+    assert.deepEqual(live.find((node) => node.id === id).position, { x: original.x + 17, y: original.y + 9 })
+    assert.notDeepEqual(mapPositions(live), mapPositions(nodes))
+    assert.equal(shouldSaveMapLayout([{ type: 'position', id, dragging: true }], mapPositions(live), mapPositions(nodes)), false)
+    assert.equal(shouldSaveMapLayout([{ type: 'select', id, selected: true }], mapPositions(live), mapPositions(nodes)), false)
+    assert.equal(shouldSaveMapLayout([{ type: 'dimensions', id }], mapPositions(live), mapPositions(nodes)), false)
+    assert.equal(shouldSaveMapLayout([{ type: 'position', id, dragging: false }], mapPositions(nodes), mapPositions(nodes)), false)
+
+    const confirmed = applyMapNodeChanges(live, [{
+      type: 'position', id, position: { x: original.x + 17, y: original.y + 9 }, dragging: false,
+    }])
+    assert.deepEqual(confirmed.find((node) => node.id === id).position, { x: original.x + 17, y: original.y + 9 })
+    assert.equal(shouldSaveMapLayout([{ type: 'position', id, dragging: false }], mapPositions(confirmed), mapPositions(nodes)), true)
+    assert.equal(samePositions(mapPositions(confirmed), mapPositions(live)), true)
+  } finally {
+    await app.close()
+  }
+})
+
+test('layout editing gates keyboard movement, saves all positions, confirms Re-layout, and restores after reload', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+    const id = 'descriptive-statistics'
+    const node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    await click(node)
+    node.focus()
+    const before = renderedPosition(node)
+    const originalPosition = createMapPocGraph().nodes.find((candidate) => candidate.id === id).position
+
+    await pressKey(window, node, 'ArrowRight')
+    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), before)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), null)
+
+    const editButton = buttonFor(app.host, '配置編集')
+    assert.equal(editButton.getAttribute('aria-pressed'), 'false')
+    await click(editButton)
+    assert.equal(editButton.getAttribute('aria-pressed'), 'true')
+    const activeNode = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    activeNode.focus()
+    await pressKey(window, activeNode, 'ArrowRight')
+    await pressKey(window, app.host.querySelector(`.react-flow__node[data-id="${id}"]`), 'ArrowRight')
+
+    let map = savedMap(window)
+    assert.equal(Object.keys(map.positions).length, 34)
+    assert.deepEqual(map.positions[id], { x: originalPosition.x + 10, y: originalPosition.y })
+    const rawAfterMoves = window.localStorage.getItem(MAP_STATE_KEY)
+    await click(buttonFor(app.host, '全体表示'))
+    await settleEffects(window)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawAfterMoves)
+
+    window.confirm = () => false
+    const beforeCancelPosition = renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
+    const beforeCancelViewport = app.host.querySelector('.react-flow__viewport').style.transform
+    const beforeCancelSelection = app.host.querySelector('.react-flow__node.selected')?.dataset.id
+    await click(buttonFor(app.host, 'Re-layout'))
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawAfterMoves)
+    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), beforeCancelPosition)
+    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, beforeCancelViewport)
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, beforeCancelSelection)
+
+    window.confirm = () => true
+    await click(buttonFor(app.host, 'Re-layout'))
+    await settleEffects(window)
+    map = savedMap(window)
+    const automatic = createMapPocGraph().nodes.find((candidate) => candidate.id === id).position
+    assert.deepEqual(map.positions[id], automatic)
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, beforeCancelSelection)
+    const savedPosition = renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
+    await app.remountAt('#/map')
+    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), savedPosition)
+    assert.deepEqual(savedMap(window).positions[id], automatic)
+  } finally {
+    await app.close()
+  }
+})
+
+test('failed layout save restores the last confirmed position before the next keyboard move', async () => {
+  const app = await createHarness()
+  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
+  const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
+  const originalSet = storagePrototype.setItem
+  let failMapWrite = true
+  try {
+    const { window } = app.dom
+    Object.defineProperty(storagePrototype, 'setItem', {
+      configurable: true,
+      writable: true,
+      value: function (key, value) {
+        if (key === MAP_STATE_KEY && failMapWrite) {
+          failMapWrite = false
+          throw new Error('quota')
+        }
+        return originalSet.call(this, key, value)
+      },
+    })
+    await click(linkFor(app.host, '学習マップ'))
+    const id = 'descriptive-statistics'
+    const originalPosition = createMapPocGraph().nodes.find((candidate) => candidate.id === id).position
+    await click(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
+    await click(buttonFor(app.host, '配置編集'))
+    let node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    node.focus()
+    const original = renderedPosition(node)
+    await pressKey(window, node, 'ArrowRight')
+    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), original)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), null)
+    assert.match(app.host.querySelector('.map-route-messages').textContent, /保存できませんでした/u)
+
+    node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    node.focus()
+    await pressKey(window, node, 'ArrowRight')
+    assert.deepEqual(savedMap(window).positions[id], { x: originalPosition.x + 5, y: originalPosition.y })
+  } finally {
+    if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
+    await app.close()
+  }
+})
+
+test('layout conflict adopts external positions immediately and keeps them in the next save', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+    const defaults = createMapPocGraph().nodes
+    const external = createInitialMapState(lessonRegistry)
+    external.positions = Object.fromEntries(defaults.map(({ id, position }) => [id, {
+      x: position.x + 30,
+      y: position.y - 20,
+    }]))
+    saveMapState(external, null, lessonRegistry, () => window.localStorage)
+    const firstId = 'descriptive-statistics'
+    const stylesBefore = Object.fromEntries([...app.host.querySelectorAll('.react-flow__node')]
+      .map((node) => [node.dataset.id, node.style.transform]))
+    await click(app.host.querySelector(`.react-flow__node[data-id="${firstId}"]`))
+    await click(buttonFor(app.host, '配置編集'))
+    let selected = app.host.querySelector(`.react-flow__node[data-id="${firstId}"]`)
+    selected.focus()
+    const viewportBefore = app.host.querySelector('.react-flow__viewport').style.transform
+    await pressKey(window, selected, 'ArrowRight')
+    assert.deepEqual(savedMap(window).positions, external.positions)
+    for (const id of Object.keys(external.positions)) {
+      assert.notEqual(app.host.querySelector(`.react-flow__node[data-id="${id}"]`).style.transform, stylesBefore[id])
+    }
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, firstId)
+    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, viewportBefore)
+
+    const secondId = 'math-arithmetic'
+    await click(app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`))
+    selected = app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`)
+    selected.focus()
+    await pressKey(window, selected, 'ArrowRight')
+    const finalPositions = savedMap(window).positions
+    assert.equal(Object.keys(finalPositions).length, 34)
+    for (const [id, position] of Object.entries(external.positions)) {
+      assert.deepEqual(finalPositions[id], id === secondId ? { ...position, x: position.x + 5 } : position)
+    }
+  } finally {
+    await app.close()
+  }
+})
+
+test('normal map-state refresh synchronizes externally changed coordinates without fitting the viewport', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+    const id = 'descriptive-statistics'
+    await click(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
+    const stylesBefore = Object.fromEntries([...app.host.querySelectorAll('.react-flow__node')]
+      .map((node) => [node.dataset.id, node.style.transform]))
+    const viewportBefore = app.host.querySelector('.react-flow__viewport').style.transform
+    const external = createInitialMapState(lessonRegistry)
+    external.positions = Object.fromEntries(createMapPocGraph().nodes.map(({ id: lessonId, position }) => [lessonId, {
+      x: position.x + 24,
+      y: position.y - 16,
+    }]))
+    saveMapState(external, null, lessonRegistry, () => window.localStorage)
+
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Start'))
+    await settleEffects(window)
+    assert.deepEqual(savedMap(window).positions, external.positions)
+    for (const lessonId of Object.keys(external.positions)) {
+      assert.notEqual(app.host.querySelector(`.react-flow__node[data-id="${lessonId}"]`).style.transform, stylesBefore[lessonId])
+    }
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, id)
+    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, viewportBefore)
+
+    const positionStyles = Object.fromEntries([...app.host.querySelectorAll('.react-flow__node')]
+      .map((node) => [node.dataset.id, node.style.transform]))
+    await click(app.host.querySelector('.lesson-detail-card input[type="checkbox"]'))
+    assert.deepEqual(savedMap(window).positions, external.positions)
+    for (const lessonId of Object.keys(external.positions)) {
+      assert.equal(app.host.querySelector(`.react-flow__node[data-id="${lessonId}"]`).style.transform, positionStyles[lessonId])
+    }
+  } finally {
+    await app.close()
+  }
+})
+
+test('invalid map-state disables layout editing and preserves the damaged raw', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const damaged = '{"schemaVersion":1,"positions":{"descriptive-statistics":{"x":1e999,"y":0}}}'
+    window.localStorage.setItem(MAP_STATE_KEY, damaged)
+    await app.remountAt('#/map')
+    assert.equal(buttonFor(app.host, '配置編集').disabled, true)
+    assert.equal(buttonFor(app.host, 'Re-layout').disabled, true)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), damaged)
+    assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
   } finally {
     await app.close()
   }
