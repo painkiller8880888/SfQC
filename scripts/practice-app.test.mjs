@@ -768,7 +768,8 @@ test('integrated learning map switches views and restores graph selection and vi
     const selectedId = lessonNode.dataset.id
     await click(lessonNode)
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
-    assert.equal(app.host.querySelector('.map-selection').textContent, `選択中: ${lessonNode.textContent}`)
+    assert.equal(app.host.querySelector('.map-selection').textContent,
+      `選択中: ${lessonNode.textContent}。直接の共通必須前提 3 件を強調しています`)
 
     const viewport = app.host.querySelector('.react-flow__viewport')
     const beforeZoom = viewport.style.transform
@@ -1236,6 +1237,99 @@ test('integrated learning map shifts the viewport only when the selected node is
     assert.ok(afterValues, afterCorrection)
     assert.equal(afterValues[3], beforeValues[3])
     assert.ok(Number(afterValues[1]) < Number(beforeValues[1]))
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map highlights only direct common prerequisites and clears stale highlights', async () => {
+  const app = await createHarness({ measureFlowNodes: true })
+  try {
+    const { window } = app.dom
+    Object.defineProperty(window, 'DOMMatrixReadOnly', {
+      configurable: true,
+      value: class {
+        constructor(transform) {
+          this.m22 = Number(/scale\(\s*([-+.\deE]+)/u.exec(transform)?.[1] ?? 1)
+        }
+      },
+    })
+    await click(linkFor(app.host, '学習マップ'))
+    await settleEffects(window)
+
+    const graph = createMapPocGraph()
+    const node = (id) => app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    const highlightedNodeIds = () => [...app.host.querySelectorAll('.react-flow__node.map-prerequisite')]
+      .map((item) => item.dataset.id).sort()
+    const highlightedEdgeIds = () => [...app.host.querySelectorAll('.react-flow__edge.map-prerequisite-edge')]
+      .map((item) => item.dataset.id).sort()
+    const expectSelection = async (id, expectedPrerequisites) => {
+      await click(node(id))
+      await settleEffects(window)
+      const directEdges = graph.commonPrerequisiteEdges.filter((edge) => edge.target === id)
+      assert.deepEqual(highlightedNodeIds(), [...expectedPrerequisites].sort())
+      assert.deepEqual(highlightedEdgeIds(), directEdges.map((edge) => edge.id).sort())
+      assert.equal(app.host.querySelectorAll('.react-flow__edge').length, 64)
+      assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, id)
+    }
+
+    const mapStateBeforeSelection = window.localStorage.getItem(MAP_STATE_KEY)
+    await expectSelection('math-arithmetic', [])
+    assert.match(node('math-arithmetic').getAttribute('aria-label'), /選択中/u)
+    assert.match(app.host.querySelector('.map-selection').textContent, /直接の共通必須前提はありません/u)
+    await expectSelection('math-ratios-percentages', ['math-arithmetic'])
+    await expectSelection('mean-inference', [
+      'inference-basics', 'descriptive-statistics', 'sampling-distributions',
+    ])
+
+    assert.match(node('descriptive-statistics').getAttribute('aria-label'), /直接の共通必須前提/u)
+    assert.match(app.host.querySelector('.map-selection').textContent, /直接の共通必須前提 3 件/u)
+    const highlightedEdge = app.host.querySelector('.react-flow__edge.map-prerequisite-edge')
+    assert.match(highlightedEdge.getAttribute('aria-label'), /選択教材の直接前提/u)
+    for (const id of [
+      'population-sample', 'normal-distribution', 'law-large-numbers-clt', 'mean-difference-inference',
+    ]) assert.equal(node(id).classList.contains('map-prerequisite'), false)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapStateBeforeSelection)
+
+    const selectedNode = node('mean-inference')
+    const positionBefore = renderedPosition(selectedNode)
+    await click(buttonFor(app.host, '配置編集'))
+    selectedNode.focus()
+    await pressKey(window, selectedNode, 'ArrowRight')
+    await settleEffects(window)
+    assert.notDeepEqual(renderedPosition(node('mean-inference')), positionBefore)
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'mean-inference')
+    assert.deepEqual(highlightedNodeIds(), ['descriptive-statistics', 'inference-basics', 'sampling-distributions'])
+
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
+    await settleEffects(window)
+    assert.match(app.host.querySelector('.manual-progress-status').textContent, /完了/u)
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'mean-inference')
+    assert.deepEqual(highlightedNodeIds(), ['descriptive-statistics', 'inference-basics', 'sampling-distributions'])
+
+    await expectSelection('descriptive-statistics', [
+      'data-types', 'math-powers-roots', 'math-ratios-percentages',
+    ])
+    assert.equal(node('qc-seven-tools').classList.contains('map-prerequisite'), false)
+    assert.equal(node('mean-inference').classList.contains('map-prerequisite'), false)
+
+    const selected = node('descriptive-statistics')
+    selected.focus()
+    await pressKey(window, selected, 'Escape')
+    assert.equal(highlightedNodeIds().length, 0)
+    assert.equal(highlightedEdgeIds().length, 0)
+    assert.equal(selected.getAttribute('aria-label'), graph.nodes.find((item) => item.id === 'descriptive-statistics').data.label)
+    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
+
+    await click(node('mean-inference'))
+    await click(app.host.querySelector('.react-flow__pane'))
+    assert.equal(highlightedNodeIds().length, 0)
+    assert.equal(highlightedEdgeIds().length, 0)
+
+    await app.remountAt('#/map')
+    assert.equal(highlightedNodeIds().length, 0)
+    assert.equal(highlightedEdgeIds().length, 0)
+    assert.equal(app.host.querySelectorAll('.react-flow__edge').length, 64)
   } finally {
     await app.close()
   }

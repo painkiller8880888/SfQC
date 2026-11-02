@@ -91,7 +91,17 @@
 
 .map-canvas .react-flow__node-default.selected {
   border-color: #0f766e;
-  box-shadow: 0 0 0 2px #0f766e;
+  box-shadow: 0 0 0 2px #0f766e, 0 0 14px rgb(15 118 110 / 38%);
+}
+
+.map-canvas .react-flow__node-default.map-prerequisite:not(.selected) {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 1px #0f766e, 0 0 9px rgb(15 118 110 / 20%);
+}
+
+.map-canvas .react-flow__edge.map-prerequisite-edge .react-flow__edge-path {
+  stroke: #0f766e;
+  stroke-width: 2.5;
 }
 
 .lesson-detail-card {
