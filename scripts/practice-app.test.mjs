@@ -17,12 +17,22 @@ const globalKeys = [
 ]
 
 class TestResizeObserver {
-  observe() {}
+  constructor(callback, measureFlowNodes = false) {
+    this.callback = callback
+    this.measureFlowNodes = measureFlowNodes
+  }
+
+  observe(target) {
+    if (!this.measureFlowNodes || !target.classList?.contains('react-flow__node')) return
+    const width = target.offsetWidth
+    const height = target.offsetHeight
+    if (width && height) this.callback([{ target, contentRect: { width, height } }], this)
+  }
   unobserve() {}
   disconnect() {}
 }
 
-async function createHarness({ strict = false, confirm = () => true } = {}) {
+async function createHarness({ strict = false, confirm = () => true, measureFlowNodes = false } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://sfqc.test/SfQC/#/practice',
     pretendToBeVisual: true,
@@ -40,7 +50,13 @@ async function createHarness({ strict = false, confirm = () => true } = {}) {
     Node: dom.window.Node,
     Event: dom.window.Event,
     MouseEvent: dom.window.MouseEvent,
-    ResizeObserver: TestResizeObserver,
+    ResizeObserver: measureFlowNodes
+      ? class extends TestResizeObserver {
+        constructor(callback) {
+          super(callback, true)
+        }
+      }
+      : TestResizeObserver,
     requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
     cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
     getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
@@ -187,6 +203,21 @@ async function pressKey(window, target, key) {
     await new Promise((resolve) => window.requestAnimationFrame(resolve))
   })
   return event
+}
+
+async function dispatchReactFlowMouseEvent(window, target, type, x, y, buttons) {
+  await act(async () => {
+    target.dispatchEvent(new window.MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      button: 0,
+      buttons,
+      clientX: x,
+      clientY: y,
+    }))
+    await new Promise((resolve) => window.requestAnimationFrame(resolve))
+  })
 }
 
 function renderedPosition(node) {
@@ -1342,6 +1373,99 @@ test('map position snapshot helpers keep dragging live until a confirmed positio
     assert.equal(shouldSaveMapLayout([{ type: 'position', id, dragging: false }], mapPositions(confirmed), mapPositions(nodes)), true)
     assert.equal(samePositions(mapPositions(confirmed), mapPositions(live)), true)
   } finally {
+    await app.close()
+  }
+})
+
+test('React Flow mouse drags that return to confirmed positions do not save layout', async () => {
+  const app = await createHarness({ measureFlowNodes: true })
+  const { window } = app.dom
+  const storagePrototype = Object.getPrototypeOf(window.localStorage)
+  const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
+  const originalSet = storagePrototype.setItem
+  let mapWriteCount = 0
+  try {
+    Object.defineProperty(window, 'DOMMatrixReadOnly', {
+      configurable: true,
+      value: class {
+        constructor(transform) {
+          this.m22 = Number(/scale\(\s*([-+.\deE]+)/u.exec(transform)?.[1] ?? 1)
+        }
+      },
+    })
+    const positions = Object.fromEntries(createMapPocGraph().nodes.map(({ id, position }) => [id, position]))
+    const nodeId = 'math-arithmetic'
+    const confirmedPosition = { x: positions[nodeId].x + 40, y: positions[nodeId].y + 20 }
+    positions[nodeId] = confirmedPosition
+    const state = createInitialMapState(lessonRegistry)
+    state.positions = positions
+    saveMapState(state, null, lessonRegistry, () => window.localStorage)
+    const rawBaseline = window.localStorage.getItem(MAP_STATE_KEY)
+
+    await app.remountAt('#/map')
+    await settleEffects(window)
+    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
+
+    Object.defineProperty(storagePrototype, 'setItem', {
+      configurable: true,
+      writable: true,
+      value: function (key, value) {
+        if (key === MAP_STATE_KEY) mapWriteCount += 1
+        return originalSet.call(this, key, value)
+      },
+    })
+
+    await click(buttonFor(app.host, '配置編集'))
+    await settleEffects(window)
+    const node = app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
+    assert.ok(node.classList.contains('draggable'))
+    const flowBounds = () => ({
+      x: 0, y: 0, left: 0, top: 0, right: 1024, bottom: 640, width: 1024, height: 640,
+    })
+    app.host.querySelector('.react-flow').getBoundingClientRect = flowBounds
+    app.host.querySelector('.react-flow__pane').getBoundingClientRect = flowBounds
+    node.getBoundingClientRect = () => ({
+      x: 0, y: 0, left: 0, top: 0, right: 1024, bottom: 640, width: 1024, height: 640,
+    })
+
+    const [startX, startY] = [320, 240]
+    const dragOrigin = [startX + 4, startY]
+    const dragNode = app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
+    await dispatchReactFlowMouseEvent(window, dragNode, 'mousedown', startX, startY, 1)
+    await dispatchReactFlowMouseEvent(window, window, 'mousemove', dragOrigin[0], dragOrigin[1], 1)
+    await dispatchReactFlowMouseEvent(window, window, 'mousemove', startX + 40, startY + 18, 1)
+    await settleEffects(window)
+
+    const outwardNode = app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
+    assert.ok(outwardNode.classList.contains('dragging'))
+    const outwardPosition = renderedPosition(outwardNode)
+    assert.notDeepEqual(outwardPosition, confirmedPosition, 'the React Flow drag must move the node outward')
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawBaseline)
+    assert.equal(mapWriteCount, 0)
+
+    await dispatchReactFlowMouseEvent(window, window, 'mousemove', dragOrigin[0], dragOrigin[1], 1)
+    await settleEffects(window)
+    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawBaseline)
+    assert.equal(mapWriteCount, 0)
+
+    await dispatchReactFlowMouseEvent(window, window, 'mouseup', dragOrigin[0], dragOrigin[1], 0)
+    await settleEffects(window)
+    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
+    assert.deepEqual(savedMap(window).positions, positions)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawBaseline)
+    assert.equal(mapWriteCount, 0)
+
+    const zeroNode = app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
+    await dispatchReactFlowMouseEvent(window, zeroNode, 'mousedown', startX, startY, 1)
+    await dispatchReactFlowMouseEvent(window, window, 'mousemove', startX, startY, 1)
+    await dispatchReactFlowMouseEvent(window, window, 'mouseup', startX, startY, 0)
+    await settleEffects(window)
+    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawBaseline)
+    assert.equal(mapWriteCount, 0)
+  } finally {
+    if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
     await app.close()
   }
 })
