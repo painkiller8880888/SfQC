@@ -1,4 +1,11 @@
+.map-app-shell {
+  --map-focus: #1d4ed8;
+}
+
 .map-graph-layout {
+  --map-surface: #fff;
+  --map-text: #17212b;
+  --map-outline: #64748b;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
@@ -14,6 +21,17 @@
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+}
+
+.map-graph-layout.map-author-open {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(304px, 1fr);
+  min-height: 304px;
+}
+
+.map-graph-view.map-author-open {
+  grid-template-rows: 112px minmax(192px, 1fr);
+  min-height: 304px;
 }
 
 .map-graph-toolbar {
@@ -40,7 +58,10 @@
 }
 
 .map-graph-actions button,
-.map-mode-button {
+.map-mode-button,
+.map-author-actions button,
+.map-author-content button,
+.map-author-content select {
   min-height: 2.5rem;
   padding: 0.45rem 0.75rem;
   border: 1px solid #64748b;
@@ -52,8 +73,12 @@
 }
 
 .map-graph-actions button:focus-visible,
-.map-mode-button:focus-visible {
-  outline: 3px solid #0f766e;
+.map-mode-button:focus-visible,
+.map-author-actions button:focus-visible,
+.map-author-content button:focus-visible,
+.map-author-content select:focus-visible,
+.map-author-content input:focus-visible {
+  outline: 3px solid var(--map-focus);
   outline-offset: 2px;
 }
 
@@ -74,13 +99,15 @@
 
 .map-canvas .react-flow__node-default {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   overflow: hidden;
-  padding: 10px;
-  border: 1px solid #64748b;
+  padding: 8px 10px 8px 16px;
+  border: 1px solid var(--map-outline);
   border-radius: 8px;
-  background: #fff;
-  color: #17212b;
+  background: var(--map-surface);
+  color: var(--map-text);
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -89,9 +116,215 @@
   white-space: normal;
 }
 
+.map-domain-math-foundations { --map-accent-color: var(--map-domain-math-foundations); }
+.map-domain-data-description { --map-accent-color: var(--map-domain-data-description); }
+.map-domain-probability-distributions { --map-accent-color: var(--map-domain-probability-distributions); }
+.map-domain-statistical-analysis { --map-accent-color: var(--map-domain-statistical-analysis); }
+.map-domain-quality-methods { --map-accent-color: var(--map-domain-quality-methods); }
+
+.map-canvas .react-flow__node-default::before {
+  position: absolute;
+  inset: -1px auto -1px -1px;
+  width: 6px;
+  border-radius: 7px 0 0 7px;
+  background: var(--map-accent-color);
+  content: '';
+}
+
+.map-node-title,
+.map-node-domain {
+  display: block;
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.map-node-domain {
+  margin-top: 2px;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.map-domain-legend {
+  display: flex;
+  flex: 0 0 100%;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-x: auto;
+  margin: 0;
+  padding: 0 0 0.2rem;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.map-domain-legend li {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  color: #334155;
+  font-size: 0.75rem;
+}
+
+.map-domain-swatch {
+  flex: 0 0 0.75rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 1px solid #475569;
+  border-radius: 2px;
+  background: var(--map-accent-color);
+}
+
+.map-author-editor {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 112px;
+  min-height: 0;
+  overflow: hidden;
+  border-bottom: 1px solid #cbd5e1;
+  background: var(--map-surface);
+  color: var(--map-text);
+}
+
+.map-author-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.map-author-summary {
+  display: grid;
+  min-width: 0;
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.map-author-summary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-author-summary span + span {
+  color: #475569;
+}
+
+.map-author-actions,
+.map-author-content .map-author-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+}
+
+.map-author-actions button,
+.map-author-content button {
+  min-height: 2rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #64748b;
+  border-radius: 0.35rem;
+  background: var(--map-surface);
+  color: var(--map-text);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.map-author-actions button[aria-pressed="true"] {
+  border-color: #0f766e;
+  background: #ccfbf1;
+  font-weight: 600;
+}
+
+.map-author-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0.25rem 0.5rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.map-author-warning,
+.map-author-dirty,
+.map-author-export-message {
+  margin: 0.25rem 0;
+  line-height: 1.4;
+}
+
+.map-author-color-fields,
+.map-author-domain-fields {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  margin: 0.4rem 0;
+  padding: 0;
+  border: 0;
+}
+
+.map-author-color-fields legend,
+.map-author-domain-fields legend {
+  padding: 0;
+  font-weight: 700;
+}
+
+.map-author-color-fields label,
+.map-author-domain-fields label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+  min-height: 2rem;
+}
+
+.map-author-color-fields label span,
+.map-author-domain-fields label span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.map-author-content input[type="color"] {
+  flex: 0 0 3rem;
+  width: 3rem;
+  height: 2rem;
+  padding: 2px;
+  border: 1px solid #64748b;
+  border-radius: 0.25rem;
+  background: var(--map-surface);
+}
+
+.map-author-content select {
+  flex: 0 0 50%;
+  width: 50%;
+  min-width: 0;
+  min-height: 2rem;
+  padding: 0.2rem;
+  border: 1px solid #64748b;
+  border-radius: 0.25rem;
+  background: var(--map-surface);
+  color: var(--map-text);
+  font: inherit;
+}
+
+.map-author-content button:disabled,
+.map-author-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .map-canvas .react-flow__node-default.selected {
   border-color: #0f766e;
   box-shadow: 0 0 0 2px #0f766e, 0 0 14px rgb(15 118 110 / 38%);
+}
+
+.map-canvas .react-flow__node-default:focus-visible {
+  outline: 3px solid var(--map-focus);
+  outline-offset: 3px;
 }
 
 .map-canvas .react-flow__node-default.map-prerequisite:not(.selected) {

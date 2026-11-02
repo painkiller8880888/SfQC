@@ -9,6 +9,7 @@ import { createRouteHistoryState, navigateRouteHistory } from '../src/route-hist
 import { routeToHash } from '../src/resolve-screen.mjs'
 import { createInitialMapState, MAP_STATE_KEY, readMapState, saveMapState } from '../src/map-state.mjs'
 import { createMapPocGraph } from '../src/map-poc-graph.mjs'
+import { lessonDomains } from '../src/lesson-contract.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 
 const globalKeys = [
@@ -168,6 +169,16 @@ function questionOption(host, questionId) {
 async function click(element) {
   assert.ok(element, 'expected an interactive element')
   await act(async () => element.click())
+}
+
+async function changeControl(window, control, value) {
+  await act(async () => {
+    const prototype = control instanceof window.HTMLSelectElement
+      ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype
+    Object.getOwnPropertyDescriptor(prototype, 'value').set.call(control, value)
+    control.dispatchEvent(new window.Event('input', { bubbles: true }))
+    control.dispatchEvent(new window.Event('change', { bubbles: true }))
+  })
 }
 
 async function changeTextInput(window, input, value) {
@@ -769,7 +780,7 @@ test('integrated learning map switches views and restores graph selection and vi
     await click(lessonNode)
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
     assert.equal(app.host.querySelector('.map-selection').textContent,
-      `選択中: ${lessonNode.textContent}。直接の共通必須前提 3 件を強調しています`)
+      `選択中: ${lessonNode.querySelector('.map-node-title').textContent}。分野: ${lessonNode.querySelector('.map-node-domain').textContent}。直接の共通必須前提 3 件を強調しています`)
 
     const viewport = app.host.querySelector('.react-flow__viewport')
     const beforeZoom = viewport.style.transform
@@ -1335,7 +1346,7 @@ test('integrated learning map highlights only direct common prerequisites and cl
     }
     assert.equal(highlightedNodeIds().length, 0)
     assert.equal(highlightedEdgeIds().length, 0)
-    assert.equal(selected.getAttribute('aria-label'), graph.nodes.find((item) => item.id === 'descriptive-statistics').data.label)
+    assert.equal(selected.getAttribute('aria-label'), '基本統計量（分野：データ・記述統計）')
     assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
 
     await click(node('mean-inference'))
@@ -1348,6 +1359,145 @@ test('integrated learning map highlights only direct common prerequisites and cl
     assert.equal(highlightedEdgeIds().length, 0)
     assert.equal(app.host.querySelectorAll('.react-flow__edge').length, 64)
   } finally {
+    await app.close()
+  }
+})
+
+test('development domain editor keeps a reviewable in-memory draft and exports only registry changes', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const urlCreate = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+  const urlRevoke = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
+  const anchorClick = Object.getOwnPropertyDescriptor(window.HTMLAnchorElement.prototype, 'click')
+  const downloads = []
+  let exportedBlob = null
+  let failDownload = true
+  const restoreDownloadMocks = () => {
+    if (urlCreate) Object.defineProperty(URL, 'createObjectURL', urlCreate)
+    else delete URL.createObjectURL
+    if (urlRevoke) Object.defineProperty(URL, 'revokeObjectURL', urlRevoke)
+    else delete URL.revokeObjectURL
+    if (anchorClick) Object.defineProperty(window.HTMLAnchorElement.prototype, 'click', anchorClick)
+    else delete window.HTMLAnchorElement.prototype.click
+  }
+  try {
+    Object.defineProperty(window, 'DOMMatrixReadOnly', {
+      configurable: true,
+      value: class {
+        constructor(transform) {
+          this.m22 = Number(/scale\(\s*([-+.\deE]+)/u.exec(transform)?.[1] ?? 1)
+        }
+      },
+    })
+    assert.equal(buttonFor(app.host, '分野編集'), undefined)
+    await click(linkFor(app.host, '学習マップ'))
+    await settleEffects(window)
+    assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
+
+    const nodeFor = (id) => app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    const nodePosition = renderedPosition(nodeFor('math-arithmetic'))
+    const lessonTitle = (id) => lessonRegistry.lessons.find((lesson) => lesson.lessonId === id).title
+    const selectFor = (id) => [...app.host.querySelectorAll('.map-author-domain-fields label')]
+      .find((label) => label.querySelector('span').textContent === lessonTitle(id)).querySelector('select')
+    const domainClasses = (id) => [...nodeFor(id).classList].filter((name) => name.startsWith('map-domain-'))
+
+    await click(nodeFor('descriptive-statistics'))
+    await click(buttonFor(app.host, '分野編集'))
+    await settleEffects(window)
+    assert.ok(app.host.querySelector('.map-app-shell.map-author-mode'))
+    assert.equal(app.host.querySelector('.map-graph-layout.has-detail'), null)
+    assert.equal(app.host.querySelector('.lesson-detail-card'), null)
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
+    assert.match(app.host.querySelector('.map-author-summary').textContent, /基本統計量/u)
+    assert.match(app.host.querySelector('.map-author-summary').textContent, /データ・記述統計/u)
+    assert.equal(window.document.activeElement, app.host.querySelector('.map-author-color-fields input'))
+    assert.equal(app.host.querySelectorAll('.map-author-domain-fields select').length, 34)
+    assert.equal(app.host.querySelectorAll('.map-author-color-fields input[type="color"]').length, 5)
+    assert.deepEqual([...app.host.querySelectorAll('.map-author-color-fields label > span')].map((item) => item.textContent),
+      Object.values(lessonDomains))
+
+    for (const domain of ['data-description', 'probability-distributions', 'math-foundations']) {
+      await changeControl(window, selectFor('math-arithmetic'), domain)
+      assert.deepEqual(domainClasses('math-arithmetic'), [`map-domain-${domain}`])
+      assert.equal(nodeFor('math-arithmetic').querySelector('.map-node-domain').textContent, lessonDomains[domain])
+    }
+    assert.equal(app.host.querySelector('.map-author-dirty').textContent, '変更はありません。')
+    assert.deepEqual(renderedPosition(nodeFor('math-arithmetic')), nodePosition)
+
+    const domainColors = [...app.host.querySelectorAll('.map-author-color-fields input[type="color"]')]
+    for (const color of domainColors) await changeControl(window, color, '#000000')
+    await changeControl(window, selectFor('descriptive-statistics'), 'quality-methods')
+    assert.match(app.host.querySelector('.map-author-dirty').textContent, /未書き出し/u)
+    assert.equal(app.host.querySelector('.map-graph-layout').style.getPropertyValue('--map-domain-math-foundations'), '#000000')
+    assert.deepEqual(domainClasses('descriptive-statistics'), ['map-domain-quality-methods'])
+    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, '品質管理手法')
+    assert.equal(nodeFor('descriptive-statistics').getAttribute('aria-label'), '基本統計量（分野：品質管理手法、選択中）')
+    for (const lesson of lessonRegistry.lessons) {
+      const current = lesson.lessonId === 'descriptive-statistics' ? 'quality-methods' : lesson.domain
+      assert.equal(nodeFor(lesson.lessonId).querySelector('.map-node-domain').textContent, lessonDomains[current])
+    }
+
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      writable: true,
+      value(blob) {
+        if (failDownload) throw new Error('download unavailable')
+        exportedBlob = blob
+        return 'blob:sfqc-test'
+      },
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value() {} })
+    Object.defineProperty(window.HTMLAnchorElement.prototype, 'click', {
+      configurable: true,
+      writable: true,
+      value() { downloads.push({ filename: this.download, href: this.href }) },
+    })
+    const exportButton = buttonFor(app.host, 'レビュー用JSONを書き出す')
+    assert.ok(exportButton, [...app.host.querySelectorAll('.map-author-editor button')].map((button) => button.textContent))
+    await click(exportButton)
+    assert.match(app.host.querySelector('.map-author-export-message').textContent, /変更は保持/u)
+    assert.match(app.host.querySelector('.map-author-dirty').textContent, /未書き出し/u)
+
+    failDownload = false
+    await click(buttonFor(app.host, 'レビュー用JSONを書き出す'))
+    await new Promise((resolve) => window.setTimeout(resolve, 0))
+    assert.match(app.host.querySelector('.map-author-export-message').textContent, /書き出し操作を開始/u)
+    assert.equal(app.host.querySelector('.map-author-dirty').textContent, '変更はありません。')
+    assert.equal(downloads[0].filename, 'sfqc-lesson-domain-draft.json')
+    const review = JSON.parse(await exportedBlob.text())
+    assert.equal(review.schemaVersion, 1)
+    assert.equal(review.curriculumRevision, lessonRegistry.curriculumRevision)
+    assert.deepEqual(Object.keys(review.domainColors), Object.keys(lessonDomains))
+    assert.ok(Object.values(review.domainColors).every((color) => color === '#000000'))
+    assert.deepEqual(review.lessonDomainChanges, [{
+      lessonId: 'descriptive-statistics', from: 'data-description', to: 'quality-methods',
+    }])
+    restoreDownloadMocks()
+
+    await click(buttonFor(app.host, '閉じる'))
+    await settleEffects(window)
+    assert.equal(app.host.querySelector('.map-app-shell.map-author-mode'), null)
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
+    assert.ok(app.host.querySelector('.lesson-detail-card'))
+    assert.equal(window.document.activeElement, buttonFor(app.host, '分野編集'))
+
+    await click(buttonFor(app.host, '分野編集'))
+    await click(buttonFor(app.host, '教材一覧'))
+    assert.equal(app.host.querySelector('.map-app-shell.map-author-mode'), null)
+    await click(buttonFor(app.host, 'マップ表示'))
+    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, 'データ・記述統計')
+    assert.equal(buttonFor(app.host, '分野編集').getAttribute('aria-expanded'), 'false')
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), null)
+
+    await click(buttonFor(app.host, '分野編集'))
+    await click(linkFor(app.host, '進捗'))
+    assert.equal(app.host.querySelector('.map-app-shell.map-author-mode'), null)
+    await click(linkFor(app.host, '学習マップ'))
+    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, 'データ・記述統計')
+    await app.remountAt('#/map')
+    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, 'データ・記述統計')
+  } finally {
+    restoreDownloadMocks()
     await app.close()
   }
 })

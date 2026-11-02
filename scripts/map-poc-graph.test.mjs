@@ -22,6 +22,10 @@ test('PoC maps all lessons and only common prerequisites into a non-overlapping 
     assert.equal(node.style?.width, MAP_NODE_WIDTH)
     assert.equal(node.style?.height, MAP_NODE_HEIGHT)
     assert.ok(Number.isFinite(node.position.x) && Number.isFinite(node.position.y))
+    assert.equal(node.data.domain, source.nodes.find((lesson) => lesson.id === node.id).domain)
+    assert.equal(typeof node.data.label, 'string')
+    assert.doesNotMatch(node.className ?? '', /map-domain-/u)
+    assert.equal(Object.hasOwn(node.style ?? {}, 'backgroundColor'), false)
   }
 
   for (const [index, edge] of edges.entries()) {

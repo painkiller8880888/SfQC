@@ -8,6 +8,7 @@ export declare const lessonDomains: {
   readonly 'quality-methods': '品質管理手法'
 }
 export type LessonDomain = keyof typeof lessonDomains
+export declare const lessonDomainColors: Readonly<Record<LessonDomain, string>>
 
 export type InlineLessonRef = {
   label: string

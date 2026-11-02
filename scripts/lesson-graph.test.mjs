@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { lessonDomains, validateLessonRegistry } from '../src/lesson-contract.mjs'
+import { lessonDomainColors, lessonDomains, validateLessonRegistry } from '../src/lesson-contract.mjs'
 import { deriveLessonGraph } from '../src/lesson-graph.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 import { lessonRegistryFixture } from './lesson-contract.fixture.mjs'
@@ -22,6 +22,8 @@ test('lesson graph keeps all registry relationships and the independent five-dom
     'statistical-analysis': '統計分析・推測',
     'quality-methods': '品質管理手法',
   })
+  assert.deepEqual(Object.keys(lessonDomainColors), Object.keys(lessonDomains))
+  assert.ok(Object.values(lessonDomainColors).every((color) => /^#[0-9a-f]{6}$/iu.test(color)))
 
   const expectedDomains = {
     'math-arithmetic': 'math-foundations',

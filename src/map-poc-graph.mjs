@@ -30,7 +30,7 @@ export function createMapPocGraph(registry = lessonRegistry, positions = {}) {
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
         style: { width: MAP_NODE_WIDTH, height: MAP_NODE_HEIGHT },
-        data: { label: lesson.title },
+        data: { label: lesson.title, domain: lesson.domain },
       }
     }),
     edges: commonPrerequisiteEdges.map((edge) => ({
