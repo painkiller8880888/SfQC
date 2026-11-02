@@ -1,8 +1,9 @@
 import type { Edge, Node } from '@xyflow/react'
-import type { LessonRegistry } from './lesson-contract.mjs'
+import type { ReactNode } from 'react'
+import type { LessonDomain, LessonRegistry } from './lesson-contract.mjs'
 import type { CommonPrerequisiteEdge } from './lesson-graph.mjs'
 
-export type MapPocNodeData = { label: string }
+export type MapPocNodeData = { label: ReactNode; domain: LessonDomain }
 export type MapPocNode = Node<MapPocNodeData, 'default'>
 
 export const MAP_NODE_WIDTH: number

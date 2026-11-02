@@ -151,6 +151,7 @@ function App() {
   const [practiceBusy, setPracticeBusy] = useState(false)
   const [pendingPracticeNavigation, setPendingPracticeNavigation] = useState<{ route: AppRoute; message: string; sourceEntryId: string } | null>(null)
   const [mapView, setMapView] = useState<'graph' | 'list'>('graph')
+  const [mapAuthorMode, setMapAuthorMode] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null)
   const mapViewportRef = useRef<Viewport | null>(null)
@@ -456,6 +457,9 @@ function App() {
       return false
     }
   }
+
+  const requestLessonDomainDownload = useCallback((json: string) =>
+    requestDownload(json, 'sfqc-lesson-domain-draft.json'), [])
 
   const handleExport = (kind: 'combined' | 'practice') => {
     if (busyRef.current) return
@@ -784,7 +788,7 @@ function App() {
   }
 
   const handleMapKeyDownCapture = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Escape' || selectedLessonIdRef.current === null) return
+    if (event.key !== 'Escape' || selectedLessonIdRef.current === null || mapAuthorMode) return
     event.preventDefault()
     event.stopPropagation()
     if (mapView === 'graph') {
@@ -905,7 +909,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell${screen === 'map' ? ` map-app-shell${mapView === 'list' ? ' map-list-layout' : ''}` : ''}`} onClick={handleInternalClick}>
+    <div className={`app-shell${screen === 'map' ? ` map-app-shell${mapView === 'list' ? ' map-list-layout' : ''}${import.meta.env.DEV && mapView === 'graph' && mapAuthorMode ? ' map-author-mode' : ''}` : ''}`} onClick={handleInternalClick}>
       <button
         type="button"
         className="skip-link"
@@ -934,7 +938,9 @@ function App() {
 
       {screen === 'map' ? (
         <main className="map-workspace" onKeyDownCapture={handleMapKeyDownCapture}>
-          <div className="map-route-messages">{routeMessages}</div>
+          <div className="map-route-messages" tabIndex={mapAuthorMode && (
+            storageIssue || mapStateUnavailable || mapStateMessage || view.historyWarning || reviewMessage || pendingPracticeNavigation
+          ) ? 0 : undefined}>{routeMessages}</div>
           {view.historyState.returnStack.length > 0 && (
             <nav className="return-navigation map-return-navigation" aria-label="復習から戻る">
               <a href={view.historyState.returnStack.at(-1)?.routeHash} data-nav-intent="return">1段戻る</a>
@@ -980,6 +986,8 @@ function App() {
                 onManualProgressAction={onManualProgressAction}
                 onViewportChange={onMapMove}
                 onSelectionChange={onMapSelectionChange}
+                onAuthorModeChange={setMapAuthorMode}
+                onAuthorExport={requestLessonDomainDownload}
                 clearSelectionRef={clearMapSelectionRef}
               />
             </div>

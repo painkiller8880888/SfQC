@@ -874,3 +874,134 @@ h1 {
     padding: 0.75rem;
   }
 }
+
+@media (max-width: 480px) {
+  .map-app-shell.map-author-mode {
+    grid-template-rows: 40px minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .map-app-shell.map-author-mode .site-header {
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    gap: 0;
+    align-items: center;
+  }
+
+  .map-app-shell.map-author-mode .site-brand {
+    display: none;
+  }
+
+  .map-app-shell.map-author-mode .primary-nav {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 0.25rem;
+  }
+
+  .map-app-shell.map-author-mode .primary-nav a {
+    padding: 0.15rem 0.35rem;
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+
+  .map-app-shell.map-author-mode .map-workspace {
+    grid-template-rows: 32px 24px 80px minmax(304px, 1fr);
+    min-height: 0;
+  }
+
+  .map-app-shell.map-author-mode .map-route-messages:empty {
+    display: block;
+  }
+
+  .map-app-shell.map-author-mode .map-route-messages {
+    min-height: 0;
+    overflow: auto;
+    padding: 0;
+  }
+
+  .map-app-shell.map-author-mode .map-route-messages > .storage-alert,
+  .map-app-shell.map-author-mode .map-route-messages > .practice-recovery {
+    width: 100%;
+    margin: 0;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0;
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+
+  .map-app-shell.map-author-mode .map-return-navigation {
+    display: flex;
+    align-items: center;
+    min-height: 0;
+    margin: 0;
+    padding: 0 0.5rem;
+    overflow: hidden;
+  }
+
+  .map-app-shell.map-author-mode .map-return-navigation a {
+    padding: 0.1rem 0.25rem;
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+
+  .map-app-shell.map-author-mode .map-toolbar {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-content: center;
+    gap: 0.15rem;
+    height: 80px;
+    min-height: 80px;
+    padding: 0.25rem 0.5rem;
+    overflow: hidden;
+  }
+
+  .map-app-shell.map-author-mode .map-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+  }
+
+  .map-app-shell.map-author-mode .map-heading h1 {
+    overflow: hidden;
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .map-app-shell.map-author-mode .map-heading > p:not(.manual-progress-count) {
+    display: none;
+  }
+
+  .map-app-shell.map-author-mode .map-heading .manual-progress-count {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+
+  .map-app-shell.map-author-mode .map-toolbar-actions {
+    justify-content: flex-end;
+    gap: 0.35rem;
+  }
+
+  .map-app-shell.map-author-mode .map-mode-button {
+    min-height: 2.25rem;
+    padding: 0.25rem 0.45rem;
+    font-size: 0.875rem;
+  }
+
+  .map-app-shell.map-author-mode .map-license-link {
+    padding: 0.25rem;
+    font-size: 0.875rem;
+  }
+
+  .map-app-shell.map-author-mode .map-graph-content {
+    min-height: 0;
+  }
+}

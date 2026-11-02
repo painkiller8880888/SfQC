@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   applyNodeChanges,
   Background,
@@ -17,6 +17,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import './lesson-map-view.css'
 import { createMapPocGraph, type MapPocNode } from './map-poc-graph.mjs'
+import { lessonDomainColors, lessonDomains, type LessonDomain } from './lesson-contract.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import type { ManualProgressCommand, ManualProgressState } from './manual-progress.mjs'
 import type { MapState } from './map-state.mjs'
@@ -56,10 +57,12 @@ type LessonMapViewProps = {
   onManualProgressAction: (lessonId: string, action: ManualProgressCommand) => void
   onViewportChange: (viewport: Viewport) => void
   onSelectionChange: (lessonId: string | null) => void
+  onAuthorModeChange: (open: boolean) => void
+  onAuthorExport: (json: string) => boolean
   clearSelectionRef: { current: (() => void) | null }
 }
 
-function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manualProgress, manualProgressDisabled, positions, positionSyncRevision, onLayoutSave, onManualProgressAction, onViewportChange, onSelectionChange, clearSelectionRef }: LessonMapViewProps) {
+function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manualProgress, manualProgressDisabled, positions, positionSyncRevision, onLayoutSave, onManualProgressAction, onViewportChange, onSelectionChange, onAuthorModeChange, onAuthorExport, clearSelectionRef }: LessonMapViewProps) {
   const graph = useMemo(() => createMapPocGraph(), [])
   const dagrePositions = useMemo(() => mapPositions(graph.nodes), [graph])
   const [nodes, setNodes] = useState<MapPocNode[]>(() => graph.nodes.map((node) => ({
@@ -69,6 +72,18 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
   })))
   const [edges, , onEdgesChange] = useEdgesState(graph.edges)
   const [layoutEditing, setLayoutEditing] = useState(false)
+  const [authorEditorOpen, setAuthorEditorOpen] = useState(false)
+  const [draftDomains, setDraftDomains] = useState<Record<string, LessonDomain>>(() =>
+    Object.fromEntries(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, lesson.domain])))
+  const [draftColors, setDraftColors] = useState<Record<LessonDomain, string>>(() => ({ ...lessonDomainColors }))
+  const initialDraftSnapshot = useMemo(() => JSON.stringify({
+    domains: Object.fromEntries(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, lesson.domain])),
+    colors: lessonDomainColors,
+  }), [])
+  const [lastExportSnapshot, setLastExportSnapshot] = useState(initialDraftSnapshot)
+  const [authorExportMessage, setAuthorExportMessage] = useState('')
+  const authorEditorButtonRef = useRef<HTMLButtonElement>(null)
+  const firstAuthorControlRef = useRef<HTMLInputElement>(null)
   const nodeSnapshotRef = useRef(nodes)
   const confirmedNodePositionsRef = useRef(mapPositions(nodes))
   const positionsPropRef = useRef(positions)
@@ -113,24 +128,38 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
     if (manualProgressDisabled) return
     setLayoutEditingMode(!layoutEditingRef.current)
   }
-  const selectedTitle = nodes.find((node) => node.selected)?.data.label ?? ''
+  const selectedTitle = String(nodes.find((node) => node.selected)?.data.label ?? '')
   const selectedLessonId = nodes.find((node) => node.selected)?.id
   const selectedLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === selectedLessonId)
+  const selectedDomain = selectedLesson ? draftDomains[selectedLesson.lessonId] ?? selectedLesson.domain : null
+  const selectedDomainLabel = selectedDomain ? lessonDomains[selectedDomain] : null
   const directPrerequisiteEdges = graph.commonPrerequisiteEdges.filter((edge) => edge.target === selectedLessonId)
   const directPrerequisiteIds = new Set(directPrerequisiteEdges.map((edge) => edge.source))
   const directPrerequisiteEdgeIds = new Set(directPrerequisiteEdges.map((edge) => edge.id))
-  const lessonTitles = Object.fromEntries(graph.nodes.map(({ id, data }) => [id, data.label]))
+  const lessonTitles = Object.fromEntries(graph.nodes.map(({ id, data }) => [id, String(data.label)]))
   const displayNodes = nodes.map((node) => {
+    const title = String(node.data.label)
+    const domain = draftDomains[node.id] ?? node.data.domain
+    const domainLabel = lessonDomains[domain]
     const relation = node.selected ? '選択中'
       : directPrerequisiteIds.has(node.id) ? `「${selectedTitle}」の直接の共通必須前提` : null
+    const classNames = (node.className ?? '').split(/\s+/u)
+      .filter((className) => className && !className.startsWith('map-domain-'))
     return {
       ...node,
-      className: directPrerequisiteIds.has(node.id)
-        ? [node.className, 'map-prerequisite'].filter(Boolean).join(' ')
-        : node.className,
-      ariaLabel: relation ? `${node.ariaLabel ?? node.data.label}（${relation}）` : node.ariaLabel ?? node.data.label,
+      className: [...classNames, `map-domain-${domain}`,
+        directPrerequisiteIds.has(node.id) ? 'map-prerequisite' : null].filter(Boolean).join(' '),
+      ariaLabel: `${title}（分野：${domainLabel}${relation ? `、${relation}` : ''}）`,
+      data: {
+        ...node.data,
+        label: <><span className="map-node-title">{title}</span><span className="map-node-domain">{domainLabel}</span></>,
+      },
     }
   })
+  const domainColorStyle = Object.fromEntries(Object.entries(draftColors)
+    .map(([domain, color]) => [`--map-domain-${domain}`, color])) as CSSProperties
+  const draftSnapshot = JSON.stringify({ domains: draftDomains, colors: draftColors })
+  const hasUnexportedChanges = draftSnapshot !== lastExportSnapshot
   const displayEdges = edges.map((edge) => {
     const highlighted = directPrerequisiteEdgeIds.has(edge.id)
     const sourceTitle = lessonTitles[edge.source] ?? edge.source
@@ -172,6 +201,17 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
   useEffect(() => {
     if (manualProgressDisabled) setLayoutEditingMode(false)
   }, [manualProgressDisabled, setLayoutEditingMode])
+
+  useEffect(() => {
+    onAuthorModeChange(import.meta.env.DEV && authorEditorOpen)
+    return () => onAuthorModeChange(false)
+  }, [authorEditorOpen, onAuthorModeChange])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !authorEditorOpen) return
+    const frame = window.requestAnimationFrame(() => firstAuthorControlRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [authorEditorOpen])
 
   useEffect(() => {
     const nextPositions = Object.fromEntries(graph.nodes.map(({ id }) => [
@@ -272,21 +312,117 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
     if (result.ok) window.requestAnimationFrame(() => void fitView({ padding: 0.14, duration: 180 }))
   }
 
+  const exportDomainDraft = () => {
+    const json = JSON.stringify({
+      schemaVersion: 1,
+      curriculumRevision: lessonRegistry.curriculumRevision,
+      domainColors: draftColors,
+      lessonDomainChanges: lessonRegistry.lessons.flatMap((lesson) => {
+        const to = draftDomains[lesson.lessonId] ?? lesson.domain
+        return to === lesson.domain ? [] : [{ lessonId: lesson.lessonId, from: lesson.domain, to }]
+      }),
+    }, null, 2)
+    if (!onAuthorExport(json)) {
+      setAuthorExportMessage('JSONを書き出せませんでした。変更は保持されています。もう一度お試しください。')
+      return
+    }
+    setLastExportSnapshot(draftSnapshot)
+    setAuthorExportMessage('書き出し操作を開始しました。ファイルの保存先を確認してください。')
+  }
+
+  const closeAuthorEditor = () => {
+    setAuthorEditorOpen(false)
+    window.requestAnimationFrame(() => authorEditorButtonRef.current?.focus({ preventScroll: true }))
+  }
+
+  const updateDraftDomain = (lessonId: string, value: string) => {
+    if (Object.hasOwn(lessonDomains, value)) {
+      setDraftDomains((current) => ({ ...current, [lessonId]: value as LessonDomain }))
+      setAuthorExportMessage('')
+    }
+  }
+
   return (
-    <div className={`map-graph-layout${selectedLesson ? ' has-detail' : ''}`}>
-      <div className="map-graph-view" onKeyDownCapture={handleKeyDownCapture}>
-        <div className="map-graph-toolbar">
-          <p className="map-selection" aria-live="polite">選択中: {selectedTitle || 'なし'}{selectedLessonId
-            ? directPrerequisiteEdges.length
-              ? `。直接の共通必須前提 ${directPrerequisiteEdges.length} 件を強調しています`
-              : '。直接の共通必須前提はありません'
-            : ''}</p>
-          <div className="map-graph-actions">
-            <button type="button" aria-pressed={layoutEditing} disabled={manualProgressDisabled} onClick={handleLayoutEditingToggle}>配置編集</button>
-            <button ref={fitViewButtonRef} type="button" onClick={() => void fitView({ padding: 0.14, duration: 180 })}>全体表示</button>
-            <button type="button" disabled={manualProgressDisabled} onClick={resetLayout}>Re-layout</button>
+    <div className={`map-graph-layout${selectedLesson && !authorEditorOpen ? ' has-detail' : ''}${authorEditorOpen ? ' map-author-open' : ''}`} style={domainColorStyle}>
+      <div className={`map-graph-view${authorEditorOpen ? ' map-author-open' : ''}`} onKeyDownCapture={handleKeyDownCapture}>
+        {import.meta.env.DEV && authorEditorOpen ? (
+          <section className="map-author-editor" aria-label="教材分野と色の編集">
+            <header className="map-author-header">
+              <div className="map-author-summary" aria-live="polite">
+                <span>{selectedLesson?.title ?? '教材を選択すると、現在の分野を表示します。'}</span>
+                {selectedDomainLabel && <span>{selectedDomainLabel}</span>}
+              </div>
+              <div className="map-author-actions">
+                <button type="button" aria-pressed={layoutEditing} disabled={manualProgressDisabled} onClick={handleLayoutEditingToggle}>配置編集</button>
+                <button type="button" onClick={closeAuthorEditor}>閉じる</button>
+              </div>
+            </header>
+            <div className="map-author-content">
+              <p className="map-author-warning">draftは一時保存です。マップ/一覧の切替、画面移動、再読み込みで失われます。</p>
+              <div className="map-author-actions">
+                <button type="button" onClick={() => void fitView({ padding: 0.14, duration: 180 })}>全体表示</button>
+                <button type="button" disabled={manualProgressDisabled} onClick={resetLayout}>Re-layout</button>
+              </div>
+              <fieldset className="map-author-color-fields">
+                <legend>分野の色（全体に反映）</legend>
+                {Object.entries(lessonDomains).map(([domain, label], index) => (
+                  <label key={domain}>
+                    <span>{label}</span>
+                    <input
+                      ref={index === 0 ? firstAuthorControlRef : undefined}
+                      type="color"
+                      value={draftColors[domain as LessonDomain]}
+                      onChange={(event) => {
+                        setDraftColors((current) => ({ ...current, [domain]: event.currentTarget.value }))
+                        setAuthorExportMessage('')
+                      }}
+                    />
+                  </label>
+                ))}
+              </fieldset>
+              <fieldset className="map-author-domain-fields">
+                <legend>単元の分野</legend>
+                {lessonRegistry.lessons.map((lesson) => (
+                  <label key={lesson.lessonId}>
+                    <span>{lesson.title}</span>
+                    <select value={draftDomains[lesson.lessonId] ?? lesson.domain}
+                      onChange={(event) => updateDraftDomain(lesson.lessonId, event.currentTarget.value)}>
+                      {Object.entries(lessonDomains).map(([domain, label]) => (
+                        <option key={domain} value={domain}>{label}</option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </fieldset>
+              <p className="map-author-dirty" role="status" aria-live="polite">
+                {hasUnexportedChanges ? '未書き出しの変更があります。' : '変更はありません。'}
+              </p>
+              <button type="button" onClick={exportDomainDraft}>レビュー用JSONを書き出す</button>
+              <p className="map-author-export-message" role="status" aria-live="polite">{authorExportMessage}</p>
+            </div>
+          </section>
+        ) : (
+          <div className="map-graph-toolbar">
+            <p className="map-selection" aria-live="polite">選択中: {selectedTitle || 'なし'}{selectedDomainLabel
+              ? `。分野: ${selectedDomainLabel}` : ''}{selectedLessonId
+              ? directPrerequisiteEdges.length
+                ? `。直接の共通必須前提 ${directPrerequisiteEdges.length} 件を強調しています`
+                : '。直接の共通必須前提はありません'
+              : ''}</p>
+            <div className="map-graph-actions">
+              <button type="button" aria-pressed={layoutEditing} disabled={manualProgressDisabled} onClick={handleLayoutEditingToggle}>配置編集</button>
+              <button ref={fitViewButtonRef} type="button" onClick={() => void fitView({ padding: 0.14, duration: 180 })}>全体表示</button>
+              <button type="button" disabled={manualProgressDisabled} onClick={resetLayout}>Re-layout</button>
+              {import.meta.env.DEV && <button ref={authorEditorButtonRef} type="button" aria-expanded={authorEditorOpen}
+                onClick={() => setAuthorEditorOpen(true)}>分野編集</button>}
+            </div>
+            <ul className="map-domain-legend" aria-label="教材分野の凡例">
+              {Object.entries(lessonDomains).map(([domain, label]) => (
+                <li key={domain}><span className={`map-domain-swatch map-domain-${domain}`} aria-hidden="true" />{label}</li>
+              ))}
+            </ul>
           </div>
-        </div>
+        )}
         <section ref={mapCanvasRef} className="map-canvas" aria-label="教材単元の依存関係">
           <ReactFlow<MapPocNode>
             nodes={displayNodes}
@@ -315,7 +451,7 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
           </ReactFlow>
         </section>
       </div>
-      {selectedLesson && <LessonDetailCard
+      {selectedLesson && !authorEditorOpen && <LessonDetailCard
         key={selectedLesson.lessonId}
         lesson={selectedLesson}
         manualProgress={manualProgress[selectedLesson.lessonId]}

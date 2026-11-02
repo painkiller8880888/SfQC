@@ -12,6 +12,14 @@ export const lessonDomains = Object.freeze({
   'quality-methods': '品質管理手法',
 })
 
+export const lessonDomainColors = Object.freeze({
+  'math-foundations': '#2563eb',
+  'data-description': '#0f766e',
+  'probability-distributions': '#7c3aed',
+  'statistical-analysis': '#b45309',
+  'quality-methods': '#be123c',
+})
+
 function isRecord(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return false

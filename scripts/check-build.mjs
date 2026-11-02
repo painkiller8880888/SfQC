@@ -19,6 +19,7 @@ assert.ok(assets.some((url) => url.endsWith('.css')), 'production CSS should use
 const javascript = await readFile(new URL(`../dist/${assets.find((url) => url.endsWith('.js')).slice('/SfQC/'.length)}`, import.meta.url), 'utf8')
 const stylesheet = await readFile(new URL(`../dist/${assets.find((url) => url.endsWith('.css')).slice('/SfQC/'.length)}`, import.meta.url), 'utf8')
 assert.match(javascript, /map-graph-view/, 'production JavaScript should include the integrated lesson map')
+assert.doesNotMatch(javascript, /map-author-editor|分野編集/u, 'production JavaScript must not include the development-only domain editor')
 assert.match(stylesheet, /react-flow/, 'production CSS should include React Flow styles')
 
 for (const url of assets) {
