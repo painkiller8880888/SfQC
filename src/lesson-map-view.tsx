@@ -3,6 +3,7 @@ import {
   applyNodeChanges,
   Background,
   Controls,
+  MarkerType,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -139,6 +140,9 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
       className: highlighted
         ? [edge.className, 'map-prerequisite-edge'].filter(Boolean).join(' ')
         : edge.className,
+      markerEnd: highlighted
+        ? { type: MarkerType.ArrowClosed, color: '#0f766e' }
+        : edge.markerEnd,
       ariaLabel: `${sourceTitle}から${targetTitle}への共通必須前提${highlighted ? '（選択教材の直接前提）' : ''}`,
     }
   })

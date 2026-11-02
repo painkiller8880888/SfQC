@@ -1259,10 +1259,19 @@ test('integrated learning map highlights only direct common prerequisites and cl
 
     const graph = createMapPocGraph()
     const node = (id) => app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    const edgeMarker = (id) => {
+      const edge = [...app.host.querySelectorAll('.react-flow__edge')].find((item) => item.dataset.id === id)
+      const reference = edge?.querySelector('.react-flow__edge-path').getAttribute('marker-end')
+      const markerId = /^url\(['"]?#(.+?)['"]?\)$/u.exec(reference ?? '')?.[1]
+      const symbol = markerId && window.document.getElementById(markerId)?.querySelector('.arrowclosed')
+      assert.ok(symbol, `expected an arrow marker for edge ${id}`)
+      return { reference, fill: symbol.style.fill }
+    }
     const highlightedNodeIds = () => [...app.host.querySelectorAll('.react-flow__node.map-prerequisite')]
       .map((item) => item.dataset.id).sort()
     const highlightedEdgeIds = () => [...app.host.querySelectorAll('.react-flow__edge.map-prerequisite-edge')]
       .map((item) => item.dataset.id).sort()
+    const defaultMarkers = new Map(graph.commonPrerequisiteEdges.map((edge) => [edge.id, edgeMarker(edge.id)]))
     const expectSelection = async (id, expectedPrerequisites) => {
       await click(node(id))
       await settleEffects(window)
@@ -1281,6 +1290,11 @@ test('integrated learning map highlights only direct common prerequisites and cl
     await expectSelection('mean-inference', [
       'inference-basics', 'descriptive-statistics', 'sampling-distributions',
     ])
+    const meanInferenceEdges = new Set(graph.commonPrerequisiteEdges
+      .filter((edge) => edge.target === 'mean-inference').map((edge) => edge.id))
+    for (const edge of graph.commonPrerequisiteEdges) {
+      assert.equal(edgeMarker(edge.id).fill, meanInferenceEdges.has(edge.id) ? 'rgb(15, 118, 110)' : defaultMarkers.get(edge.id).fill)
+    }
 
     assert.match(node('descriptive-statistics').getAttribute('aria-label'), /直接の共通必須前提/u)
     assert.match(app.host.querySelector('.map-selection').textContent, /直接の共通必須前提 3 件/u)
@@ -1316,6 +1330,9 @@ test('integrated learning map highlights only direct common prerequisites and cl
     const selected = node('descriptive-statistics')
     selected.focus()
     await pressKey(window, selected, 'Escape')
+    for (const edge of graph.commonPrerequisiteEdges) {
+      assert.deepEqual(edgeMarker(edge.id), defaultMarkers.get(edge.id))
+    }
     assert.equal(highlightedNodeIds().length, 0)
     assert.equal(highlightedEdgeIds().length, 0)
     assert.equal(selected.getAttribute('aria-label'), graph.nodes.find((item) => item.id === 'descriptive-statistics').data.label)
