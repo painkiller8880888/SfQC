@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { act, createElement, startTransition, StrictMode } from 'react'
+import { act, createElement, StrictMode } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
 import { exportLocalData, importLocalData, readLocalData } from '../src/local-data.mjs'
@@ -176,10 +176,8 @@ async function changeControl(window, control, value) {
     const prototype = control instanceof window.HTMLSelectElement
       ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype
     Object.getOwnPropertyDescriptor(prototype, 'value').set.call(control, value)
-    startTransition(() => {
-      control.dispatchEvent(new window.Event('input', { bubbles: true }))
-      control.dispatchEvent(new window.Event('change', { bubbles: true }))
-    })
+    control.dispatchEvent(new window.Event('input', { bubbles: true }))
+    control.dispatchEvent(new window.Event('change', { bubbles: true }))
   })
 }
 
@@ -1366,7 +1364,8 @@ test('integrated learning map highlights only direct common prerequisites and cl
 })
 
 test('development domain editor keeps a reviewable in-memory draft and exports only registry changes', async () => {
-  const app = await createHarness()
+  // StrictMode replays state updaters after the input event to catch retained SyntheticEvent reads.
+  const app = await createHarness({ strict: true })
   const { window } = app.dom
   const urlCreate = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
   const urlRevoke = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
@@ -1426,8 +1425,9 @@ test('development domain editor keeps a reviewable in-memory draft and exports o
     assert.equal(app.host.querySelector('.map-author-dirty').textContent, '変更はありません。')
     assert.deepEqual(renderedPosition(nodeFor('math-arithmetic')), nodePosition)
 
-    const domainColors = [...app.host.querySelectorAll('.map-author-color-fields input[type="color"]')]
-    for (const color of domainColors) await changeControl(window, color, '#000000')
+    for (const color of app.host.querySelectorAll('.map-author-color-fields input[type="color"]')) {
+      await changeControl(window, color, '#000000')
+    }
     await changeControl(window, selectFor('descriptive-statistics'), 'quality-methods')
     assert.match(app.host.querySelector('.map-author-dirty').textContent, /未書き出し/u)
     assert.equal(app.host.querySelector('.map-graph-layout').style.getPropertyValue('--map-domain-math-foundations'), '#000000')
