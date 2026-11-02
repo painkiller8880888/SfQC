@@ -373,7 +373,8 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
                       type="color"
                       value={draftColors[domain as LessonDomain]}
                       onChange={(event) => {
-                        setDraftColors((current) => ({ ...current, [domain]: event.currentTarget.value }))
+                        const color = event.currentTarget.value
+                        setDraftColors((current) => ({ ...current, [domain]: color }))
                         setAuthorExportMessage('')
                       }}
                     />
