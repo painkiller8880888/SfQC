@@ -52,6 +52,27 @@ test('same-revision objective edits retain only unique exact matches and preserv
   assert.ok(migrated.state.lessons['future-topic'])
 })
 
+test('all lesson positions round-trip and invalid coordinates never overwrite their raw value', () => {
+  const state = createInitialMapState(lessonRegistry)
+  state.positions = Object.fromEntries(lessonRegistry.lessons.map(({ lessonId }, index) => [lessonId, {
+    x: index * 13 - 40,
+    y: index * -7 + 11,
+  }]))
+  const storage = storageWith()
+  saveMapState(state, null, lessonRegistry, () => storage)
+  assert.deepEqual(readMapState(lessonRegistry, () => storage).state.positions, state.positions)
+  assert.equal(Object.keys(state.positions).length, 34)
+
+  const validRaw = storage.getItem(MAP_STATE_KEY)
+  for (const invalidCoordinate of ['1e999', 'null', '"bad"']) {
+    const raw = validRaw.replace('"x":-40', `"x":${invalidCoordinate}`)
+    const damaged = storageWith(raw)
+    assert.equal(readMapState(lessonRegistry, () => damaged).status, 'invalid')
+    assert.throws(() => saveMapState(state, raw, lessonRegistry, () => damaged), (error) => error.code === 'invalid-schema')
+    assert.equal(damaged.getItem(MAP_STATE_KEY), raw)
+  }
+})
+
 test('corrupt, unsupported, oversize and storage conflicts never overwrite existing map state', () => {
   assert.throws(() => parseMapState('{', lessonRegistry), (error) => error.code === 'invalid-json')
   assert.throws(() => parseMapState(JSON.stringify({ schemaVersion: 8 }), lessonRegistry), (error) => error.code === 'unsupported-version')

@@ -6,4 +6,4 @@ export type MapPocNode = Node<MapPocNodeData, 'default'>
 
 export const MAP_NODE_WIDTH: number
 export const MAP_NODE_HEIGHT: number
-export function createMapPocGraph(registry?: LessonRegistry): { nodes: MapPocNode[]; edges: Edge[] }
+export function createMapPocGraph(registry?: LessonRegistry, positions?: Record<string, { x: number; y: number }>): { nodes: MapPocNode[]; edges: Edge[] }

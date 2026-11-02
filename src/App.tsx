@@ -22,7 +22,7 @@ import type { ReadonlyQuestionInstance } from './question-contract.mjs'
 import { resolveRouteData } from './route-data.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { LessonMap, LessonReference, LessonRouteContent, ProgressView, lessonRefLabel } from './lesson-view'
-import { LessonMapView } from './lesson-map-view'
+import { LessonMapView, samePositions, type LayoutSaveResult, type Positions } from './lesson-map-view'
 import { deriveProgress } from './progress-data.mjs'
 import {
   countCompletedManualProgress,
@@ -137,6 +137,7 @@ function App() {
   const initialMapState = mapStateRead.status === 'missing' || mapStateRead.status === 'ok' || mapStateRead.status === 'migrated'
     ? mapStateRead.state : createInitialMapState(lessonRegistry)
   const [manualProgress, setManualProgress] = useState(() => initialMapState.lessons)
+  const [positionSyncRevision, setPositionSyncRevision] = useState(0)
   const [mapStateConfirmed, setMapStateConfirmed] = useState(() => ['missing', 'ok', 'migrated'].includes(mapStateRead.status))
   const initialMapMessage = mapStateRead.status === 'migrated' && mapStateRead.changedLessonIds.length
     ? `教材改訂を検出しました。${mapStateRead.changedLessonIds.length}単元の自己点検を再確認してください。内容は次の手動操作時に保存されます。`
@@ -162,6 +163,7 @@ function App() {
   const viewRef = useRef(view)
   const mapStateRef = useRef<MapState>(initialMapState)
   const mapStateReadRef = useRef(mapStateRead)
+  const publishedPositionsRef = useRef(initialMapState.positions)
   const expectedMapRawRef = useRef(mapStateRead.raw ?? null)
   const mapStateConfirmedRef = useRef(['missing', 'ok', 'migrated'].includes(mapStateRead.status))
   const navigationIdRef = useRef(0)
@@ -175,10 +177,13 @@ function App() {
     selectedLessonIdRef.current = lessonId
   }, [])
 
-  const publishMapStateRead = (next: ReturnType<typeof readMapState>) => {
+  const publishMapStateRead = (next: ReturnType<typeof readMapState>, syncPositions = true) => {
     mapStateReadRef.current = next
     setMapStateRead(next)
     if (next.status === 'missing' || next.status === 'ok' || next.status === 'migrated') {
+      const positionsChanged = !samePositions(publishedPositionsRef.current, next.state.positions)
+      publishedPositionsRef.current = next.state.positions
+      if (syncPositions && positionsChanged) setPositionSyncRevision((revision) => revision + 1)
       mapStateRef.current = next.state
       expectedMapRawRef.current = next.raw
       mapStateConfirmedRef.current = true
@@ -195,6 +200,45 @@ function App() {
   }
 
   const refreshMapState = () => publishMapStateRead(readMapState(lessonRegistry))
+
+  const onMapLayoutSave = useCallback((positions: Positions): LayoutSaveResult => {
+    const currentRead = mapStateReadRef.current
+    if (!['missing', 'ok', 'migrated'].includes(currentRead.status)) {
+      setMapStateMessage('手動進捗の保存状態を確認できないため、配置の編集と保存を停止しています。データ管理画面で保存状態を確認してください。')
+      return { ok: false, positions: mapStateRef.current.positions }
+    }
+    const candidate: MapState = {
+      ...mapStateRef.current,
+      positions: { ...mapStateRef.current.positions, ...positions },
+    }
+    try {
+      const result = saveMapState(candidate, expectedMapRawRef.current, lessonRegistry)
+      mapStateRef.current = result.state
+      publishedPositionsRef.current = result.state.positions
+      expectedMapRawRef.current = result.raw
+      const read = { status: 'ok' as const, raw: result.raw, state: result.state, changedLessonIds: [] }
+      mapStateReadRef.current = read
+      setMapStateRead(read)
+      setManualProgress(result.state.lessons)
+      mapStateConfirmedRef.current = true
+      setMapStateConfirmed(true)
+      setMapStateMessage('')
+      return { ok: true, positions: result.state.positions }
+    } catch (error) {
+      let confirmedPositions = mapStateRef.current.positions
+      if (error instanceof MapStateError && error.code === 'storage-unavailable') {
+        publishMapStateRead({ status: 'unreadable', error }, false)
+      } else if (!(error instanceof MapStateError) || error.code !== 'storage-write-failed') {
+        const latest = readMapState(lessonRegistry)
+        publishMapStateRead(latest, false)
+        if (latest.status === 'missing' || latest.status === 'ok' || latest.status === 'migrated') {
+          confirmedPositions = latest.state.positions
+        }
+      }
+      setMapStateMessage(error instanceof Error ? error.message : '配置を保存できませんでした。')
+      return { ok: false, positions: confirmedPositions }
+    }
+  }, [])
 
   const onManualProgressAction = useCallback((lessonId: string, command: ManualProgressCommand) => {
     const currentRead = mapStateReadRef.current
@@ -930,6 +974,9 @@ function App() {
                 selectedLessonId={selectedLessonIdRef.current}
                 manualProgress={manualProgress}
                 manualProgressDisabled={manualProgressDisabled}
+                positions={mapStateRef.current.positions}
+                positionSyncRevision={positionSyncRevision}
+                onLayoutSave={onMapLayoutSave}
                 onManualProgressAction={onManualProgressAction}
                 onViewportChange={onMapMove}
                 onSelectionChange={onMapSelectionChange}

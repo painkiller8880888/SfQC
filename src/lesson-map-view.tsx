@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
+  applyNodeChanges,
   Background,
   Controls,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
-  useNodesState,
+  type NodeChange,
   useReactFlow,
   type OnMove,
   type NodeMouseHandler,
@@ -17,26 +18,61 @@ import './lesson-map-view.css'
 import { createMapPocGraph, type MapPocNode } from './map-poc-graph.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import type { ManualProgressCommand, ManualProgressState } from './manual-progress.mjs'
+import type { MapState } from './map-state.mjs'
 import { LessonDetailCard } from './lesson-view'
+
+export type Positions = MapState['positions']
+export type LayoutSaveResult = { ok: true; positions: Positions } | { ok: false; positions: Positions }
+
+export function applyMapNodeChanges(nodes: MapPocNode[], changes: NodeChange<MapPocNode>[]) {
+  return applyNodeChanges(changes, nodes)
+}
+
+export function mapPositions(nodes: MapPocNode[]): Positions {
+  return Object.fromEntries(nodes.map(({ id, position }) => [id, { x: position.x, y: position.y }]))
+}
+
+export function samePositions(left: Positions, right: Positions) {
+  const leftIds = Object.keys(left)
+  const rightIds = Object.keys(right)
+  return leftIds.length === rightIds.length
+    && leftIds.every((id) => right[id] && left[id].x === right[id].x && left[id].y === right[id].y)
+}
+
+export function shouldSaveMapLayout(changes: NodeChange<MapPocNode>[], candidate: Positions, confirmed: Positions) {
+  return changes.some((change) => change.type === 'position' && change.dragging !== true)
+    && !samePositions(confirmed, candidate)
+}
 
 type LessonMapViewProps = {
   viewport: Viewport | null
   selectedLessonId: string | null
   manualProgress: ManualProgressState
   manualProgressDisabled?: boolean
+  positions: Positions
+  positionSyncRevision: number
+  onLayoutSave: (positions: Positions) => LayoutSaveResult
   onManualProgressAction: (lessonId: string, action: ManualProgressCommand) => void
   onViewportChange: (viewport: Viewport) => void
   onSelectionChange: (lessonId: string | null) => void
   clearSelectionRef: { current: (() => void) | null }
 }
 
-function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manualProgress, manualProgressDisabled, onManualProgressAction, onViewportChange, onSelectionChange, clearSelectionRef }: LessonMapViewProps) {
+function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manualProgress, manualProgressDisabled, positions, positionSyncRevision, onLayoutSave, onManualProgressAction, onViewportChange, onSelectionChange, clearSelectionRef }: LessonMapViewProps) {
   const graph = useMemo(() => createMapPocGraph(), [])
-  const [nodes, setNodes, onNodesChange] = useNodesState<MapPocNode>(graph.nodes.map((node) => ({
+  const dagrePositions = useMemo(() => mapPositions(graph.nodes), [graph])
+  const [nodes, setNodes] = useState<MapPocNode[]>(() => graph.nodes.map((node) => ({
     ...node,
+    position: positions[node.id] ?? node.position,
     selected: node.id === initialSelectedLessonId,
   })))
   const [edges, , onEdgesChange] = useEdgesState(graph.edges)
+  const [layoutEditing, setLayoutEditing] = useState(false)
+  const nodeSnapshotRef = useRef(nodes)
+  const confirmedNodePositionsRef = useRef(mapPositions(nodes))
+  const positionsPropRef = useRef(positions)
+  const layoutEditingRef = useRef(false)
+  positionsPropRef.current = positions
   const { fitView, getNodes, getViewport, setViewport } = useReactFlow()
   const mapCanvasRef = useRef<HTMLElement>(null)
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
@@ -44,6 +80,38 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
   const pendingKeyboardFocusRef = useRef<string | null>(null)
   const keyboardFocusFrameRef = useRef<number | null>(null)
   const focusRestoreFrameRef = useRef<number | null>(null)
+  const commitNodes = useCallback((next: MapPocNode[]) => {
+    nodeSnapshotRef.current = next
+    setNodes(next)
+  }, [])
+  const setLayoutEditingMode = useCallback((next: boolean) => {
+    layoutEditingRef.current = next
+    setLayoutEditing(next)
+  }, [])
+  const applyConfirmedPositions = useCallback((candidate: Positions) => {
+    const resolved = Object.fromEntries(graph.nodes.map(({ id }) => [id, candidate[id] ?? dagrePositions[id]])) as Positions
+    confirmedNodePositionsRef.current = resolved
+    const current = nodeSnapshotRef.current
+    const next = current.map((node) => {
+      const position = resolved[node.id]
+      return node.position.x === position.x && node.position.y === position.y ? node : { ...node, position }
+    })
+    if (next.some((node, index) => node !== current[index])) commitNodes(next)
+  }, [commitNodes, dagrePositions, graph.nodes])
+  const handleNodesChange = useCallback((changes: NodeChange<MapPocNode>[]) => {
+    const allowPositionChanges = !manualProgressDisabled && layoutEditingRef.current
+    const acceptedChanges = allowPositionChanges ? changes : changes.filter((change) => change.type !== 'position')
+    const next = applyMapNodeChanges(nodeSnapshotRef.current, acceptedChanges)
+    commitNodes(next)
+    if (!allowPositionChanges) return
+    const candidate = mapPositions(next)
+    if (!shouldSaveMapLayout(changes, candidate, confirmedNodePositionsRef.current)) return
+    applyConfirmedPositions(onLayoutSave(candidate).positions)
+  }, [applyConfirmedPositions, commitNodes, manualProgressDisabled, onLayoutSave])
+  const handleLayoutEditingToggle = () => {
+    if (manualProgressDisabled) return
+    setLayoutEditingMode(!layoutEditingRef.current)
+  }
   const selectedTitle = nodes.find((node) => node.selected)?.data.label ?? ''
   const selectedLessonId = nodes.find((node) => node.selected)?.id
   const selectedLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === selectedLessonId)
@@ -60,7 +128,7 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
   const clearSelection = useCallback((restoreFocus = false) => {
     cancelKeyboardFocus()
     cancelFocusRestore()
-    setNodes((currentNodes) => currentNodes.map((node) => node.selected ? { ...node, selected: false } : node))
+    commitNodes(nodeSnapshotRef.current.map((node) => node.selected ? { ...node, selected: false } : node))
     onSelectionChange(null)
     if (restoreFocus) {
       focusRestoreFrameRef.current = window.requestAnimationFrame(() => {
@@ -68,7 +136,29 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
         fitViewButtonRef.current?.focus({ preventScroll: true })
       })
     }
-  }, [cancelFocusRestore, cancelKeyboardFocus, onSelectionChange, setNodes])
+  }, [cancelFocusRestore, cancelKeyboardFocus, commitNodes, onSelectionChange])
+
+  useEffect(() => {
+    if (manualProgressDisabled) setLayoutEditingMode(false)
+  }, [manualProgressDisabled, setLayoutEditingMode])
+
+  useEffect(() => {
+    const nextPositions = Object.fromEntries(graph.nodes.map(({ id }) => [
+      id, positionsPropRef.current[id] ?? dagrePositions[id],
+    ])) as Positions
+    const previousPositions = confirmedNodePositionsRef.current
+    const changedIds = new Set(graph.nodes.filter(({ id }) => {
+      const previous = previousPositions[id]
+      const next = nextPositions[id]
+      return previous.x !== next.x || previous.y !== next.y
+    }).map(({ id }) => id))
+    confirmedNodePositionsRef.current = nextPositions
+    if (!changedIds.size) return
+    const current = nodeSnapshotRef.current
+    commitNodes(current.map((node) => changedIds.has(node.id)
+      ? { ...node, position: nextPositions[node.id] }
+      : node))
+  }, [commitNodes, dagrePositions, graph.nodes, positionSyncRevision])
 
   useEffect(() => {
     const clearAndRestoreFocus = () => clearSelection(true)
@@ -144,10 +234,11 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
   }, [getViewport, selectedLessonId, setViewport])
 
   const resetLayout = () => {
-    const selectedId = nodes.find((node) => node.selected)?.id ?? null
-    const nextGraph = createMapPocGraph()
-    setNodes(nextGraph.nodes.map((node) => ({ ...node, selected: node.id === selectedId })))
-    window.requestAnimationFrame(() => void fitView({ padding: 0.14, duration: 180 }))
+    if (manualProgressDisabled || !window.confirm('手動で変更した配置を破棄し、自動配置に戻しますか？')) return
+    const candidate = dagrePositions
+    const result = onLayoutSave(candidate)
+    applyConfirmedPositions(result.positions)
+    if (result.ok) window.requestAnimationFrame(() => void fitView({ padding: 0.14, duration: 180 }))
   }
 
   return (
@@ -156,15 +247,16 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
         <div className="map-graph-toolbar">
           <p className="map-selection" aria-live="polite">選択中: {selectedTitle || 'なし'}</p>
           <div className="map-graph-actions">
+            <button type="button" aria-pressed={layoutEditing} disabled={manualProgressDisabled} onClick={handleLayoutEditingToggle}>配置編集</button>
             <button ref={fitViewButtonRef} type="button" onClick={() => void fitView({ padding: 0.14, duration: 180 })}>全体表示</button>
-            <button type="button" onClick={resetLayout}>Re-layout</button>
+            <button type="button" disabled={manualProgressDisabled} onClick={resetLayout}>Re-layout</button>
           </div>
         </div>
         <section ref={mapCanvasRef} className="map-canvas" aria-label="教材単元の依存関係">
           <ReactFlow<MapPocNode>
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
+            onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onMove={handleMove}
             onNodeClick={handleNodeClick}
@@ -172,6 +264,7 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
             onSelectionChange={handleSelectionChange}
             onInit={handleInit}
             nodesConnectable={false}
+            nodesDraggable={layoutEditing && !manualProgressDisabled}
             edgesReconnectable={false}
             deleteKeyCode={null}
             multiSelectionKeyCode={null}

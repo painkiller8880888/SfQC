@@ -42,3 +42,21 @@ test('PoC maps all lessons and only common prerequisites into a non-overlapping 
     }
   }
 })
+
+test('saved positions overlay current lessons while missing and retired IDs stay out of the graph', () => {
+  const source = createMapPocGraph()
+  const saved = Object.fromEntries(source.nodes.map(({ id, position }) => [id, position]))
+  saved['descriptive-statistics'] = { x: -140, y: 510 }
+  saved['retired-lesson'] = { x: 9, y: 12 }
+  delete saved['mean-inference']
+
+  const restored = createMapPocGraph(lessonRegistry, saved)
+  const sourceNode = (id) => source.nodes.find((node) => node.id === id)
+  const restoredNode = (id) => restored.nodes.find((node) => node.id === id)
+
+  assert.deepEqual(restoredNode('descriptive-statistics').position, { x: -140, y: 510 })
+  assert.deepEqual(restoredNode('mean-inference').position, sourceNode('mean-inference').position)
+  assert.equal(restored.nodes.length, 34)
+  assert.equal(restored.edges.length, 64)
+  assert.equal(restoredNode('retired-lesson'), undefined)
+})
