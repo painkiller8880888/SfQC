@@ -1,8 +1,11 @@
+.map-app-shell {
+  --map-focus: #1d4ed8;
+}
+
 .map-graph-layout {
   --map-surface: #fff;
   --map-text: #17212b;
   --map-outline: #64748b;
-  --map-focus: #1d4ed8;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
