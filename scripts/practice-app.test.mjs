@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { act, createElement, StrictMode } from 'react'
+import { act, createElement, startTransition, StrictMode } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
 import { exportLocalData, importLocalData, readLocalData } from '../src/local-data.mjs'
@@ -176,8 +176,10 @@ async function changeControl(window, control, value) {
     const prototype = control instanceof window.HTMLSelectElement
       ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype
     Object.getOwnPropertyDescriptor(prototype, 'value').set.call(control, value)
-    control.dispatchEvent(new window.Event('input', { bubbles: true }))
-    control.dispatchEvent(new window.Event('change', { bubbles: true }))
+    startTransition(() => {
+      control.dispatchEvent(new window.Event('input', { bubbles: true }))
+      control.dispatchEvent(new window.Event('change', { bubbles: true }))
+    })
   })
 }
 
