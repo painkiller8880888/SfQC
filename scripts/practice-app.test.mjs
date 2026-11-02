@@ -1405,6 +1405,52 @@ test('layout editing gates keyboard movement, saves all positions, confirms Re-l
   }
 })
 
+test('successful layout saves preserve consecutive moves on different nodes', async () => {
+  const app = await createHarness()
+  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
+  const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
+  const originalSet = storagePrototype.setItem
+  let mapWriteCount = 0
+  try {
+    const { window } = app.dom
+    Object.defineProperty(storagePrototype, 'setItem', {
+      configurable: true,
+      writable: true,
+      value: function (key, value) {
+        if (key === MAP_STATE_KEY) mapWriteCount += 1
+        return originalSet.call(this, key, value)
+      },
+    })
+    await click(linkFor(app.host, '学習マップ'))
+    const defaults = Object.fromEntries(createMapPocGraph().nodes.map(({ id, position }) => [id, position]))
+    const firstId = 'descriptive-statistics'
+    const secondId = 'math-arithmetic'
+
+    await click(buttonFor(app.host, '配置編集'))
+    await click(app.host.querySelector(`.react-flow__node[data-id="${firstId}"]`))
+    let node = app.host.querySelector(`.react-flow__node[data-id="${firstId}"]`)
+    node.focus()
+    await pressKey(window, node, 'ArrowRight')
+    assert.equal(mapWriteCount, 1)
+    assert.equal(Object.keys(savedMap(window).positions).length, 34)
+    assert.deepEqual(savedMap(window).positions[firstId], { x: defaults[firstId].x + 5, y: defaults[firstId].y })
+    assert.deepEqual(savedMap(window).positions[secondId], defaults[secondId])
+
+    await click(app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`))
+    node = app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`)
+    node.focus()
+    await pressKey(window, node, 'ArrowRight')
+    const expected = Object.fromEntries(Object.entries(defaults).map(([id, position]) => [id, { ...position }]))
+    expected[firstId].x += 5
+    expected[secondId].x += 5
+    assert.equal(mapWriteCount, 2)
+    assert.deepEqual(savedMap(window).positions, expected)
+  } finally {
+    if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
+    await app.close()
+  }
+})
+
 test('failed layout save restores the last confirmed position before the next keyboard move', async () => {
   const app = await createHarness()
   const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
