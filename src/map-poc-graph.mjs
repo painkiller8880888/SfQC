@@ -18,6 +18,7 @@ export function createMapPocGraph(registry = lessonRegistry, positions = {}) {
   dagre.layout(layout)
 
   return {
+    commonPrerequisiteEdges,
     nodes: lessons.map((lesson) => {
       const savedPosition = positions[lesson.id]
       const { x, y } = savedPosition ?? layout.node(lesson.id)

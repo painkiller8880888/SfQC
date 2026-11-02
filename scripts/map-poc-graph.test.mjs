@@ -7,12 +7,13 @@ import { createMapPocGraph, MAP_NODE_HEIGHT, MAP_NODE_WIDTH } from '../src/map-p
 
 test('PoC maps all lessons and only common prerequisites into a non-overlapping left-to-right graph', () => {
   const source = deriveLessonGraph(lessonRegistry)
-  const { nodes, edges } = createMapPocGraph()
+  const { commonPrerequisiteEdges, nodes, edges } = createMapPocGraph()
   const nodeIds = new Set(nodes.map(({ id }) => id))
 
   assert.equal(nodes.length, 34)
   assert.equal(edges.length, 64)
   assert.equal(nodeIds.size, 34)
+  assert.deepEqual(commonPrerequisiteEdges, source.commonPrerequisiteEdges)
   assert.deepEqual(new Set(edges.map(({ id }) => id)), new Set(source.commonPrerequisiteEdges.map(({ id }) => id)))
 
   for (const node of nodes) {

@@ -3,6 +3,7 @@ import {
   applyNodeChanges,
   Background,
   Controls,
+  MarkerType,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -115,6 +116,36 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
   const selectedTitle = nodes.find((node) => node.selected)?.data.label ?? ''
   const selectedLessonId = nodes.find((node) => node.selected)?.id
   const selectedLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === selectedLessonId)
+  const directPrerequisiteEdges = graph.commonPrerequisiteEdges.filter((edge) => edge.target === selectedLessonId)
+  const directPrerequisiteIds = new Set(directPrerequisiteEdges.map((edge) => edge.source))
+  const directPrerequisiteEdgeIds = new Set(directPrerequisiteEdges.map((edge) => edge.id))
+  const lessonTitles = Object.fromEntries(graph.nodes.map(({ id, data }) => [id, data.label]))
+  const displayNodes = nodes.map((node) => {
+    const relation = node.selected ? '選択中'
+      : directPrerequisiteIds.has(node.id) ? `「${selectedTitle}」の直接の共通必須前提` : null
+    return {
+      ...node,
+      className: directPrerequisiteIds.has(node.id)
+        ? [node.className, 'map-prerequisite'].filter(Boolean).join(' ')
+        : node.className,
+      ariaLabel: relation ? `${node.ariaLabel ?? node.data.label}（${relation}）` : node.ariaLabel ?? node.data.label,
+    }
+  })
+  const displayEdges = edges.map((edge) => {
+    const highlighted = directPrerequisiteEdgeIds.has(edge.id)
+    const sourceTitle = lessonTitles[edge.source] ?? edge.source
+    const targetTitle = lessonTitles[edge.target] ?? edge.target
+    return {
+      ...edge,
+      className: highlighted
+        ? [edge.className, 'map-prerequisite-edge'].filter(Boolean).join(' ')
+        : edge.className,
+      markerEnd: highlighted
+        ? { type: MarkerType.ArrowClosed, color: '#0f766e' }
+        : edge.markerEnd,
+      ariaLabel: `${sourceTitle}から${targetTitle}への共通必須前提${highlighted ? '（選択教材の直接前提）' : ''}`,
+    }
+  })
   const handleMove: OnMove = useCallback((_, nextViewport) => onViewportChange(nextViewport), [onViewportChange])
   const cancelKeyboardFocus = useCallback(() => {
     pendingKeyboardFocusRef.current = null
@@ -245,7 +276,11 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
     <div className={`map-graph-layout${selectedLesson ? ' has-detail' : ''}`}>
       <div className="map-graph-view" onKeyDownCapture={handleKeyDownCapture}>
         <div className="map-graph-toolbar">
-          <p className="map-selection" aria-live="polite">選択中: {selectedTitle || 'なし'}</p>
+          <p className="map-selection" aria-live="polite">選択中: {selectedTitle || 'なし'}{selectedLessonId
+            ? directPrerequisiteEdges.length
+              ? `。直接の共通必須前提 ${directPrerequisiteEdges.length} 件を強調しています`
+              : '。直接の共通必須前提はありません'
+            : ''}</p>
           <div className="map-graph-actions">
             <button type="button" aria-pressed={layoutEditing} disabled={manualProgressDisabled} onClick={handleLayoutEditingToggle}>配置編集</button>
             <button ref={fitViewButtonRef} type="button" onClick={() => void fitView({ padding: 0.14, duration: 180 })}>全体表示</button>
@@ -254,8 +289,8 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
         </div>
         <section ref={mapCanvasRef} className="map-canvas" aria-label="教材単元の依存関係">
           <ReactFlow<MapPocNode>
-            nodes={nodes}
-            edges={edges}
+            nodes={displayNodes}
+            edges={displayEdges}
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onMove={handleMove}
