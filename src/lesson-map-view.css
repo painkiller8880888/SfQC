@@ -1,15 +1,37 @@
 .map-app-shell {
-  --map-focus: #1d4ed8;
+  --map-focus: var(--focus);
+  --map-prerequisite: var(--accent);
+  --map-prerequisite-glow: var(--accent-glow);
+  --map-prerequisite-subtle-glow: var(--accent-subtle-glow);
 }
 
 .map-graph-layout {
-  --map-surface: #fff;
-  --map-text: #17212b;
-  --map-outline: #64748b;
+  --map-surface: var(--surface);
+  --map-text: var(--text);
+  --map-muted: var(--text-muted);
+  --map-outline: var(--control-border);
+  --map-border: var(--border);
+  --map-selected-surface: var(--surface-selected);
+  --map-edge: var(--control-border);
+  --map-canvas: var(--surface-subtle);
+  --map-shadow: var(--shadow);
+  --map-display-domain-math-foundations: #268bd2;
+  --map-display-domain-data-description: #1d7470;
+  --map-display-domain-probability-distributions: #6c71c4;
+  --map-display-domain-statistical-analysis: #cb4b16;
+  --map-display-domain-quality-methods: #dc322f;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+}
+
+.app-shell[data-theme="dark"] .map-graph-layout {
+  --map-display-domain-math-foundations: #268bd2;
+  --map-display-domain-data-description: #2aa198;
+  --map-display-domain-probability-distributions: #7d83e0;
+  --map-display-domain-statistical-analysis: #e2703e;
+  --map-display-domain-quality-methods: #ed665e;
 }
 
 .map-graph-layout.has-detail {
@@ -40,14 +62,16 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem 1rem;
+  min-width: 0;
+  width: 100%;
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid #cbd5e1;
-  background: #fff;
+  border-bottom: 1px solid var(--map-border);
+  background: var(--map-surface);
 }
 
 .map-selection {
   margin: 0;
-  color: #475569;
+  color: var(--map-muted);
   font-size: 0.875rem;
 }
 
@@ -64,9 +88,9 @@
 .map-author-content select {
   min-height: 2.5rem;
   padding: 0.45rem 0.75rem;
-  border: 1px solid #64748b;
+  border: 1px solid var(--map-outline);
   border-radius: 0.4rem;
-  background: #fff;
+  background: var(--map-surface);
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -83,8 +107,8 @@
 }
 
 .map-graph-actions button[aria-pressed="true"] {
-  border-color: #0f766e;
-  background: #ccfbf1;
+  border-color: var(--map-prerequisite);
+  background: var(--map-selected-surface);
   font-weight: 600;
 }
 
@@ -94,7 +118,25 @@
 }
 
 .map-canvas .react-flow {
-  background: #f8fafc;
+  --xy-background-color: var(--map-canvas);
+  --xy-background-pattern-color: var(--map-border);
+  --xy-edge-stroke: var(--map-edge);
+  --xy-edge-stroke-selected: var(--map-prerequisite);
+  --xy-node-color: var(--map-text);
+  --xy-node-border: 1px solid var(--map-outline);
+  --xy-node-background-color: var(--map-surface);
+  --xy-node-boxshadow-selected: 0 0 0 2px var(--map-prerequisite);
+  --xy-handle-background-color: var(--map-prerequisite);
+  --xy-handle-border-color: var(--map-surface);
+  --xy-selection-background-color: var(--map-prerequisite-subtle-glow);
+  --xy-selection-border: 1px dotted var(--map-prerequisite);
+  --xy-controls-button-background-color: var(--map-surface);
+  --xy-controls-button-background-color-hover: var(--map-selected-surface);
+  --xy-controls-button-color: var(--map-text);
+  --xy-controls-button-color-hover: var(--map-text);
+  --xy-controls-button-border-color: var(--map-outline);
+  --xy-controls-box-shadow: 0 0 2px 1px var(--map-shadow);
+  background: var(--map-canvas);
 }
 
 .map-canvas .react-flow__node-default {
@@ -116,11 +158,11 @@
   white-space: normal;
 }
 
-.map-domain-math-foundations { --map-accent-color: var(--map-domain-math-foundations); }
-.map-domain-data-description { --map-accent-color: var(--map-domain-data-description); }
-.map-domain-probability-distributions { --map-accent-color: var(--map-domain-probability-distributions); }
-.map-domain-statistical-analysis { --map-accent-color: var(--map-domain-statistical-analysis); }
-.map-domain-quality-methods { --map-accent-color: var(--map-domain-quality-methods); }
+.map-domain-math-foundations { --map-accent-color: var(--map-author-domain-math-foundations, var(--map-display-domain-math-foundations)); }
+.map-domain-data-description { --map-accent-color: var(--map-author-domain-data-description, var(--map-display-domain-data-description)); }
+.map-domain-probability-distributions { --map-accent-color: var(--map-author-domain-probability-distributions, var(--map-display-domain-probability-distributions)); }
+.map-domain-statistical-analysis { --map-accent-color: var(--map-author-domain-statistical-analysis, var(--map-display-domain-statistical-analysis)); }
+.map-domain-quality-methods { --map-accent-color: var(--map-author-domain-quality-methods, var(--map-display-domain-quality-methods)); }
 
 .map-canvas .react-flow__node-default::before {
   position: absolute;
@@ -140,7 +182,7 @@
 
 .map-node-domain {
   margin-top: 2px;
-  color: #475569;
+  color: var(--map-muted);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.35;
@@ -163,7 +205,7 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 0.25rem;
-  color: #334155;
+  color: var(--map-text);
   font-size: 0.75rem;
 }
 
@@ -171,7 +213,7 @@
   flex: 0 0 0.75rem;
   width: 0.75rem;
   height: 0.75rem;
-  border: 1px solid #475569;
+  border: 1px solid var(--map-outline);
   border-radius: 2px;
   background: var(--map-accent-color);
 }
@@ -182,7 +224,7 @@
   height: 112px;
   min-height: 0;
   overflow: hidden;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--map-border);
   background: var(--map-surface);
   color: var(--map-text);
 }
@@ -194,7 +236,7 @@
   gap: 0.35rem;
   min-width: 0;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--map-border);
 }
 
 .map-author-summary {
@@ -211,7 +253,7 @@
 }
 
 .map-author-summary span + span {
-  color: #475569;
+  color: var(--map-muted);
 }
 
 .map-author-actions,
@@ -225,7 +267,7 @@
 .map-author-content button {
   min-height: 2rem;
   padding: 0.25rem 0.4rem;
-  border: 1px solid #64748b;
+  border: 1px solid var(--map-outline);
   border-radius: 0.35rem;
   background: var(--map-surface);
   color: var(--map-text);
@@ -235,8 +277,8 @@
 }
 
 .map-author-actions button[aria-pressed="true"] {
-  border-color: #0f766e;
-  background: #ccfbf1;
+  border-color: var(--map-prerequisite);
+  background: var(--map-selected-surface);
   font-weight: 600;
 }
 
@@ -293,7 +335,7 @@
   width: 3rem;
   height: 2rem;
   padding: 2px;
-  border: 1px solid #64748b;
+  border: 1px solid var(--map-outline);
   border-radius: 0.25rem;
   background: var(--map-surface);
 }
@@ -304,7 +346,7 @@
   min-width: 0;
   min-height: 2rem;
   padding: 0.2rem;
-  border: 1px solid #64748b;
+  border: 1px solid var(--map-outline);
   border-radius: 0.25rem;
   background: var(--map-surface);
   color: var(--map-text);
@@ -318,8 +360,8 @@
 }
 
 .map-canvas .react-flow__node-default.selected {
-  border-color: #0f766e;
-  box-shadow: 0 0 0 2px #0f766e, 0 0 14px rgb(15 118 110 / 38%);
+  border-color: var(--map-prerequisite);
+  box-shadow: 0 0 0 2px var(--map-prerequisite), 0 0 14px var(--map-prerequisite-glow);
 }
 
 .map-canvas .react-flow__node-default:focus-visible {
@@ -327,13 +369,18 @@
   outline-offset: 3px;
 }
 
+.map-canvas .react-flow__controls-button:focus-visible {
+  outline: 3px solid var(--map-focus);
+  outline-offset: 2px;
+}
+
 .map-canvas .react-flow__node-default.map-prerequisite:not(.selected) {
-  border-color: #0f766e;
-  box-shadow: 0 0 0 1px #0f766e, 0 0 9px rgb(15 118 110 / 20%);
+  border-color: var(--map-prerequisite);
+  box-shadow: 0 0 0 1px var(--map-prerequisite), 0 0 9px var(--map-prerequisite-subtle-glow);
 }
 
 .map-canvas .react-flow__edge.map-prerequisite-edge .react-flow__edge-path {
-  stroke: #0f766e;
+  stroke: var(--map-prerequisite);
   stroke-width: 2.5;
 }
 
@@ -343,8 +390,8 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-left: 1px solid #cbd5e1;
-  background: #fff;
+  border-left: 1px solid var(--map-border);
+  background: var(--map-surface);
 }
 
 .lesson-detail-header {
@@ -354,7 +401,7 @@
   gap: 0.75rem;
   min-width: 0;
   padding: 0.75rem;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--map-border);
 }
 
 .lesson-detail-header h2 {
@@ -365,7 +412,7 @@
 }
 
 .lesson-detail-header h2:focus-visible {
-  outline: 3px solid #0f766e;
+  outline: 3px solid var(--map-focus);
   outline-offset: 3px;
 }
 
@@ -377,16 +424,16 @@
   flex: 0 0 auto;
   min-height: 2.5rem;
   padding: 0.35rem 0.6rem;
-  border: 1px solid #64748b;
+  border: 1px solid var(--map-outline);
   border-radius: 0.4rem;
-  background: #fff;
+  background: var(--map-surface);
   color: inherit;
   font: inherit;
   cursor: pointer;
 }
 
 .lesson-detail-close:focus-visible {
-  outline: 3px solid #0f766e;
+  outline: 3px solid var(--map-focus);
   outline-offset: 2px;
 }
 
@@ -430,7 +477,7 @@
 
 .manual-progress-controls {
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--map-border);
 }
 
 .manual-progress-controls .manual-progress-status,
@@ -439,7 +486,7 @@
 }
 
 .manual-progress-controls .manual-progress-notice {
-  color: #475569;
+  color: var(--map-muted);
   font-size: 0.875rem;
   line-height: 1.5;
 }
@@ -454,16 +501,16 @@
 .manual-progress-actions button {
   min-height: 2.5rem;
   padding: 0.45rem 0.75rem;
-  border: 1px solid #64748b;
+  border: 1px solid var(--map-outline);
   border-radius: 0.4rem;
-  background: #fff;
+  background: var(--map-surface);
   color: inherit;
   font: inherit;
   cursor: pointer;
 }
 
 .manual-progress-actions button:focus-visible {
-  outline: 3px solid #0f766e;
+  outline: 3px solid var(--map-focus);
   outline-offset: 2px;
 }
 
@@ -472,7 +519,7 @@
   gap: 0.5rem;
   margin-top: 1rem;
   padding-top: 0.75rem;
-  border-top: 1px solid #cbd5e1;
+  border-top: 1px solid var(--map-border);
 }
 
 .lesson-detail-actions a {
@@ -491,7 +538,7 @@
 
   .lesson-detail-card {
     grid-row: 2;
-    border-top: 1px solid #cbd5e1;
+    border-top: 1px solid var(--map-border);
     border-left: 0;
   }
 }

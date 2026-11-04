@@ -12,6 +12,9 @@ import { createMapPocGraph } from '../src/map-poc-graph.mjs'
 import { lessonDomains } from '../src/lesson-contract.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 
+const THEME_STORAGE_KEY = 'sfqc:theme-preference'
+const THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)'
+
 const globalKeys = [
   'window', 'document', 'navigator', 'Element', 'HTMLElement', 'Node', 'Event', 'MouseEvent',
   'ResizeObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'getComputedStyle', 'IS_REACT_ACT_ENVIRONMENT',
@@ -33,7 +36,45 @@ class TestResizeObserver {
   disconnect() {}
 }
 
-async function createHarness({ strict = false, confirm = () => true, measureFlowNodes = false } = {}) {
+function installMatchMedia(window, initialTheme = 'light', available = true) {
+  let systemTheme = initialTheme
+  const listeners = new Set()
+  const mediaQuery = {
+    media: THEME_MEDIA_QUERY,
+    onchange: null,
+    get matches() { return systemTheme === 'dark' },
+    addEventListener(type, listener) {
+      if (type === 'change') listeners.add(listener)
+    },
+    removeEventListener(type, listener) {
+      if (type === 'change') listeners.delete(listener)
+    },
+    addListener(listener) { listeners.add(listener) },
+    removeListener(listener) { listeners.delete(listener) },
+  }
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: available ? (query) => {
+      assert.equal(query, THEME_MEDIA_QUERY)
+      return mediaQuery
+    } : undefined,
+  })
+  return {
+    get listenerCount() { return listeners.size },
+    async setTheme(theme) {
+      systemTheme = theme
+      await act(async () => {
+        const event = new window.Event('change')
+        Object.defineProperty(event, 'matches', { value: systemTheme === 'dark' })
+        for (const listener of [...listeners]) listener(event)
+        mediaQuery.onchange?.(event)
+      })
+    },
+  }
+}
+
+async function createHarness({ strict = false, confirm = () => true, measureFlowNodes = false, systemTheme = 'light', supportsMatchMedia = true } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://sfqc.test/SfQC/#/practice',
     pretendToBeVisual: true,
@@ -42,6 +83,7 @@ async function createHarness({ strict = false, confirm = () => true, measureFlow
   const previousMetrics = new Map(['offsetWidth', 'offsetHeight'].map((key) => [
     key, Object.getOwnPropertyDescriptor(dom.window.HTMLElement.prototype, key),
   ]))
+  const media = installMatchMedia(dom.window, systemTheme, supportsMatchMedia)
   const globals = {
     window: dom.window,
     document: dom.window.document,
@@ -87,14 +129,24 @@ async function createHarness({ strict = false, confirm = () => true, measureFlow
   const { createRoot } = await import('react-dom/client')
   const host = dom.window.document.getElementById('root')
   let root = createRoot(host)
+  let mounted = false
   const renderApp = () => root.render(strict ? createElement(StrictMode, null, createElement(App)) : createElement(App))
-  const mount = async () => act(async () => renderApp())
-  const unmount = async () => act(async () => root.unmount())
+  const mount = async () => {
+    await act(async () => renderApp())
+    mounted = true
+  }
+  const unmount = async () => {
+    if (!mounted) return
+    await act(async () => root.unmount())
+    mounted = false
+  }
   await mount()
 
   return {
     dom,
     host,
+    setSystemTheme: media.setTheme,
+    get mediaListenerCount() { return media.listenerCount },
     loadModule: (id) => server.ssrLoadModule(id),
     mount,
     unmount,
@@ -240,6 +292,162 @@ function renderedPosition(node) {
 function savedMap(window) {
   return readMapState(lessonRegistry, () => window.localStorage).state
 }
+
+test('theme follows the system, saves manual choices, and stays separate from learning data', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const themeSelect = () => app.host.querySelector('#theme-preference')
+    const theme = () => app.host.querySelector('.app-shell').dataset.theme
+    const localDataBefore = window.localStorage.getItem('sfqc:local-data')
+    const mapStateBefore = window.localStorage.getItem(MAP_STATE_KEY)
+    assert.equal(themeSelect().value, 'system')
+    assert.equal(theme(), 'light')
+    assert.equal(app.mediaListenerCount, 1)
+    await click(linkFor(app.host, '学習マップ'))
+    await settleEffects(window)
+    const routeBefore = window.location.hash
+    assert.ok(app.host.querySelector('.react-flow').classList.contains('light'))
+
+    await app.setSystemTheme('dark')
+    assert.equal(theme(), 'dark')
+    assert.ok(app.host.querySelector('.react-flow').classList.contains('dark'))
+    await changeControl(window, themeSelect(), 'light')
+    assert.equal(theme(), 'light')
+    assert.ok(app.host.querySelector('.react-flow').classList.contains('light'))
+    assert.equal(app.mediaListenerCount, 0)
+    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), 'light')
+    await app.setSystemTheme('dark')
+    assert.equal(theme(), 'light')
+    await app.remount()
+    assert.equal(themeSelect().value, 'light')
+    assert.equal(theme(), 'light')
+    assert.equal(app.mediaListenerCount, 0)
+
+    await changeControl(window, themeSelect(), 'dark')
+    assert.equal(theme(), 'dark')
+    assert.ok(app.host.querySelector('.react-flow').classList.contains('dark'))
+    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), 'dark')
+    await app.setSystemTheme('light')
+    assert.equal(theme(), 'dark')
+    await app.remount()
+    assert.equal(themeSelect().value, 'dark')
+    assert.equal(theme(), 'dark')
+
+    await app.setSystemTheme('light')
+    await changeControl(window, themeSelect(), 'system')
+    assert.equal(themeSelect().value, 'system')
+    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), null)
+    assert.equal(theme(), 'light')
+    assert.ok(app.host.querySelector('.react-flow').classList.contains('light'))
+    assert.equal(app.mediaListenerCount, 1)
+    await app.setSystemTheme('dark')
+    assert.equal(theme(), 'dark')
+    assert.ok(app.host.querySelector('.react-flow').classList.contains('dark'))
+    await app.remount()
+    assert.equal(themeSelect().value, 'system')
+    assert.equal(theme(), 'dark')
+    assert.equal(window.location.hash, routeBefore)
+    assert.equal(window.localStorage.getItem('sfqc:local-data'), localDataBefore)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapStateBefore)
+
+    await app.unmount()
+    assert.equal(app.mediaListenerCount, 0)
+  } finally {
+    await app.close()
+  }
+})
+
+test('invalid or unreadable theme preferences fall back to system mode', async () => {
+  const app = await createHarness({ systemTheme: 'dark' })
+  const { window } = app.dom
+  const storage = window.localStorage
+  const storagePrototype = Object.getPrototypeOf(storage)
+  const originalGet = Object.getOwnPropertyDescriptor(storagePrototype, 'getItem')
+  try {
+    const themeSelect = () => app.host.querySelector('#theme-preference')
+    storage.setItem(THEME_STORAGE_KEY, 'sepia')
+    await app.remount()
+    assert.equal(themeSelect().value, 'system')
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
+
+    Object.defineProperty(storagePrototype, 'getItem', {
+      configurable: true,
+      writable: true,
+      value(key) {
+        if (key === THEME_STORAGE_KEY) throw new window.DOMException('storage unavailable', 'SecurityError')
+        return originalGet.value.call(this, key)
+      },
+    })
+    await app.remount()
+    assert.equal(themeSelect().value, 'system')
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
+  } finally {
+    if (originalGet) Object.defineProperty(storagePrototype, 'getItem', originalGet)
+    else delete storagePrototype.getItem
+    await app.close()
+  }
+})
+
+test('theme stays usable when storage writes fail or matchMedia is unavailable', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const storage = window.localStorage
+  const storagePrototype = Object.getPrototypeOf(storage)
+  const originalSet = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
+  const originalRemove = Object.getOwnPropertyDescriptor(storagePrototype, 'removeItem')
+  const localDataBefore = storage.getItem('sfqc:local-data')
+  const mapStateBefore = storage.getItem(MAP_STATE_KEY)
+  try {
+    Object.defineProperty(storagePrototype, 'setItem', {
+      configurable: true,
+      writable: true,
+      value(key, value) {
+        if (key === THEME_STORAGE_KEY) throw new window.DOMException('storage unavailable', 'SecurityError')
+        return originalSet.value.call(this, key, value)
+      },
+    })
+    const themeSelect = () => app.host.querySelector('#theme-preference')
+    await changeControl(window, themeSelect(), 'dark')
+    assert.equal(themeSelect().value, 'dark')
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
+    assert.equal(storage.getItem(THEME_STORAGE_KEY), null)
+
+    Object.defineProperty(storagePrototype, 'setItem', originalSet)
+    storage.setItem(THEME_STORAGE_KEY, 'dark')
+    await app.remount()
+    Object.defineProperty(storagePrototype, 'removeItem', {
+      configurable: true,
+      writable: true,
+      value(key) {
+        if (key === THEME_STORAGE_KEY) throw new window.DOMException('storage unavailable', 'SecurityError')
+        return originalRemove.value.call(this, key)
+      },
+    })
+    await app.setSystemTheme('light')
+    await changeControl(window, themeSelect(), 'system')
+    assert.equal(themeSelect().value, 'system')
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'light')
+    assert.equal(storage.getItem(THEME_STORAGE_KEY), 'dark')
+    assert.equal(storage.getItem('sfqc:local-data'), localDataBefore)
+    assert.equal(storage.getItem(MAP_STATE_KEY), mapStateBefore)
+  } finally {
+    if (originalSet) Object.defineProperty(storagePrototype, 'setItem', originalSet)
+    else delete storagePrototype.setItem
+    if (originalRemove) Object.defineProperty(storagePrototype, 'removeItem', originalRemove)
+    else delete storagePrototype.removeItem
+    await app.close()
+  }
+
+  const fallbackApp = await createHarness({ systemTheme: 'dark', supportsMatchMedia: false })
+  try {
+    assert.equal(fallbackApp.host.querySelector('#theme-preference').value, 'system')
+    assert.equal(fallbackApp.host.querySelector('.app-shell').dataset.theme, 'light')
+    assert.equal(fallbackApp.mediaListenerCount, 0)
+  } finally {
+    await fallbackApp.close()
+  }
+})
 
 test('fixed practice saves drafts per history entry, preserves attempts, and retries a saved result navigation', async () => {
   const app = await createHarness()
@@ -1304,7 +1512,7 @@ test('integrated learning map highlights only direct common prerequisites and cl
     const meanInferenceEdges = new Set(graph.commonPrerequisiteEdges
       .filter((edge) => edge.target === 'mean-inference').map((edge) => edge.id))
     for (const edge of graph.commonPrerequisiteEdges) {
-      assert.equal(edgeMarker(edge.id).fill, meanInferenceEdges.has(edge.id) ? 'rgb(15, 118, 110)' : defaultMarkers.get(edge.id).fill)
+      assert.equal(edgeMarker(edge.id).fill, meanInferenceEdges.has(edge.id) ? 'var(--map-prerequisite)' : defaultMarkers.get(edge.id).fill)
     }
 
     assert.match(node('descriptive-statistics').getAttribute('aria-label'), /直接の共通必須前提/u)
@@ -1394,6 +1602,16 @@ test('development domain editor keeps a reviewable in-memory draft and exports o
     await click(linkFor(app.host, '学習マップ'))
     await settleEffects(window)
     assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
+    const mapLayout = () => app.host.querySelector('.map-graph-layout')
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'light')
+    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '')
+    await app.setSystemTheme('dark')
+    await settleEffects(window)
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
+    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '')
+    await app.setSystemTheme('light')
+    await settleEffects(window)
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'light')
 
     const nodeFor = (id) => app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
     const nodePosition = renderedPosition(nodeFor('math-arithmetic'))
@@ -1428,9 +1646,16 @@ test('development domain editor keeps a reviewable in-memory draft and exports o
     for (const color of app.host.querySelectorAll('.map-author-color-fields input[type="color"]')) {
       await changeControl(window, color, '#000000')
     }
+    const draftColorsBeforeTheme = [...app.host.querySelectorAll('.map-author-color-fields input[type="color"]')]
+      .map((input) => input.value)
     await changeControl(window, selectFor('descriptive-statistics'), 'quality-methods')
     assert.match(app.host.querySelector('.map-author-dirty').textContent, /未書き出し/u)
-    assert.equal(app.host.querySelector('.map-graph-layout').style.getPropertyValue('--map-domain-math-foundations'), '#000000')
+    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '#000000')
+    await changeControl(window, app.host.querySelector('#theme-preference'), 'dark')
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
+    assert.deepEqual([...app.host.querySelectorAll('.map-author-color-fields input[type="color"]')]
+      .map((input) => input.value), draftColorsBeforeTheme)
+    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '#000000')
     assert.deepEqual(domainClasses('descriptive-statistics'), ['map-domain-quality-methods'])
     assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, '品質管理手法')
     assert.equal(nodeFor('descriptive-statistics').getAttribute('aria-label'), '基本統計量（分野：品質管理手法、選択中）')
@@ -1479,6 +1704,7 @@ test('development domain editor keeps a reviewable in-memory draft and exports o
     await click(buttonFor(app.host, '閉じる'))
     await settleEffects(window)
     assert.equal(app.host.querySelector('.map-app-shell.map-author-mode'), null)
+    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '')
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
     assert.ok(app.host.querySelector('.lesson-detail-card'))
     assert.equal(window.document.activeElement, buttonFor(app.host, '分野編集'))

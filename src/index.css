@@ -1,11 +1,57 @@
 :root {
   font-family: Inter, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
-  color: #18392f;
-  background: #f3f7f3;
+  color: var(--text);
+  background: var(--page-background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  --page-background: #fdf6e3;
+  --surface: #fdf6e3;
+  --surface-subtle: #eee8d5;
+  --surface-selected: #eee8d5;
+  --text: #4c6269;
+  --text-muted: #536a71;
+  --border: #93a1a1;
+  --control-border: #657b83;
+  --link: #196b8f;
+  --focus: #268bd2;
+  --accent: #1d7470;
+  --accent-glow: rgb(29 116 112 / 38%);
+  --accent-subtle-glow: rgb(29 116 112 / 20%);
+  --success: #718700;
+  --warning: #cb4b16;
+  --danger: #dc322f;
+  --status-surface: #eee8d5;
+  --shadow: rgb(0 43 54 / 8%);
+}
+
+.app-shell[data-theme="dark"] {
+  color-scheme: dark;
+  --page-background: #002b36;
+  --surface: #073642;
+  --surface-subtle: #073642;
+  --surface-selected: #002b36;
+  --text: #93a1a1;
+  --text-muted: #93a1a1;
+  --border: #657b83;
+  --control-border: #839496;
+  --link: #5ba6d0;
+  --focus: #2aa198;
+  --accent: #2aa198;
+  --accent-glow: rgb(42 161 152 / 38%);
+  --accent-subtle-glow: rgb(42 161 152 / 20%);
+  --success: #859900;
+  --warning: #b58900;
+  --danger: #f05e51;
+  --status-surface: #073642;
+  --shadow: rgb(0 0 0 / 24%);
+}
+
+.app-shell {
+  color-scheme: light;
+  color: var(--text);
+  background: var(--page-background);
 }
 
 * {
@@ -15,6 +61,7 @@
 body {
   min-height: 100vh;
   margin: 0;
+  background: var(--page-background);
 }
 
 #root,
@@ -23,14 +70,14 @@ body {
 }
 
 a {
-  color: #34684e;
+  color: var(--link);
   text-underline-offset: 0.2em;
 }
 
 a:focus-visible,
 .skip-link:focus-visible,
 h1:focus {
-  outline: 3px solid #7ab69b;
+  outline: 3px solid var(--focus);
   outline-offset: 4px;
 }
 
@@ -41,10 +88,10 @@ h1:focus {
   top: 0.5rem;
   left: 50%;
   padding: 0.65rem 0.9rem;
-  border: 1px solid #c8d9ce;
+  border: 1px solid var(--control-border);
   border-radius: 0.5rem;
-  background: #fff;
-  color: #34684e;
+  background: var(--surface);
+  color: var(--link);
   font: inherit;
   text-decoration: underline;
   text-underline-offset: 0.2em;
@@ -67,11 +114,35 @@ h1:focus {
 }
 
 .site-brand {
-  color: #43775e;
+  color: var(--link);
   font-size: 1.1rem;
   font-weight: 800;
   letter-spacing: 0.14em;
   text-decoration: none;
+}
+
+.theme-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.theme-control select {
+  min-width: 0;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--control-border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.theme-control select:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .primary-nav,
@@ -88,15 +159,15 @@ h1:focus {
 .screen-navigation a {
   display: inline-block;
   padding: 0.65rem 0.9rem;
-  border: 1px solid #c8d9ce;
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
   font-weight: 650;
 }
 
 .primary-nav a[aria-current="page"] {
-  border-color: #43775e;
-  background: #e4efe7;
+  border-color: var(--accent);
+  background: var(--surface-selected);
   text-decoration-thickness: 2px;
 }
 
@@ -110,10 +181,10 @@ h1:focus {
 .screen {
   width: min(100%, 50rem);
   padding: clamp(1.5rem, 6vw, 3.5rem);
-  border: 1px solid #dbe5dc;
+  border: 1px solid var(--border);
   border-radius: 1.5rem;
-  background: #fff;
-  box-shadow: 0 1.5rem 4rem rgb(26 58 45 / 8%);
+  background: var(--surface);
+  box-shadow: 0 1.5rem 4rem var(--shadow);
 }
 
 h1 {
@@ -127,7 +198,7 @@ h1 {
 .description {
   max-width: 38rem;
   margin: 1.25rem 0 0;
-  color: #50635a;
+  color: var(--text-muted);
   font-size: 1rem;
   line-height: 1.9;
 }
@@ -135,8 +206,8 @@ h1 {
 .placeholder {
   margin-top: 2rem;
   padding: 1.25rem;
-  border-left: 4px solid #b5d1be;
-  background: #f3f7f3;
+  border-left: 4px solid var(--success);
+  background: var(--surface-subtle);
 }
 
 .placeholder h2 {
@@ -146,7 +217,7 @@ h1 {
 
 .placeholder p {
   margin: 0.75rem 0 0;
-  color: #50635a;
+  color: var(--text-muted);
   line-height: 1.8;
 }
 
@@ -154,9 +225,9 @@ h1 {
   min-width: 0;
   margin-top: 2rem;
   padding: 1.25rem;
-  border: 1px solid #dbe5dc;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
-  background: #f3f7f3;
+  background: var(--surface-subtle);
 }
 
 .lesson-map,
@@ -184,14 +255,14 @@ h1 {
 .lesson-card {
   min-width: 0;
   padding: 1rem;
-  border: 1px solid #dbe5dc;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
-  background: #fff;
+  background: var(--surface);
   overflow-wrap: anywhere;
 }
 
 .lesson-card-planned {
-  background: #f8f9f7;
+  background: var(--surface-subtle);
 }
 
 .lesson-card h3 {
@@ -205,15 +276,15 @@ h1 {
 }
 
 .lesson-status {
-  color: #50635a;
+  color: var(--text-muted);
   font-size: 0.9rem;
   font-weight: 600;
 }
 
 .lesson-observation {
   padding: 0.5rem 0.65rem;
-  border-left: 3px solid #9abb9e;
-  background: #f3f7f3;
+  border-left: 3px solid var(--success);
+  background: var(--surface-subtle);
 }
 
 .progress-view,
@@ -234,9 +305,9 @@ h1 {
 .progress-guidance,
 .progress-card {
   padding: 1rem;
-  border: 1px solid #dbe5dc;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
-  background: #fff;
+  background: var(--surface);
 }
 
 .progress-guidance h2,
@@ -258,7 +329,7 @@ h1 {
 
 .progress-card-detail {
   padding-top: 0.5rem;
-  border-top: 1px solid #dbe5dc;
+  border-top: 1px solid var(--border);
 }
 
 .progress-card-detail ul {
@@ -274,7 +345,7 @@ h1 {
 }
 
 .progress-clock-note {
-  color: #7a4d17;
+  color: var(--text-muted);
 }
 
 .lesson-context {
@@ -295,8 +366,8 @@ h1 {
 .lesson-formula {
   max-width: 100%;
   padding: 0.75rem;
-  border-left: 3px solid #9abb9e;
-  background: #fff;
+  border-left: 3px solid var(--success);
+  background: var(--surface);
   font-family: "Cambria Math", "Yu Mincho", serif;
   line-height: 2;
   overflow-wrap: anywhere;
@@ -313,7 +384,7 @@ h1 {
 
 .lesson-panel h2:focus,
 .route-summary h2:focus {
-  outline: 3px solid #7ab69b;
+  outline: 3px solid var(--focus);
   outline-offset: 4px;
 }
 
@@ -357,9 +428,9 @@ h1 {
 .return-navigation a {
   display: inline-block;
   padding: 0.65rem 0.9rem;
-  border: 1px solid #c8d9ce;
+  border: 1px solid var(--control-border);
   border-radius: 999px;
-  background: #e4efe7;
+  background: var(--surface-selected);
   font-weight: 650;
 }
 
@@ -375,26 +446,26 @@ h1 {
 }
 
 .variance-grid-line {
-  stroke: #dbe5dc;
+  stroke: var(--border);
   stroke-width: 1;
 }
 
 .variance-axis {
-  stroke: #50635a;
+  stroke: var(--text-muted);
   stroke-width: 1.5;
 }
 
 .variance-tick-label,
 .variance-observation-label,
 .variance-mean-label {
-  fill: #18392f;
+  fill: var(--text);
   font-family: inherit;
   font-size: 10px;
 }
 
 .variance-deviation-line {
   fill: none;
-  stroke: #a84438;
+  stroke: var(--danger);
   stroke-width: 2;
 }
 
@@ -411,20 +482,20 @@ h1 {
 }
 
 .variance-mean-line {
-  stroke: #34684e;
+  stroke: var(--accent);
   stroke-dasharray: 5 3;
   stroke-width: 2;
 }
 
 .variance-point {
-  fill: #18392f;
-  stroke: #fff;
+  fill: var(--text);
+  stroke: var(--surface);
   stroke-width: 1.5;
 }
 
 .variance-figure figcaption {
   overflow-wrap: anywhere;
-  color: #50635a;
+  color: var(--text-muted);
   line-height: 1.75;
 }
 
@@ -445,19 +516,19 @@ h1 {
   width: min(100%, 50rem);
   margin: 0 0 1rem;
   padding: 1rem 1.25rem;
-  border: 1px solid #a84438;
+  border: 1px solid var(--danger);
   border-radius: 0.75rem;
-  background: #fff2ef;
-  color: #742c24;
+  background: var(--status-surface);
+  color: var(--text);
   line-height: 1.7;
 }
 
 .data-panel {
   margin-top: 2rem;
   padding: 1.25rem;
-  border: 1px solid #dbe5dc;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
-  background: #f3f7f3;
+  background: var(--surface-subtle);
 }
 
 .data-panel h2 {
@@ -467,7 +538,7 @@ h1 {
 
 .data-panel p {
   margin: 0.75rem 0 0;
-  color: #50635a;
+  color: var(--text-muted);
   line-height: 1.8;
 }
 
@@ -483,10 +554,10 @@ h1 {
 .data-actions label {
   max-width: 100%;
   padding: 0.65rem 0.9rem;
-  border: 1px solid #c8d9ce;
+  border: 1px solid var(--control-border);
   border-radius: 0.5rem;
-  background: #fff;
-  color: #34684e;
+  background: var(--surface);
+  color: var(--link);
   font: inherit;
 }
 
@@ -510,7 +581,7 @@ h1 {
   min-width: 0;
   width: 100%;
   max-width: 100%;
-  color: #18392f;
+  color: var(--text);
   font-size: 0.875rem;
   font-family: inherit;
 }
@@ -535,9 +606,9 @@ h1 {
 .data-panel .data-message {
   margin-top: 1rem;
   padding: 0.75rem;
-  border-left: 4px solid #43775e;
-  background: #fff;
-  color: #18392f;
+  border-left: 4px solid var(--success);
+  background: var(--surface);
+  color: var(--text);
 }
 
 .screen-navigation {
@@ -576,9 +647,9 @@ h1 {
   min-width: 0;
   margin-top: 2rem;
   padding: 1.25rem;
-  border: 1px solid #dbe5dc;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
-  background: #f3f7f3;
+  background: var(--surface-subtle);
 }
 
 .practice-panel h2 {
@@ -603,9 +674,9 @@ h1 {
 .practice-question-list > li {
   min-width: 0;
   padding: 1rem;
-  border: 1px solid #dbe5dc;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
-  background: #fff;
+  background: var(--surface);
 }
 
 .practice-question-list h3 {
@@ -621,10 +692,10 @@ h1 {
 .practice-panel button {
   max-width: 100%;
   padding: 0.65rem 0.9rem;
-  border: 1px solid #c8d9ce;
+  border: 1px solid var(--control-border);
   border-radius: 0.5rem;
-  background: #fff;
-  color: #34684e;
+  background: var(--surface);
+  color: var(--link);
   font: inherit;
 }
 
@@ -649,7 +720,7 @@ h1 {
   min-width: 0;
   margin: 0;
   padding: 1rem;
-  border: 1px solid #c8d9ce;
+  border: 1px solid var(--control-border);
   border-radius: 0.5rem;
 }
 
@@ -682,9 +753,9 @@ h1 {
   max-width: 24rem;
   min-width: 0;
   padding: 0.65rem 0.75rem;
-  border: 1px solid #8aa596;
+  border: 1px solid var(--control-border);
   border-radius: 0.4rem;
-  color: #18392f;
+  color: var(--text);
   font: inherit;
 }
 
@@ -695,18 +766,18 @@ h1 {
 .practice-error,
 .practice-warning {
   padding: 0.75rem;
-  border-left: 4px solid #a84438;
-  background: #fff2ef;
-  color: #742c24;
+  border-left: 4px solid var(--danger);
+  background: var(--status-surface);
+  color: var(--text);
 }
 
 .practice-recovery {
   width: min(100%, 50rem);
   margin: 0 auto 1rem;
   padding: 0.75rem 1rem;
-  border: 1px solid #a84438;
+  border: 1px solid var(--danger);
   border-radius: 0.5rem;
-  background: #fff2ef;
+  background: var(--status-surface);
 }
 
 .practice-recovery p {
@@ -764,8 +835,8 @@ h1 {
   gap: 0.75rem 1.5rem;
   min-width: 0;
   padding: 0.75rem clamp(1rem, 4vw, 2rem);
-  border-bottom: 1px solid #dbe5dc;
-  background: #fff;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .map-heading h1 {
@@ -775,7 +846,7 @@ h1 {
 
 .map-heading p {
   margin: 0.35rem 0 0;
-  color: #50635a;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 
@@ -798,8 +869,8 @@ h1 {
 }
 
 .map-mode-button[aria-pressed="true"] {
-  border-color: #43775e;
-  background: #e4efe7;
+  border-color: var(--accent);
+  background: var(--surface-selected);
   text-decoration: underline;
   text-decoration-thickness: 2px;
 }
@@ -855,6 +926,14 @@ h1 {
     padding-inline: 0.5rem;
   }
 
+  .map-app-shell:not(.map-list-layout) .theme-control {
+    margin-left: auto;
+  }
+
+  .map-app-shell:not(.map-list-layout) .theme-control select {
+    min-height: 2rem;
+  }
+
   .map-toolbar {
     padding: 0.5rem;
   }
@@ -877,16 +956,16 @@ h1 {
 
 @media (max-width: 480px) {
   .map-app-shell.map-author-mode {
-    grid-template-rows: 40px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     min-height: 0;
   }
 
   .map-app-shell.map-author-mode .site-header {
-    height: 40px;
-    min-height: 40px;
-    padding: 0;
-    gap: 0;
-    align-items: center;
+    height: auto;
+    min-height: 3.5rem;
+    padding: 0.25rem 0.35rem;
+    gap: 0.25rem;
+    align-items: flex-start;
   }
 
   .map-app-shell.map-author-mode .site-brand {
@@ -898,6 +977,17 @@ h1 {
     flex-wrap: nowrap;
     justify-content: space-between;
     gap: 0.25rem;
+  }
+
+  .map-app-shell.map-author-mode .theme-control {
+    margin-left: auto;
+    font-size: 0.75rem;
+  }
+
+  .map-app-shell.map-author-mode .theme-control select {
+    min-height: 1.75rem;
+    padding-block: 0.1rem;
+    font-size: 0.75rem;
   }
 
   .map-app-shell.map-author-mode .primary-nav a {
