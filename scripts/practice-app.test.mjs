@@ -1892,6 +1892,18 @@ test('integrated learning map keyboard focus and Escape work throughout the map'
     await click(linkFor(app.host, '学習マップ'))
     const node = [...app.host.querySelectorAll('.react-flow__node')]
       .find((item) => item.dataset.id === 'mean-inference')
+    assert.ok(node)
+    const nodes = [...app.host.querySelectorAll('.react-flow__node')]
+    assert.equal(nodes.length, lessonRegistry.lessons.length)
+    assert.ok(nodes.every((item) => item.getAttribute('tabindex') === '0'))
+    const nodeHelp = app.host.querySelector('[id^="react-flow__node-desc-"]')
+    assert.match(nodeHelp.textContent, /EnterまたはSpace/u)
+    assert.match(nodeHelp.textContent, /Escape/u)
+    assert.doesNotMatch(nodeHelp.textContent, /矢印キー|Delete|削除/u)
+    assert.equal(app.host.querySelector('.react-flow__controls').getAttribute('aria-label'), 'グラフ操作')
+    assert.equal(app.host.querySelector('.react-flow__controls-zoomin').getAttribute('aria-label'), '拡大')
+    assert.equal(app.host.querySelector('.react-flow__controls-zoomout').getAttribute('aria-label'), '縮小')
+    assert.equal(app.host.querySelector('.react-flow__controls-fitview').getAttribute('aria-label'), 'グラフ全体を表示')
     node.focus()
     await pressKey(window, node, 'Enter')
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
@@ -1903,6 +1915,20 @@ test('integrated learning map keyboard focus and Escape work throughout the map'
 
     await pressKey(window, node, ' ')
     assert.equal(window.document.activeElement, app.host.querySelector('.lesson-detail-header h2'))
+
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
+    await settleEffects(window)
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
+    assert.equal(window.document.activeElement, app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
+
+    const keyboardNode = app.host.querySelector('.react-flow__node[data-id="mean-inference"]')
+    keyboardNode.focus()
+    await pressKey(window, keyboardNode, 'Enter')
+    const escapeEvent = await pressKey(window, app.host.querySelector('.lesson-detail-header h2'), 'Escape')
+    await settleEffects(window)
+    assert.equal(escapeEvent.defaultPrevented, true)
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
+    assert.equal(window.document.activeElement, app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
 
     const escapeFrom = async (getTarget) => {
       const selected = app.host.querySelector('.react-flow__node[data-id="mean-inference"]')
@@ -1920,10 +1946,25 @@ test('integrated learning map keyboard focus and Escape work throughout the map'
     await escapeFrom(() => buttonFor(app.host, 'Re-layout'))
     await escapeFrom(() => buttonFor(app.host, 'マップ表示'))
 
+    await click(buttonFor(app.host, '配置編集'))
+    assert.match(nodeHelp.textContent, /矢印キー/u)
+    await click(buttonFor(app.host, '配置編集'))
+
     await click(app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
     await click(buttonFor(app.host, '閉じる'))
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
     assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
+
+    keyboardNode.focus()
+    await pressKey(window, keyboardNode, 'Enter')
+    const pointerReselectedNode = app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]')
+    await click(pointerReselectedNode)
+    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
+    await settleEffects(window)
+    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
+    assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
+    assert.notEqual(window.document.activeElement, keyboardNode)
   } finally {
     await app.close()
   }
@@ -1944,7 +1985,7 @@ test('integrated learning map cancels pending focus on close, view change, and r
       await new Promise((resolve) => window.requestAnimationFrame(resolve))
       assert.notEqual(window.document.activeElement, detailHeading)
     })
-    assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
+    assert.equal(window.document.activeElement, app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
 
     await click(node)
     node.focus()
@@ -1956,6 +1997,7 @@ test('integrated learning map cancels pending focus on close, view change, and r
       assert.notEqual(window.document.activeElement, detailHeading)
     })
     assert.equal(app.host.querySelector('.lesson-detail-card'), null)
+    assert.equal(window.document.activeElement, buttonFor(app.host, '教材一覧'))
 
     await click(buttonFor(app.host, 'マップ表示'))
     const selectedNode = app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]')

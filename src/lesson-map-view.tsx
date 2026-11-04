@@ -65,6 +65,8 @@ export function getMapProgressSummary(progress: ProgressData | null, lessonId: s
   }
 }
 
+const mapDirectionLabels: Record<string, string> = { left: '左', right: '右', up: '上', down: '下' }
+
 type LessonMapViewProps = {
   theme: 'light' | 'dark'
   viewport: Viewport | null
@@ -114,6 +116,7 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
   const mapCanvasRef = useRef<HTMLElement>(null)
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
   const fitViewButtonRef = useRef<HTMLButtonElement>(null)
+  const keyboardSelectedNodeIdRef = useRef<string | null>(null)
   const pendingKeyboardFocusRef = useRef<string | null>(null)
   const keyboardFocusFrameRef = useRef<number | null>(null)
   const focusRestoreFrameRef = useRef<number | null>(null)
@@ -152,6 +155,20 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
   const selectedTitle = String(nodes.find((node) => node.selected)?.data.label ?? '')
   const selectedLessonId = nodes.find((node) => node.selected)?.id
   const selectedLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === selectedLessonId)
+  const nodeKeyboardDescription = layoutEditing
+    ? 'EnterまたはSpaceで単元の詳細を開きます。矢印キーで選択した単元の配置を動かせます。Escapeまたは閉じるボタンで戻ります。'
+    : 'EnterまたはSpaceで単元の詳細を開きます。Escapeまたは閉じるボタンでマップに戻ります。'
+  const ariaLabelConfig = {
+    'node.a11yDescription.default': nodeKeyboardDescription,
+    'node.a11yDescription.keyboardDisabled': nodeKeyboardDescription,
+    'node.a11yDescription.ariaLiveMessage': ({ direction, x, y }: { direction: string; x: number; y: number }) =>
+      `選択した単元を${mapDirectionLabels[direction] ?? direction}へ動かしました。新しい位置はx ${x}、y ${y}です。`,
+    'edge.a11yDescription.default': 'この線は共通必須前提を表します。単元の詳細カードから前提を確認できます。',
+    'controls.ariaLabel': 'グラフ操作',
+    'controls.zoomIn.ariaLabel': '拡大',
+    'controls.zoomOut.ariaLabel': '縮小',
+    'controls.fitView.ariaLabel': 'グラフ全体を表示',
+  }
   const selectedDomain = selectedLesson ? draftDomains[selectedLesson.lessonId] ?? selectedLesson.domain : null
   const selectedDomainLabel = selectedDomain ? lessonDomains[selectedDomain] : null
   const directPrerequisiteEdges = graph.commonPrerequisiteEdges.filter((edge) => edge.target === selectedLessonId)
@@ -222,6 +239,8 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     focusRestoreFrameRef.current = null
   }, [])
   const clearSelection = useCallback((restoreFocus = false) => {
+    const keyboardSelectedNodeId = restoreFocus ? keyboardSelectedNodeIdRef.current : null
+    keyboardSelectedNodeIdRef.current = null
     cancelKeyboardFocus()
     cancelFocusRestore()
     commitNodes(nodeSnapshotRef.current.map((node) => node.selected ? { ...node, selected: false } : node))
@@ -229,6 +248,13 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     if (restoreFocus) {
       focusRestoreFrameRef.current = window.requestAnimationFrame(() => {
         focusRestoreFrameRef.current = null
+        const node = keyboardSelectedNodeId
+          ? mapCanvasRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${keyboardSelectedNodeId}"]`)
+          : null
+        if (node?.isConnected && node.tabIndex >= 0) {
+          node.focus({ preventScroll: true })
+          if (node.ownerDocument.activeElement === node) return
+        }
         fitViewButtonRef.current?.focus({ preventScroll: true })
       })
     }
@@ -272,6 +298,7 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     clearSelectionRef.current = clearAndRestoreFocus
     return () => {
       if (clearSelectionRef.current === clearAndRestoreFocus) clearSelectionRef.current = null
+      keyboardSelectedNodeIdRef.current = null
       cancelKeyboardFocus()
       cancelFocusRestore()
     }
@@ -283,6 +310,7 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     if (notifiedId === latestId) onSelectionChange(latestId)
   }, [getNodes, onSelectionChange])
   const handleNodeClick: NodeMouseHandler<MapPocNode> = useCallback((event, node) => {
+    keyboardSelectedNodeIdRef.current = null
     cancelKeyboardFocus()
     cancelFocusRestore()
     if (event.shiftKey && node.selected) {
@@ -299,6 +327,7 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     if (!lessonId) return
     cancelKeyboardFocus()
     cancelFocusRestore()
+    keyboardSelectedNodeIdRef.current = lessonId
     pendingKeyboardFocusRef.current = lessonId
     keyboardFocusFrameRef.current = window.requestAnimationFrame(() => {
       keyboardFocusFrameRef.current = null
@@ -306,6 +335,8 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
       pendingKeyboardFocusRef.current = null
       if (getNodes().some((currentNode) => currentNode.id === lessonId && currentNode.selected)) {
         detailHeadingRef.current?.focus({ preventScroll: true })
+      } else if (keyboardSelectedNodeIdRef.current === lessonId) {
+        keyboardSelectedNodeIdRef.current = null
       }
     })
   }, [cancelFocusRestore, cancelKeyboardFocus, getNodes])
@@ -345,7 +376,7 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     const candidate = dagrePositions
     const result = onLayoutSave(candidate)
     applyConfirmedPositions(result.positions)
-    if (result.ok) window.requestAnimationFrame(() => void fitView({ padding: 0.14, duration: 180 }))
+    if (result.ok) window.requestAnimationFrame(() => void fitView({ padding: 0.14 }))
   }
 
   const exportDomainDraft = () => {
@@ -396,7 +427,7 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
             <div className="map-author-content">
               <p className="map-author-warning">draftは一時保存です。マップ/一覧の切替、画面移動、再読み込みで失われます。</p>
               <div className="map-author-actions">
-                <button type="button" onClick={() => void fitView({ padding: 0.14, duration: 180 })}>全体表示</button>
+                <button type="button" onClick={() => void fitView({ padding: 0.14 })}>全体表示</button>
                 <button type="button" disabled={manualProgressDisabled} onClick={resetLayout}>Re-layout</button>
               </div>
               <fieldset className="map-author-color-fields">
@@ -448,7 +479,7 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
               : ''}</p>
             <div className="map-graph-actions">
               <button type="button" aria-pressed={layoutEditing} disabled={manualProgressDisabled} onClick={handleLayoutEditingToggle}>配置編集</button>
-              <button ref={fitViewButtonRef} type="button" onClick={() => void fitView({ padding: 0.14, duration: 180 })}>全体表示</button>
+              <button ref={fitViewButtonRef} type="button" onClick={() => void fitView({ padding: 0.14 })}>全体表示</button>
               <button type="button" disabled={manualProgressDisabled} onClick={resetLayout}>Re-layout</button>
               {import.meta.env.DEV && <button ref={authorEditorButtonRef} type="button" aria-expanded={authorEditorOpen}
                 onClick={() => setAuthorEditorOpen(true)}>分野編集</button>}
@@ -477,6 +508,8 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
             panOnScroll={false}
             zoomOnPinch
             panOnDrag
+            nodesFocusable={true}
+            edgesFocusable={false}
             nodesConnectable={false}
             nodesDraggable={layoutEditing && !manualProgressDisabled}
             edgesReconnectable={false}
@@ -488,6 +521,7 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
             defaultViewport={viewport ?? undefined}
             minZoom={0.05}
             maxZoom={2}
+            ariaLabelConfig={ariaLabelConfig}
           >
             <Background gap={24} />
             <Controls showInteractive={false} aria-label="グラフ操作" />

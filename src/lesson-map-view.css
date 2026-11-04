@@ -570,7 +570,8 @@
 @media (max-width: 768px) {
   .map-graph-layout.has-detail {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(18rem, 1fr) minmax(0, min(35vh, 18rem, calc(100% - 18rem)));
+    grid-template-rows: minmax(18rem, 1fr) minmax(10rem, 18rem);
+    min-height: 28rem;
   }
 
   .map-graph-view {
