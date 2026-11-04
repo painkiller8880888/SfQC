@@ -47,6 +47,7 @@ export function shouldSaveMapLayout(changes: NodeChange<MapPocNode>[], candidate
 }
 
 type LessonMapViewProps = {
+  theme: 'light' | 'dark'
   viewport: Viewport | null
   selectedLessonId: string | null
   manualProgress: ManualProgressState
@@ -62,7 +63,7 @@ type LessonMapViewProps = {
   clearSelectionRef: { current: (() => void) | null }
 }
 
-function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manualProgress, manualProgressDisabled, positions, positionSyncRevision, onLayoutSave, onManualProgressAction, onViewportChange, onSelectionChange, onAuthorModeChange, onAuthorExport, clearSelectionRef }: LessonMapViewProps) {
+function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonId, manualProgress, manualProgressDisabled, positions, positionSyncRevision, onLayoutSave, onManualProgressAction, onViewportChange, onSelectionChange, onAuthorModeChange, onAuthorExport, clearSelectionRef }: LessonMapViewProps) {
   const graph = useMemo(() => createMapPocGraph(), [])
   const dagrePositions = useMemo(() => mapPositions(graph.nodes), [graph])
   const [nodes, setNodes] = useState<MapPocNode[]>(() => graph.nodes.map((node) => ({
@@ -156,8 +157,8 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
       },
     }
   })
-  const domainColorStyle = Object.fromEntries(Object.entries(draftColors)
-    .map(([domain, color]) => [`--map-domain-${domain}`, color])) as CSSProperties
+  const domainColorStyle = authorEditorOpen ? Object.fromEntries(Object.entries(draftColors)
+    .map(([domain, color]) => [`--map-author-domain-${domain}`, color])) as CSSProperties : undefined
   const draftSnapshot = JSON.stringify({ domains: draftDomains, colors: draftColors })
   const hasUnexportedChanges = draftSnapshot !== lastExportSnapshot
   const displayEdges = edges.map((edge) => {
@@ -170,7 +171,7 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
         ? [edge.className, 'map-prerequisite-edge'].filter(Boolean).join(' ')
         : edge.className,
       markerEnd: highlighted
-        ? { type: MarkerType.ArrowClosed, color: '#0f766e' }
+        ? { type: MarkerType.ArrowClosed, color: 'var(--map-prerequisite)' }
         : edge.markerEnd,
       ariaLabel: `${sourceTitle}から${targetTitle}への共通必須前提${highlighted ? '（選択教材の直接前提）' : ''}`,
     }
@@ -435,6 +436,12 @@ function LessonGraph({ viewport, selectedLessonId: initialSelectedLessonId, manu
             onPaneClick={handlePaneClick}
             onSelectionChange={handleSelectionChange}
             onInit={handleInit}
+            colorMode={theme}
+            defaultMarkerColor={null}
+            zoomOnScroll
+            panOnScroll={false}
+            zoomOnPinch
+            panOnDrag
             nodesConnectable={false}
             nodesDraggable={layoutEditing && !manualProgressDisabled}
             edgesReconnectable={false}

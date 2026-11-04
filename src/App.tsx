@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { Viewport } from '@xyflow/react'
 import {
   resolveRoute,
@@ -50,6 +50,39 @@ const navigation = [
   { label: '進捗', href: '#/progress', screen: 'progress' },
   { label: 'データ管理', href: '#/data', screen: 'data' },
 ] as const
+
+type Theme = 'light' | 'dark'
+type ThemePreference = 'system' | Theme
+
+const themeStorageKey = 'sfqc:theme-preference'
+const themeMediaQuery = '(prefers-color-scheme: dark)'
+
+function readSystemTheme(): Theme {
+  try {
+    const mediaQuery = window.matchMedia(themeMediaQuery)
+    return mediaQuery.matches ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+}
+
+function readThemePreference(): ThemePreference {
+  try {
+    const preference = window.localStorage.getItem(themeStorageKey)
+    return preference === 'light' || preference === 'dark' ? preference : 'system'
+  } catch {
+    return 'system'
+  }
+}
+
+function saveThemePreference(preference: ThemePreference) {
+  try {
+    if (preference === 'system') window.localStorage.removeItem(themeStorageKey)
+    else window.localStorage.setItem(themeStorageKey, preference)
+  } catch {
+    // Theme preference failure must not affect learning data.
+  }
+}
 
 const screens: Record<ScreenKind, {
   title: string
@@ -129,6 +162,9 @@ function RouteProblem({ message }: { message: string }) {
 }
 
 function App() {
+  const [themePreference, setThemePreference] = useState(readThemePreference)
+  const [systemTheme, setSystemTheme] = useState(readSystemTheme)
+  const theme = themePreference === 'system' ? systemTheme : themePreference
   const [view, setView] = useState(() => resolveRouteView(
     window.location.hash, window.history.state, 'initial', 0,
   ))
@@ -177,6 +213,43 @@ function App() {
   const onMapSelectionChange = useCallback((lessonId: string | null) => {
     selectedLessonIdRef.current = lessonId
   }, [])
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
+
+  useEffect(() => {
+    if (themePreference !== 'system') return
+    let mediaQuery: MediaQueryList
+    try {
+      mediaQuery = window.matchMedia(themeMediaQuery)
+      setSystemTheme(mediaQuery.matches ? 'dark' : 'light')
+    } catch {
+      setSystemTheme('light')
+      return
+    }
+    const onSystemThemeChange = (event: MediaQueryListEvent) => setSystemTheme(event.matches ? 'dark' : 'light')
+    try {
+      if (typeof mediaQuery.addEventListener === 'function') {
+        mediaQuery.addEventListener('change', onSystemThemeChange)
+        return () => mediaQuery.removeEventListener('change', onSystemThemeChange)
+      }
+      if (typeof mediaQuery.addListener === 'function') {
+        mediaQuery.addListener(onSystemThemeChange)
+        return () => mediaQuery.removeListener(onSystemThemeChange)
+      }
+    } catch {
+      // A failed subscription must not override the current system theme value.
+    }
+  }, [themePreference])
+
+  const handleThemePreferenceChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const preference = event.currentTarget.value
+    if (preference !== 'system' && preference !== 'light' && preference !== 'dark') return
+    setThemePreference(preference)
+    if (preference === 'system') setSystemTheme(readSystemTheme())
+    saveThemePreference(preference)
+  }
 
   const publishMapStateRead = (next: ReturnType<typeof readMapState>, syncPositions = true) => {
     mapStateReadRef.current = next
@@ -909,7 +982,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell${screen === 'map' ? ` map-app-shell${mapView === 'list' ? ' map-list-layout' : ''}${import.meta.env.DEV && mapView === 'graph' && mapAuthorMode ? ' map-author-mode' : ''}` : ''}`} onClick={handleInternalClick}>
+    <div className={`app-shell${screen === 'map' ? ` map-app-shell${mapView === 'list' ? ' map-list-layout' : ''}${import.meta.env.DEV && mapView === 'graph' && mapAuthorMode ? ' map-author-mode' : ''}` : ''}`} data-theme={theme} onClick={handleInternalClick}>
       <button
         type="button"
         className="skip-link"
@@ -934,6 +1007,14 @@ function App() {
             </a>
           ))}
         </nav>
+        <div className="theme-control">
+          <label htmlFor="theme-preference">表示テーマ</label>
+          <select id="theme-preference" value={themePreference} onChange={handleThemePreferenceChange}>
+            <option value="system">端末設定</option>
+            <option value="light">ライト</option>
+            <option value="dark">ダーク</option>
+          </select>
+        </div>
       </header>
 
       {screen === 'map' ? (
@@ -976,6 +1057,7 @@ function App() {
           {mapView === 'graph' ? (
             <div className="map-graph-content" ref={mapGraphContentRef}>
               <LessonMapView
+                theme={theme}
                 viewport={mapViewportRef.current}
                 selectedLessonId={selectedLessonIdRef.current}
                 manualProgress={manualProgress}
