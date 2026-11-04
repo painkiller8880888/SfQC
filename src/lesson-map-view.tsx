@@ -158,7 +158,6 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     }
   })
   const domainColorStyle = authorEditorOpen ? Object.fromEntries(Object.entries(draftColors)
-    .filter(([domain, color]) => color !== lessonDomainColors[domain as LessonDomain])
     .map(([domain, color]) => [`--map-author-domain-${domain}`, color])) as CSSProperties : undefined
   const draftSnapshot = JSON.stringify({ domains: draftDomains, colors: draftColors })
   const hasUnexportedChanges = draftSnapshot !== lastExportSnapshot

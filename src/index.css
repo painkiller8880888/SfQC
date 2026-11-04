@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   font-family: Inter, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
   color: var(--text);
   background: var(--page-background);
@@ -26,6 +27,7 @@
   --shadow: rgb(0 43 54 / 8%);
 }
 
+:root[data-theme="dark"],
 .app-shell[data-theme="dark"] {
   color-scheme: dark;
   --page-background: #002b36;
@@ -46,6 +48,30 @@
   --danger: #f05e51;
   --status-surface: #073642;
   --shadow: rgb(0 0 0 / 24%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --page-background: #002b36;
+    --surface: #073642;
+    --surface-subtle: #073642;
+    --surface-selected: #002b36;
+    --text: #93a1a1;
+    --text-muted: #93a1a1;
+    --border: #657b83;
+    --control-border: #839496;
+    --link: #5ba6d0;
+    --focus: #2aa198;
+    --accent: #2aa198;
+    --accent-glow: rgb(42 161 152 / 38%);
+    --accent-subtle-glow: rgb(42 161 152 / 20%);
+    --success: #859900;
+    --warning: #b58900;
+    --danger: #f05e51;
+    --status-surface: #073642;
+    --shadow: rgb(0 0 0 / 24%);
+  }
 }
 
 .app-shell {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { Viewport } from '@xyflow/react'
 import {
   resolveRoute,
@@ -60,7 +60,6 @@ const themeMediaQuery = '(prefers-color-scheme: dark)'
 function readSystemTheme(): Theme {
   try {
     const mediaQuery = window.matchMedia(themeMediaQuery)
-    if (typeof mediaQuery.addEventListener !== 'function' && typeof mediaQuery.addListener !== 'function') return 'light'
     return mediaQuery.matches ? 'dark' : 'light'
   } catch {
     return 'light'
@@ -215,6 +214,10 @@ function App() {
     selectedLessonIdRef.current = lessonId
   }, [])
 
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
+
   useEffect(() => {
     if (themePreference !== 'system') return
     let mediaQuery: MediaQueryList
@@ -236,9 +239,8 @@ function App() {
         return () => mediaQuery.removeListener(onSystemThemeChange)
       }
     } catch {
-      setSystemTheme('light')
+      // A failed subscription must not override the current system theme value.
     }
-    setSystemTheme('light')
   }, [themePreference])
 
   const handleThemePreferenceChange = (event: ChangeEvent<HTMLSelectElement>) => {

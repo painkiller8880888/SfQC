@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { runInNewContext } from 'node:vm'
 import { act, createElement, StrictMode } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
@@ -9,7 +11,7 @@ import { createRouteHistoryState, navigateRouteHistory } from '../src/route-hist
 import { routeToHash } from '../src/resolve-screen.mjs'
 import { createInitialMapState, MAP_STATE_KEY, readMapState, saveMapState } from '../src/map-state.mjs'
 import { createMapPocGraph } from '../src/map-poc-graph.mjs'
-import { lessonDomains } from '../src/lesson-contract.mjs'
+import { lessonDomainColors, lessonDomains } from '../src/lesson-contract.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 
 const THEME_STORAGE_KEY = 'sfqc:theme-preference'
@@ -36,13 +38,15 @@ class TestResizeObserver {
   disconnect() {}
 }
 
-function installMatchMedia(window, initialTheme = 'light', available = true) {
+function installMatchMedia(window, initialTheme = 'light', available = true, listenersAvailable = true) {
   let systemTheme = initialTheme
   const listeners = new Set()
   const mediaQuery = {
     media: THEME_MEDIA_QUERY,
     onchange: null,
     get matches() { return systemTheme === 'dark' },
+  }
+  if (listenersAvailable) Object.assign(mediaQuery, {
     addEventListener(type, listener) {
       if (type === 'change') listeners.add(listener)
     },
@@ -51,7 +55,7 @@ function installMatchMedia(window, initialTheme = 'light', available = true) {
     },
     addListener(listener) { listeners.add(listener) },
     removeListener(listener) { listeners.delete(listener) },
-  }
+  })
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
     writable: true,
@@ -74,7 +78,7 @@ function installMatchMedia(window, initialTheme = 'light', available = true) {
   }
 }
 
-async function createHarness({ strict = false, confirm = () => true, measureFlowNodes = false, systemTheme = 'light', supportsMatchMedia = true } = {}) {
+async function createHarness({ strict = false, confirm = () => true, measureFlowNodes = false, systemTheme = 'light', supportsMatchMedia = true, supportsMatchMediaListeners = true } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://sfqc.test/SfQC/#/practice',
     pretendToBeVisual: true,
@@ -83,7 +87,7 @@ async function createHarness({ strict = false, confirm = () => true, measureFlow
   const previousMetrics = new Map(['offsetWidth', 'offsetHeight'].map((key) => [
     key, Object.getOwnPropertyDescriptor(dom.window.HTMLElement.prototype, key),
   ]))
-  const media = installMatchMedia(dom.window, systemTheme, supportsMatchMedia)
+  const media = installMatchMedia(dom.window, systemTheme, supportsMatchMedia, supportsMatchMediaListeners)
   const globals = {
     window: dom.window,
     document: dom.window.document,
@@ -293,16 +297,53 @@ function savedMap(window) {
   return readMapState(lessonRegistry, () => window.localStorage).state
 }
 
+test('pre-render theme bootstrap honors saved choices and falls back to the system theme', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8')
+  const script = /<script>\s*([\s\S]*?)\s*<\/script>/u.exec(html)?.[1]
+  assert.ok(script)
+  const resolveTheme = ({ savedPreference = null, systemTheme = 'light', storageThrows = false, matchMediaAvailable = true } = {}) => {
+    const document = { documentElement: { dataset: {} } }
+    const window = {
+      localStorage: {
+        getItem(key) {
+          assert.equal(key, THEME_STORAGE_KEY)
+          if (storageThrows) throw new Error('storage unavailable')
+          return savedPreference
+        },
+      },
+      matchMedia(query) {
+        assert.equal(query, THEME_MEDIA_QUERY)
+        if (!matchMediaAvailable) throw new Error('matchMedia unavailable')
+        return { matches: systemTheme === 'dark' }
+      },
+    }
+    runInNewContext(script, { document, window })
+    return document.documentElement.dataset.theme
+  }
+
+  assert.equal(resolveTheme({ systemTheme: 'dark' }), 'dark')
+  assert.equal(resolveTheme({ savedPreference: 'light', systemTheme: 'dark' }), 'light')
+  assert.equal(resolveTheme({ storageThrows: true, systemTheme: 'dark' }), 'dark')
+  assert.equal(resolveTheme({ storageThrows: true, matchMediaAvailable: false }), 'light')
+  assert.equal(resolveTheme({ savedPreference: 'sepia', systemTheme: 'dark' }), 'dark')
+
+  const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
+  assert.match(css, /:root\[data-theme="dark"\]/u)
+  assert.match(css, /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root:not\(\[data-theme\]\)/u)
+})
+
 test('theme follows the system, saves manual choices, and stays separate from learning data', async () => {
   const app = await createHarness()
   try {
     const { window } = app.dom
     const themeSelect = () => app.host.querySelector('#theme-preference')
     const theme = () => app.host.querySelector('.app-shell').dataset.theme
+    const documentTheme = () => window.document.documentElement.dataset.theme
     const localDataBefore = window.localStorage.getItem('sfqc:local-data')
     const mapStateBefore = window.localStorage.getItem(MAP_STATE_KEY)
     assert.equal(themeSelect().value, 'system')
     assert.equal(theme(), 'light')
+    assert.equal(documentTheme(), 'light')
     assert.equal(app.mediaListenerCount, 1)
     await click(linkFor(app.host, '学習マップ'))
     await settleEffects(window)
@@ -311,9 +352,11 @@ test('theme follows the system, saves manual choices, and stays separate from le
 
     await app.setSystemTheme('dark')
     assert.equal(theme(), 'dark')
+    assert.equal(documentTheme(), 'dark')
     assert.ok(app.host.querySelector('.react-flow').classList.contains('dark'))
     await changeControl(window, themeSelect(), 'light')
     assert.equal(theme(), 'light')
+    assert.equal(documentTheme(), 'light')
     assert.ok(app.host.querySelector('.react-flow').classList.contains('light'))
     assert.equal(app.mediaListenerCount, 0)
     assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), 'light')
@@ -326,6 +369,7 @@ test('theme follows the system, saves manual choices, and stays separate from le
 
     await changeControl(window, themeSelect(), 'dark')
     assert.equal(theme(), 'dark')
+    assert.equal(documentTheme(), 'dark')
     assert.ok(app.host.querySelector('.react-flow').classList.contains('dark'))
     assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), 'dark')
     await app.setSystemTheme('light')
@@ -339,10 +383,12 @@ test('theme follows the system, saves manual choices, and stays separate from le
     assert.equal(themeSelect().value, 'system')
     assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), null)
     assert.equal(theme(), 'light')
+    assert.equal(documentTheme(), 'light')
     assert.ok(app.host.querySelector('.react-flow').classList.contains('light'))
     assert.equal(app.mediaListenerCount, 1)
     await app.setSystemTheme('dark')
     assert.equal(theme(), 'dark')
+    assert.equal(documentTheme(), 'dark')
     assert.ok(app.host.querySelector('.react-flow').classList.contains('dark'))
     await app.remount()
     assert.equal(themeSelect().value, 'system')
@@ -385,6 +431,18 @@ test('invalid or unreadable theme preferences fall back to system mode', async (
   } finally {
     if (originalGet) Object.defineProperty(storagePrototype, 'getItem', originalGet)
     else delete storagePrototype.getItem
+    await app.close()
+  }
+})
+
+test('system theme reads matchMedia even when its change listener APIs are unavailable', async () => {
+  const app = await createHarness({ systemTheme: 'dark', supportsMatchMediaListeners: false })
+  try {
+    assert.equal(app.host.querySelector('#theme-preference').value, 'system')
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
+    assert.equal(app.dom.window.document.documentElement.dataset.theme, 'dark')
+    assert.equal(app.mediaListenerCount, 0)
+  } finally {
     await app.close()
   }
 })
@@ -1632,6 +1690,13 @@ test('development domain editor keeps a reviewable in-memory draft and exports o
     assert.equal(window.document.activeElement, app.host.querySelector('.map-author-color-fields input'))
     assert.equal(app.host.querySelectorAll('.map-author-domain-fields select').length, 34)
     assert.equal(app.host.querySelectorAll('.map-author-color-fields input[type="color"]').length, 5)
+    const mathFoundationColor = app.host.querySelector('.map-author-color-fields input[type="color"]')
+    assert.equal(mathFoundationColor.value, lessonDomainColors['math-foundations'])
+    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), mathFoundationColor.value)
+    await changeControl(window, mathFoundationColor, '#000000')
+    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '#000000')
+    await changeControl(window, mathFoundationColor, lessonDomainColors['math-foundations'])
+    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), lessonDomainColors['math-foundations'])
     assert.deepEqual([...app.host.querySelectorAll('.map-author-color-fields label > span')].map((item) => item.textContent),
       Object.values(lessonDomains))
 
