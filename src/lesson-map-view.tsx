@@ -21,6 +21,7 @@ import { lessonDomainColors, lessonDomains, type LessonDomain } from './lesson-c
 import { lessonRegistry } from './lesson-registry.mjs'
 import type { ManualProgressCommand, ManualProgressState } from './manual-progress.mjs'
 import type { MapState } from './map-state.mjs'
+import type { ProgressData } from './progress-data.mjs'
 import { LessonDetailCard } from './lesson-view'
 
 export type Positions = MapState['positions']
@@ -46,10 +47,29 @@ export function shouldSaveMapLayout(changes: NodeChange<MapPocNode>[], candidate
     && !samePositions(confirmed, candidate)
 }
 
+export function getMapProgressSummary(progress: ProgressData | null, lessonId: string) {
+  const observation = progress?.lessons.find((item) => item.lessonId === lessonId)
+  if (!observation) return {
+    label: '集計未確認',
+    ariaLabel: '演習集計未確認、正答数と試行数は不明',
+  }
+  const counts = `${observation.correctCount}/${observation.attemptCount}回`
+  if (observation.correctRate === null) return {
+    label: '—（試行0回）',
+    ariaLabel: `正答率未記録、正答数/試行数 ${counts}`,
+  }
+  const percentage = Math.round(observation.correctRate * 100)
+  return {
+    label: `${percentage}%（${counts}）`,
+    ariaLabel: `正答率${percentage}%、正答数/試行数 ${counts}`,
+  }
+}
+
 type LessonMapViewProps = {
   theme: 'light' | 'dark'
   viewport: Viewport | null
   selectedLessonId: string | null
+  progress: ProgressData | null
   manualProgress: ManualProgressState
   manualProgressDisabled?: boolean
   positions: Positions
@@ -63,7 +83,7 @@ type LessonMapViewProps = {
   clearSelectionRef: { current: (() => void) | null }
 }
 
-function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonId, manualProgress, manualProgressDisabled, positions, positionSyncRevision, onLayoutSave, onManualProgressAction, onViewportChange, onSelectionChange, onAuthorModeChange, onAuthorExport, clearSelectionRef }: LessonMapViewProps) {
+function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonId, progress, manualProgress, manualProgressDisabled, positions, positionSyncRevision, onLayoutSave, onManualProgressAction, onViewportChange, onSelectionChange, onAuthorModeChange, onAuthorExport, clearSelectionRef }: LessonMapViewProps) {
   const graph = useMemo(() => createMapPocGraph(), [])
   const dagrePositions = useMemo(() => mapPositions(graph.nodes), [graph])
   const [nodes, setNodes] = useState<MapPocNode[]>(() => graph.nodes.map((node) => ({
@@ -142,6 +162,13 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     const title = String(node.data.label)
     const domain = draftDomains[node.id] ?? node.data.domain
     const domainLabel = lessonDomains[domain]
+    const lesson = lessonRegistry.lessons.find((item) => item.lessonId === node.id)
+    const isPlanned = lesson?.availability === 'planned'
+    const progressSummary = getMapProgressSummary(progress, node.id)
+    const manualStatus = manualProgress[node.id]?.status ?? 'not-started'
+    const manualStatusLabel = manualStatus === 'completed' ? '完了'
+      : manualStatus === 'started' ? '学習中' : '未開始'
+    const isCompleted = manualStatus === 'completed'
     const relation = node.selected ? '選択中'
       : directPrerequisiteIds.has(node.id) ? `「${selectedTitle}」の直接の共通必須前提` : null
     const classNames = (node.className ?? '').split(/\s+/u)
@@ -150,10 +177,18 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
       ...node,
       className: [...classNames, `map-domain-${domain}`,
         directPrerequisiteIds.has(node.id) ? 'map-prerequisite' : null].filter(Boolean).join(' '),
-      ariaLabel: `${title}（分野：${domainLabel}${relation ? `、${relation}` : ''}）`,
+      ariaLabel: `${title}（分野：${domainLabel}${isPlanned ? '、未収録' : ''}、${progressSummary.ariaLabel}、手動進捗：${manualStatusLabel}${relation ? `、${relation}` : ''}）`,
       data: {
         ...node.data,
-        label: <><span className="map-node-title">{title}</span><span className="map-node-domain">{domainLabel}</span></>,
+        label: <>
+          <span className="map-node-title">{title}</span>
+          <span className="map-node-domain">{domainLabel}</span>
+          <span className="map-node-progress-row">
+            {isPlanned && <span className="map-node-availability">未収録</span>}
+            <span className="map-node-progress">{progressSummary.label}</span>
+          </span>
+          <span className="map-node-completed" aria-hidden="true">{isCompleted ? '✓' : ''}</span>
+        </>,
       },
     }
   })

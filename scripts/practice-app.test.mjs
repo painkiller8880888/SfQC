@@ -1125,6 +1125,96 @@ test('integrated learning map details use available lesson references and existi
   }
 })
 
+test('map accuracy uses every answer attempt and never changes manual completion', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    await click(linkFor(app.host, '学習マップ'))
+
+    const nodeFor = (id) => app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
+    for (const lesson of lessonRegistry.lessons) {
+      const node = nodeFor(lesson.lessonId)
+      assert.match(node.querySelector('.map-node-progress').textContent, /—（試行0回）/u)
+      assert.match(node.getAttribute('aria-label'), /正答率未記録.*0\/0回.*手動進捗：未開始/u)
+      assert.equal(node.querySelector('.map-node-availability')?.textContent ?? '',
+        lesson.availability === 'planned' ? '未収録' : '')
+    }
+
+    await click(nodeFor('descriptive-statistics'))
+    await click(linkFor(app.host.querySelector('.lesson-detail-card'), '演習問題一覧を開く（全単元共通）'))
+    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
+    const instanceId = readLocalData().data.questionInstances[0].instanceId
+    const practiceHash = routeToHash({ kind: 'practice-id', instanceId })
+    const answer = async (value, expectedRate, expectedCounts, expectedManualStatus, completedCount) => {
+      await app.remountAt(practiceHash)
+      await changeTextInput(window, app.host.querySelector('input[type="text"]'), value)
+      await click(buttonFor(app.host, '回答を送信する'))
+      const attempts = readLocalData().data.answerAttempts
+      assert.equal(attempts.at(-1).instanceId, instanceId)
+
+      await app.remountAt('#/map')
+      const node = nodeFor('descriptive-statistics')
+      assert.equal(node.querySelector('.map-node-progress').textContent, `${expectedRate}（${expectedCounts}回）`)
+      assert.match(node.getAttribute('aria-label'), new RegExp(`正答率${expectedRate}.*${expectedCounts}回.*手動進捗：${expectedManualStatus}`, 'u'))
+      assert.ok(app.host.querySelector('.map-toolbar').textContent.includes(`手動完了 ${completedCount} / 34`))
+      assert.equal(node.querySelector('.map-node-completed').textContent, expectedManualStatus === '完了' ? '✓' : '')
+    }
+
+    await answer('1.013', '100%', '1/1', '未開始', 0)
+    const practiceRaw = window.localStorage.getItem('sfqc:local-data')
+    await click(nodeFor('descriptive-statistics'))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
+    await settleEffects(window)
+    assert.equal(window.localStorage.getItem('sfqc:local-data'), practiceRaw)
+    assert.match(nodeFor('descriptive-statistics').getAttribute('aria-label'), /手動進捗：完了/u)
+
+    await answer('1.030', '50%', '1/2', '完了', 1)
+    await answer('1.013', '67%', '2/3', '完了', 1)
+    await click(nodeFor('descriptive-statistics'))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Reopen'))
+    await settleEffects(window)
+    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-progress').textContent, '67%（2/3回）')
+    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-completed').textContent, '')
+    assert.match(nodeFor('descriptive-statistics').getAttribute('aria-label'), /手動進捗：学習中/u)
+    assert.match(app.host.querySelector('.map-toolbar').textContent, /手動完了 0 \/ 34/u)
+  } finally {
+    await app.close()
+  }
+})
+
+test('map progress distinguishes unavailable aggregation from zero attempts', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const { getMapProgressSummary } = await app.loadModule('/src/lesson-map-view.tsx')
+    assert.deepEqual(getMapProgressSummary(null, 'descriptive-statistics'), {
+      label: '集計未確認',
+      ariaLabel: '演習集計未確認、正答数と試行数は不明',
+    })
+    assert.deepEqual(getMapProgressSummary({ lessons: [], unavailableReferences: [] }, 'descriptive-statistics'), {
+      label: '集計未確認',
+      ariaLabel: '演習集計未確認、正答数と試行数は不明',
+    })
+    assert.deepEqual(getMapProgressSummary({ lessons: [{
+      lessonId: 'descriptive-statistics', correctRate: null, correctCount: 0, attemptCount: 0,
+    }], unavailableReferences: [] }, 'descriptive-statistics'), {
+      label: '—（試行0回）',
+      ariaLabel: '正答率未記録、正答数/試行数 0/0回',
+    })
+
+    window.localStorage.setItem('sfqc:local-data', '{ invalid json')
+    await app.remountAt('#/map')
+    const node = app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]')
+    assert.equal(node.querySelector('.map-node-progress').textContent, '集計未確認')
+    assert.match(node.getAttribute('aria-label'), /演習集計未確認/u)
+    assert.doesNotMatch(node.getAttribute('aria-label'), /0\/0回/u)
+    assert.match(node.getAttribute('aria-label'), /手動進捗：未開始/u)
+  } finally {
+    await app.close()
+  }
+})
+
 test('manual map progress stays separate from practice data, supports explicit controls, and persists on reload', async () => {
   const app = await createHarness()
   try {
@@ -1612,7 +1702,7 @@ test('integrated learning map highlights only direct common prerequisites and cl
     }
     assert.equal(highlightedNodeIds().length, 0)
     assert.equal(highlightedEdgeIds().length, 0)
-    assert.equal(selected.getAttribute('aria-label'), '基本統計量（分野：データ・記述統計）')
+    assert.equal(selected.getAttribute('aria-label'), '基本統計量（分野：データ・記述統計、正答率未記録、正答数/試行数 0/0回、手動進捗：未開始）')
     assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
 
     await click(node('mean-inference'))
@@ -1723,7 +1813,7 @@ test('development domain editor keeps a reviewable in-memory draft and exports o
     assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '#000000')
     assert.deepEqual(domainClasses('descriptive-statistics'), ['map-domain-quality-methods'])
     assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, '品質管理手法')
-    assert.equal(nodeFor('descriptive-statistics').getAttribute('aria-label'), '基本統計量（分野：品質管理手法、選択中）')
+    assert.equal(nodeFor('descriptive-statistics').getAttribute('aria-label'), '基本統計量（分野：品質管理手法、正答率未記録、正答数/試行数 0/0回、手動進捗：未開始、選択中）')
     for (const lesson of lessonRegistry.lessons) {
       const current = lesson.lessonId === 'descriptive-statistics' ? 'quality-methods' : lesson.domain
       assert.equal(nodeFor(lesson.lessonId).querySelector('.map-node-domain').textContent, lessonDomains[current])

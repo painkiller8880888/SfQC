@@ -1060,6 +1060,7 @@ function App() {
                 theme={theme}
                 viewport={mapViewportRef.current}
                 selectedLessonId={selectedLessonIdRef.current}
+                progress={progress}
                 manualProgress={manualProgress}
                 manualProgressDisabled={manualProgressDisabled}
                 positions={mapStateRef.current.positions}
