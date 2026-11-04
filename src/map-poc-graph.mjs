@@ -4,7 +4,7 @@ import { deriveLessonGraph } from './lesson-graph.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 
 export const MAP_NODE_WIDTH = 272
-export const MAP_NODE_HEIGHT = 88
+export const MAP_NODE_HEIGHT = 104
 
 /** @param {import('./lesson-contract.mjs').LessonRegistry} [registry] @param {Record<string, { x: number; y: number }>} [positions] */
 export function createMapPocGraph(registry = lessonRegistry, positions = {}) {
