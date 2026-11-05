@@ -5,9 +5,9 @@
 ## Read first
 
 - `.codex/config.toml` - 作業におけるモデル選択についての設定
+- [`README.md`](README.md#現行の作業と文書の優先順位) — 現行の作業入口（親Issue #73と子Issue）
 - `docs/` — プロジェクトの実装計画
 - [`docs/P2_1_IMPLEMENTATION_PLAN.md`](docs/P2_1_IMPLEMENTATION_PLAN.md) — 完了したP2.1の実行順・確定契約の記録
-- [`README.md`](README.md#現行の作業と文書の優先順位) — 現在の作業入口
 - [`docs/legacy/README.md`](docs/legacy/README.md) — P2の履歴資料と文書の優先順位
 
 ## Commands
@@ -71,7 +71,8 @@ subagent が作業結果を返す際は、少なくとも以下をまとめる�
 | 教育方針 | [`docs/PROJECT_CHARTER_DRAFT.md`](docs/PROJECT_CHARTER_DRAFT.md) | 解説→演習→誤答feedback→関連解説・前提復習→再演習の方針を参照します。§3/§6/§9の初期画面・進捗・フェーズ案は確定仕様ではありません。 |
 | 現役の教育照合資料 | [`docs/curriculum/PREREQUISITE_MAP_DRAFT.md`](docs/curriculum/PREREQUISITE_MAP_DRAFT.md)、[`docs/curriculum/SYLLABUS_MAPPING_DRAFT.md`](docs/curriculum/SYLLABUS_MAPPING_DRAFT.md) | Draft表記でもcurriculum契約テストの入力です。パス、見出し、表構造、教育根拠を変更する場合はregistry・テストとの整合を確認します。 |
 | P2.1完了記録 | [Issue #43](https://github.com/painkiller8880888/SfQC/issues/43)、[`docs/P2_1_IMPLEMENTATION_PLAN.md`](docs/P2_1_IMPLEMENTATION_PLAN.md) | 確定契約と過去の実行順を記録します。過去の実行順を現行の作業計画とは扱いません。 |
-| 初期設計・履歴 | `docs/MVP_DESIGN_DRAFT.md`のP1本文、[`docs/legacy/`](docs/legacy/README.md) | 参考記録として保ち、日付付きの契約確認記録や後続Issueの条件と区別します。保存原文は書き換えません。 |
+| 日付付き契約確認記録 | [`docs/MVP_DESIGN_DRAFT.md`の#73比較モック確認記録](docs/MVP_DESIGN_DRAFT.md#mock-contract-snapshot) | 2026-11-05時点の本番契約、モックで隔離して試せる範囲、未決事項を記録します。後続Issue #75〜#81が参照しますが、設計判断の正本ではありません。 |
+| 初期設計・履歴 | `docs/MVP_DESIGN_DRAFT.md`のP1本文、[`docs/legacy/`](docs/legacy/README.md) | 参考記録として保ち、日付付き契約確認記録や後続Issueの条件と区別します。保存原文は書き換えません。 |
 | 保留事項 | [Issue #73](https://github.com/painkiller8880888/SfQC/issues/73)で未決とされた事項 | 後続Issueで判断するまで確定扱いしません。 |
 
 教材データの実装正本は[`src/lesson-registry.mjs`](src/lesson-registry.mjs)です。curriculum資料との整合検査は[`scripts/lesson-curriculum.test.mjs`](scripts/lesson-curriculum.test.mjs)です。既存契約と新しいIssueの受入条件が衝突する場合、衝突する変更を止め、衝突点・影響・必要な判断を共有して明示的な設計判断を求めます。これは将来の契約変更を禁止するものではありません。
