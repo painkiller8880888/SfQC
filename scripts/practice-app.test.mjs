@@ -1971,12 +1971,13 @@ test('integrated learning map keyboard focus and Escape work throughout the map'
   }
 })
 
-test('integrated learning map keeps keyboard focus visible on the page without scrolling for pointer selection', async () => {
+test('integrated learning map keeps keyboard and fallback focus visible without scrolling on pointer open', async () => {
   const app = await createHarness()
   try {
     const { window } = app.dom
     let pageScrollY = 100
     let headingDocumentY = 120
+    let fitViewDocumentY = 120
     const scrollCalls = []
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 240 })
     Object.defineProperty(window, 'scrollY', { configurable: true, get: () => pageScrollY })
@@ -1986,12 +1987,17 @@ test('integrated learning map keeps keyboard focus visible on the page without s
     }
     await click(linkFor(app.host, '学習マップ'))
     const header = app.host.querySelector('.site-header')
+    const fitViewButton = buttonFor(app.host, '全体表示')
     header.style.position = 'sticky'
     const originalGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect
     Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
       configurable: true,
       value() {
         if (this === header) return { top: 0, right: 320, bottom: 76, left: 0, width: 320, height: 76 }
+        if (this === fitViewButton) {
+          const top = fitViewDocumentY - pageScrollY
+          return { top, right: 120, bottom: top + 40, left: 0, width: 120, height: 40 }
+        }
         if (this.matches('.lesson-detail-header h2')) {
           const top = headingDocumentY - pageScrollY
           return { top, right: 300, bottom: top + 24, left: 0, width: 300, height: 24 }
@@ -2022,15 +2028,19 @@ test('integrated learning map keeps keyboard focus visible on the page without s
     assert.equal(pageScrollY, 158, 'keyboard close scrolls the restored node into the page viewport')
     assert.equal(node.getBoundingClientRect().bottom, 232)
 
-    pageScrollY = 0
+    pageScrollY = 100
     headingDocumentY = 500
     scrollCalls.length = 0
     await click(node)
     assert.equal(scrollCalls.length, 0, 'pointer selection does not scroll the page to the card heading')
+    assert.equal(pageScrollY, 100)
+    assert.equal(app.host.querySelector('.lesson-detail-header h2').getBoundingClientRect().top, 400)
     await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
     await settleFocusFrames()
-    assert.equal(pageScrollY, 0)
-    assert.equal(scrollCalls.length, 0, 'pointer close does not scroll the page')
+    assert.equal(window.document.activeElement, fitViewButton)
+    assert.equal(pageScrollY, 36, 'pointer close scrolls the fallback focus below the sticky header')
+    assert.equal(fitViewButton.getBoundingClientRect().top, 84)
+    assert.deepEqual(scrollCalls, [{ top: -64, behavior: 'instant' }])
   } finally {
     await app.close()
   }

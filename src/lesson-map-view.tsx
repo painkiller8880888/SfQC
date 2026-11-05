@@ -263,14 +263,18 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
       const node = keyboardSelectedNodeId
         ? mapCanvasRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${keyboardSelectedNodeId}"]`)
         : null
-      if (node?.isConnected && node.tabIndex >= 0) node.focus({ preventScroll: true })
-      if (node?.isConnected && node.ownerDocument.activeElement === node) {
+      let focusTarget: HTMLElement | null = node?.isConnected && node.tabIndex >= 0 ? node : null
+      focusTarget?.focus({ preventScroll: true })
+      if (!focusTarget || focusTarget.ownerDocument.activeElement !== focusTarget) {
+        focusTarget = fitViewButtonRef.current
+        focusTarget?.focus({ preventScroll: true })
+      }
+      if (focusTarget?.isConnected && focusTarget.ownerDocument.activeElement === focusTarget) {
+        const target = focusTarget
         focusRestoreFrameRef.current = window.requestAnimationFrame(() => {
           focusRestoreFrameRef.current = null
-          if (node.isConnected && node.ownerDocument.activeElement === node) scrollFocusTargetIntoView(node)
+          if (target.isConnected && target.ownerDocument.activeElement === target) scrollFocusTargetIntoView(target)
         })
-      } else {
-        fitViewButtonRef.current?.focus({ preventScroll: true })
       }
     }
   }, [cancelFocusRestore, cancelKeyboardFocus, commitNodes, onSelectionChange])
