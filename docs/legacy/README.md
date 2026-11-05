@@ -1,10 +1,10 @@
 # P2計画資料アーカイブ
 
-## 現在の計画と履歴資料
+## 現行作業と履歴資料
 
 このフォルダーは、完了したP2の計画・検証記録を当時の内容のまま保存します。ここにある文書と各旧パスの案内スタブは歴史資料であり、現在の実装指示ではありません。
 
-P2.1の方針と進捗は[親Issue #43](https://github.com/painkiller8880888/SfQC/issues/43)、リポジトリ内の実装順序は[現行P2.1計画](../P2_1_IMPLEMENTATION_PLAN.md)、各作業の受入条件は個別Issueが正本です。教材データの正本は[lesson registry](../../src/lesson-registry.mjs)、教育上の前提・公式項目との照合基準は[前提マップ](../curriculum/PREREQUISITE_MAP_DRAFT.md)と[シラバス対応表](../curriculum/SYLLABUS_MAPPING_DRAFT.md)、両者の整合検査は[curriculum契約テスト](../../scripts/lesson-curriculum.test.mjs)です。
+P2.1の確定契約と完了状況は[親Issue #43](https://github.com/painkiller8880888/SfQC/issues/43)、過去の実行順は[P2.1完了計画](../P2_1_IMPLEMENTATION_PLAN.md)に記録しています。現在の教材改修は[親Issue #73](https://github.com/painkiller8880888/SfQC/issues/73)と各子Issueを参照してください。教材データの正本は[lesson registry](../../src/lesson-registry.mjs)、教育上の前提・公式項目との照合基準は[前提マップ](../curriculum/PREREQUISITE_MAP_DRAFT.md)と[シラバス対応表](../curriculum/SYLLABUS_MAPPING_DRAFT.md)、両者の整合検査は[curriculum契約テスト](../../scripts/lesson-curriculum.test.mjs)です。
 
 ## P2の範囲と最終受入
 
