@@ -113,6 +113,7 @@ async function createHarness({ strict = false, confirm = () => true, measureFlow
     Object.defineProperty(globalThis, key, { value, configurable: true, writable: true })
   }
   dom.window.scrollTo = () => {}
+  dom.window.scrollBy = () => {}
   dom.window.confirm = confirm
   dom.window.document.head.insertAdjacentHTML('beforeend', '<style>.react-flow__pane { z-index: 1 }</style>')
   for (const [key, dimension] of [['offsetWidth', 1024], ['offsetHeight', 640]]) {
@@ -1965,6 +1966,71 @@ test('integrated learning map keyboard focus and Escape work throughout the map'
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
     assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
     assert.notEqual(window.document.activeElement, keyboardNode)
+  } finally {
+    await app.close()
+  }
+})
+
+test('integrated learning map keeps keyboard focus visible on the page without scrolling for pointer selection', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    let pageScrollY = 100
+    let headingDocumentY = 120
+    const scrollCalls = []
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 240 })
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => pageScrollY })
+    window.scrollBy = (options) => {
+      scrollCalls.push(options)
+      pageScrollY += options.top
+    }
+    await click(linkFor(app.host, '学習マップ'))
+    const header = app.host.querySelector('.site-header')
+    header.style.position = 'sticky'
+    const originalGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect
+    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value() {
+        if (this === header) return { top: 0, right: 320, bottom: 76, left: 0, width: 320, height: 76 }
+        if (this.matches('.lesson-detail-header h2')) {
+          const top = headingDocumentY - pageScrollY
+          return { top, right: 300, bottom: top + 24, left: 0, width: 300, height: 24 }
+        }
+        if (this.classList?.contains('react-flow__node')) {
+          const top = 330 - pageScrollY
+          return { top, right: 180, bottom: top + 60, left: 0, width: 180, height: 60 }
+        }
+        return originalGetBoundingClientRect.call(this)
+      },
+    })
+    const settleFocusFrames = () => act(async () => new Promise((resolve) => {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(resolve))
+    }))
+
+    const node = app.host.querySelector('.react-flow__node[data-id="mean-inference"]')
+    node.focus()
+    await pressKey(window, node, 'Enter')
+    await settleFocusFrames()
+    const heading = app.host.querySelector('.lesson-detail-header h2')
+    assert.equal(window.document.activeElement, heading)
+    assert.equal(pageScrollY, 36, 'keyboard opening scrolls the heading below the sticky header')
+    assert.equal(heading.getBoundingClientRect().top, 84)
+
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
+    await settleFocusFrames()
+    assert.equal(window.document.activeElement, node)
+    assert.equal(pageScrollY, 158, 'keyboard close scrolls the restored node into the page viewport')
+    assert.equal(node.getBoundingClientRect().bottom, 232)
+
+    pageScrollY = 0
+    headingDocumentY = 500
+    scrollCalls.length = 0
+    await click(node)
+    assert.equal(scrollCalls.length, 0, 'pointer selection does not scroll the page to the card heading')
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
+    await settleFocusFrames()
+    assert.equal(pageScrollY, 0)
+    assert.equal(scrollCalls.length, 0, 'pointer close does not scroll the page')
   } finally {
     await app.close()
   }

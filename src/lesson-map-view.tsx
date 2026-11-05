@@ -67,6 +67,20 @@ export function getMapProgressSummary(progress: ProgressData | null, lessonId: s
 
 const mapDirectionLabels: Record<string, string> = { left: '左', right: '右', up: '上', down: '下' }
 
+function scrollFocusTargetIntoView(element: HTMLElement) {
+  const rect = element.getBoundingClientRect()
+  const stickyHeader = element.ownerDocument.querySelector<HTMLElement>('.map-app-shell > .site-header')
+  const headerBottom = stickyHeader && window.getComputedStyle(stickyHeader).position === 'sticky'
+    ? Math.max(0, Math.min(window.innerHeight, stickyHeader.getBoundingClientRect().bottom))
+    : 0
+  const visibleTop = headerBottom + 8
+  const visibleBottom = window.innerHeight - 8
+  const scrollOffset = rect.top < visibleTop
+    ? rect.top - visibleTop
+    : rect.bottom > visibleBottom ? rect.bottom - visibleBottom : 0
+  if (scrollOffset) window.scrollBy({ top: scrollOffset, behavior: 'instant' })
+}
+
 type LessonMapViewProps = {
   theme: 'light' | 'dark'
   viewport: Viewport | null
@@ -246,17 +260,18 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     commitNodes(nodeSnapshotRef.current.map((node) => node.selected ? { ...node, selected: false } : node))
     onSelectionChange(null)
     if (restoreFocus) {
-      focusRestoreFrameRef.current = window.requestAnimationFrame(() => {
-        focusRestoreFrameRef.current = null
-        const node = keyboardSelectedNodeId
-          ? mapCanvasRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${keyboardSelectedNodeId}"]`)
-          : null
-        if (node?.isConnected && node.tabIndex >= 0) {
-          node.focus({ preventScroll: true })
-          if (node.ownerDocument.activeElement === node) return
-        }
+      const node = keyboardSelectedNodeId
+        ? mapCanvasRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${keyboardSelectedNodeId}"]`)
+        : null
+      if (node?.isConnected && node.tabIndex >= 0) node.focus({ preventScroll: true })
+      if (node?.isConnected && node.ownerDocument.activeElement === node) {
+        focusRestoreFrameRef.current = window.requestAnimationFrame(() => {
+          focusRestoreFrameRef.current = null
+          if (node.isConnected && node.ownerDocument.activeElement === node) scrollFocusTargetIntoView(node)
+        })
+      } else {
         fitViewButtonRef.current?.focus({ preventScroll: true })
-      })
+      }
     }
   }, [cancelFocusRestore, cancelKeyboardFocus, commitNodes, onSelectionChange])
 
@@ -334,7 +349,16 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
       if (pendingKeyboardFocusRef.current !== lessonId) return
       pendingKeyboardFocusRef.current = null
       if (getNodes().some((currentNode) => currentNode.id === lessonId && currentNode.selected)) {
-        detailHeadingRef.current?.focus({ preventScroll: true })
+        const heading = detailHeadingRef.current
+        heading?.focus({ preventScroll: true })
+        if (heading) {
+          keyboardFocusFrameRef.current = window.requestAnimationFrame(() => {
+            keyboardFocusFrameRef.current = null
+            if (keyboardSelectedNodeIdRef.current === lessonId && heading.ownerDocument.activeElement === heading) {
+              scrollFocusTargetIntoView(heading)
+            }
+          })
+        }
       } else if (keyboardSelectedNodeIdRef.current === lessonId) {
         keyboardSelectedNodeIdRef.current = null
       }
