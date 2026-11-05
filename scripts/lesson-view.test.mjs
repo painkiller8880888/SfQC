@@ -8,6 +8,7 @@ import { questionRegistry } from '../src/question-registry.mjs'
 import { deriveProgress } from '../src/progress-data.mjs'
 import { gradeQuestionAnswer } from '../src/question-grading.mjs'
 import { createInitialManualProgress } from '../src/manual-progress.mjs'
+import { createMapPocGraph } from '../src/map-poc-graph.mjs'
 import { fixedInstance } from './question-contract.fixture.mjs'
 
 test('registry-driven map, references, lesson blocks, and app routes render only available lessons', async () => {
@@ -232,6 +233,39 @@ test('registry-driven map, references, lesson blocks, and app routes render only
   } finally {
     if (previousWindow === undefined) delete globalThis.window
     else globalThis.window = previousWindow
+    await server.close()
+  }
+})
+
+test('all common prerequisite edges are listed in the target lesson detail card', async () => {
+  const server = await createServer({
+    configFile: 'vite.config.ts',
+    server: { middlewareMode: true, hmr: false },
+    appType: 'custom',
+  })
+  try {
+    const { LessonDetailCard } = await server.ssrLoadModule('/src/lesson-view.tsx')
+    const manualProgress = createInitialManualProgress(lessonRegistry)
+    const { commonPrerequisiteEdges } = createMapPocGraph()
+    assert.equal(commonPrerequisiteEdges.length, 64)
+
+    for (const target of lessonRegistry.lessons) {
+      const edges = commonPrerequisiteEdges.filter((edge) => edge.target === target.lessonId)
+      if (!edges.length) continue
+      const card = renderToStaticMarkup(createElement(LessonDetailCard, {
+        lesson: target,
+        manualProgress: manualProgress[target.lessonId],
+        onManualProgressAction: () => {},
+        onClose: () => {},
+      }))
+      const commonGroup = card.match(/<section class="reference-group"><h3>共通必須前提<\/h3>[\s\S]*?<\/section>/u)?.[0]
+      assert.ok(commonGroup, `${target.lessonId} has prerequisite edges but no common-prerequisite card group`)
+      for (const edge of edges) {
+        const source = lessonRegistry.lessons.find((lesson) => lesson.lessonId === edge.source)
+        assert.ok(source && commonGroup.includes(source.title), `${edge.source} is missing from ${edge.target}'s common-prerequisite card`)
+      }
+    }
+  } finally {
     await server.close()
   }
 })

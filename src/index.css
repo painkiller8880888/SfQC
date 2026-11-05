@@ -833,6 +833,20 @@ h1 {
   min-height: 0;
 }
 
+@media (max-width: 768px) {
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) {
+    grid-template-rows: auto auto;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) .map-workspace {
+    grid-template-rows: auto auto auto auto;
+    min-height: max-content;
+  }
+}
+
 .map-route-messages:empty {
   display: none;
 }
@@ -1119,5 +1133,57 @@ h1 {
 
   .map-app-shell.map-author-mode .map-graph-content {
     min-height: 0;
+  }
+}
+
+@media (max-width: 768px) and (max-height: 480px) {
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    grid-template-rows: auto auto;
+  }
+
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 1002;
+    align-items: center;
+    gap: 0.25rem;
+    padding-block: 0.25rem;
+    background: var(--page-background);
+    pointer-events: auto;
+    touch-action: auto;
+  }
+
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) .skip-link:focus-visible {
+    z-index: 1003;
+  }
+
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) .site-brand {
+    display: none;
+  }
+
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) .primary-nav {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 0.35rem;
+  }
+
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) .primary-nav a {
+    padding: 0.25rem 0.5rem;
+  }
+
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) .theme-control {
+    margin-left: auto;
+  }
+
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) .theme-control select {
+    min-height: 2rem;
+  }
+
+  .map-app-shell:not(.map-list-layout):not(.map-author-mode) .map-workspace {
+    grid-template-rows: auto auto auto auto;
   }
 }
