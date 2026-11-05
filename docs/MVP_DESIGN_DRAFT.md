@@ -4,7 +4,9 @@
 > 作成日: 2026-10-21
 > 対応Issue: [#3 — 教材・問題スキーマと主要画面の学習導線](https://github.com/painkiller8880888/SfQC/issues/3)
 
-> この文書はP1時点の概念設計とID参照の背景を記録します。教材registry・validatorの実装正本はソースコード、現行のlesson ID・section ID・前提関係は`src/lesson-registry.mjs`です。curriculum資料は教育上の照合基準であり、P2.1の5分野分類の実装正本と表現はIssue #45で決定します。
+> この文書はP1時点の概念設計とID参照の背景を記録します。教材registry・validatorの実装正本はソースコード、現行のlesson ID・section ID・前提関係は`src/lesson-registry.mjs`です。curriculum資料は教育上の照合基準です。P2.1の5分野分類の正本と表現は[Issue #45](https://github.com/painkiller8880888/SfQC/issues/45)で決定済みです。
+>
+> P1時点の画面・進捗案を現在の契約と混同しないよう、[#73の比較モックの適用範囲と既存契約の確認記録](#mock-contract-snapshot)を末尾に追加しました。これは2026-11-05時点の実装・テストの記録であり、設計判断の正本ではありません。
 
 ## 1. 目的と境界
 
@@ -318,3 +320,20 @@ ID routeはURL構文を解析した後に教材registryまたは最新の保存�
 - 数値計算のライブラリと精度管理。
 - 初期例以外の問題形式、全カリキュラムの教材・問題、学習習熟度や復習間隔の判定。
 - 公式資料にない教材内容の引用範囲や、公開ライセンスの詳細は既存の基本方針・今後のIssueで決める。
+
+<a id="mock-contract-snapshot"></a>
+
+## 比較モック（#73）の適用範囲と既存契約 — 2026-11-05時点の確認記録
+
+この節は、#73の比較モックを始める前に確認した本番の既存契約、隔離して試せる領域、未決事項を記録します。現行の判断基準は各Issueの許可範囲と受入条件、明示的に確定した設計判断です。コードとテストは現在の形式・挙動の証拠として参照しますが、設計判断の妥当性までは保証しません。既存契約とIssueの受入条件が衝突する場合は、許可された範囲を確認し、抵触する変更を止めて明示的な設計判断を求めます。
+
+| 対象 | 本番で維持する契約 | #73で隔離して試せる領域 | 保留する点 | 主な根拠コード・テスト |
+|---|---|---|---|---|
+| 教材・ID・出典 | `descriptive-statistics`は`mean` / `deviation` / `variance` / `standard-deviation`の4節を持ち、lesson ID、section ID、出典、改訂番号、既存問題参照を保つ。現行5問 `q-desc-var-sc-001` / `q-desc-var-num-001` / `q-desc-mean-sc-001` / `q-desc-sd-sc-001` / `q-desc-var-gen-num-001`、`SRC-0005`、`FIG-DESC-VAR-001`を本番registry上で置換しない。 | 1単元内の事例順、説明見出し、4節の教材内配置を比較する。 | 全教材向けスキーマや出典・ライセンス項目の共通化。 | [lesson registry](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/lesson-registry.mjs#L338)、[figure definition](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/lesson-registry.mjs#L412)、[lesson contract](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/lesson-contract.mjs#L209)、`lesson-contract.test.mjs`、`lesson-curriculum.test.mjs` |
+| 問題・図 | 既存`questionId`、fixed/generated定義、回答試行のsnapshot、コード描画図の契約を保つ。既存`FIG-DESC-VAR-001`は教材registryから参照される。 | 一体型コースで短い演習、閉じた解説、設問単位の値変更、必要な図を比較する。 | モックに回答入力・自動採点を設けるか、図の操作値と設問値を連動させるか。 | [question registry](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/question-registry.mjs#L5)、[figure renderer](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/figures/figure-ref.tsx#L11)、`question-contract.test.mjs`、`variance-deviation-bars.test.mjs`、`practice-app.test.mjs` |
+| 進捗・自己チェック | #43の手動単元進捗は`not-started`→`started`→`completed`、Reopenで`started`へ戻る。既存の学習目標チェックと手動進捗を保ち、正答率から自動完了しない。全解答試行の集計と手動進捗は別指標。 | 設問ごとの自己チェックを、学習者の明示操作だけで変わる別概念として比較する。既存の学習目標チェックや単元進捗を自動更新しない。 | P1の旧5状態案を本番状態としない。設問チェックの保存方法と自動採点結果との関係は未決。 | [#43確定契約](https://github.com/painkiller8880888/SfQC/issues/43)、[manual progress](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/manual-progress.mjs#L22)、[all-attempt accuracy](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/progress-data.mjs#L66)、`manual-progress.test.mjs`、`progress-data.test.mjs` |
+| 保存・backup | 解答データの`sfqc:local-data` schema v2と、独立した`sfqc:map-state:v1`を保つ。統合backupは双方を含み、旧形式の復元互換を維持する。 | モック操作は現行の2保存領域と本番の学習履歴を変更しない。 | 設問チェックや試行をページ内だけに置くか、モック専用領域へ保存するか。 | [local data key](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/local-data.mjs#L5)、[schema v2](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/local-data.mjs#L250)、[map state key](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/map-state.mjs#L1)、[map schema validation](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/map-state.mjs#L65)、[combined backup](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/backup.mjs#L47)、`local-data.test.mjs`、`map-state.test.mjs`、`backup.test.mjs` |
+| ルート・復習復帰 | 既存hash route、`lessonId` / `sectionId`、Back/Forward、`history.state`の回答draft・スクロール位置・復習return stackを維持する。 | 現行画面と比較モックの切替を隔離して試し、既存routeと復帰状態を変更しない。 | 一体型モックと既存`#/lesson`・`#/practice`・`#/feedback` routeの接続方法。 | [screen resolver](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/resolve-screen.mjs#L86)、[route data](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/route-data.mjs#L9)、[route history state](https://github.com/painkiller8880888/SfQC/blob/442c2951bfba57bf146f96a27b05c168e4581920/src/route-history.mjs#L43)、`route-data.test.mjs`、`route-history.test.mjs`、`practice-app.test.mjs` |
+| 出典・表示 | 出典記録、独自に作る本文・設問・図、ライセンス上必要な表示を保つ。 | 通常出典の折りたたみ、義務クレジットの配置と読みやすさを比較する。 | 出典・ライセンスの汎用スキーマと他単元への適用。 | `lesson-contract.test.mjs`、`lesson-view.test.mjs`、Issue #73の受入条件 |
+
+設問チェックの保存先、一体型コースと現行routeの接続、図と設問値の連動、モックでの入力・自動採点、出典・ライセンスの汎用化はこの記録で確定しません。モックの試行・チェックが本番の回答履歴、正答率、手動進捗、バックアップを変更しないようにし、隔離方法の具体策は後続Issueで決めます。この表は2026-11-05時点の確認記録で、永続的な契約正本ではありません。
