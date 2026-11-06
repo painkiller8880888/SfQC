@@ -2513,7 +2513,7 @@ test('descriptive-statistics preview is limited to its development overview and 
     assert.equal(linkFor(app.host, '現行版を表示')?.getAttribute('href'), '/SfQC/#/lesson/descriptive-statistics')
     await click(buttonFor(app.host, '標準偏差'))
     assert.equal(buttonFor(app.host, '標準偏差').getAttribute('aria-pressed'), 'true')
-    assert.match(app.host.querySelector('.descriptive-statistics-preview-content').textContent, /標準偏差/u)
+    assert.match(app.host.querySelector('.lesson-observation').textContent, /標準偏差/u)
 
     await click(linkFor(app.host, '学習マップ'))
     assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)

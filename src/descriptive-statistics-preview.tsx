@@ -20,7 +20,7 @@ export function DescriptiveStatisticsPreview({ sections, currentLessonHref }: {
         onClick={() => setSelectedSectionId(section.sectionId)}
       >{section.title}</button>)}
     </div>
-    {selectedSection && <div className="descriptive-statistics-preview-content" aria-live="polite">
+    {selectedSection && <div className="lesson-observation" aria-live="polite">
       <h2>{selectedSection.title}</h2>
       <p>この節の比較用コンテンツは後続Issueで作成します。</p>
     </div>}
