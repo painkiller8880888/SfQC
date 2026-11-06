@@ -2509,11 +2509,17 @@ test('descriptive-statistics preview is limited to its development overview and 
     await app.remountAt(previewUrl)
 
     assert.ok(app.host.querySelector('.descriptive-statistics-preview'))
-    assert.equal(app.host.querySelectorAll('.descriptive-statistics-preview-controls button').length, 4)
+    assert.deepEqual([...app.host.querySelectorAll('.descriptive-statistics-preview-section')].map((section) => section.id), [
+      'mean', 'deviation', 'variance', 'standard-deviation',
+    ])
+    assert.equal(app.host.querySelector('.descriptive-statistics-preview-controls'), null)
+    assert.equal(app.host.querySelectorAll('.lesson-check-question').length, 4)
+    assert.match(app.host.textContent, /31\/15 ≈ 2\.067 mm/u)
+    assert.match(app.host.textContent, /152\/225 ≈ 0\.676 mm²/u)
+    assert.match(app.host.textContent, /n−1で割る補正/u)
     assert.equal(linkFor(app.host, '現行版を表示')?.getAttribute('href'), '/SfQC/#/lesson/descriptive-statistics')
-    await click(buttonFor(app.host, '標準偏差'))
-    assert.equal(buttonFor(app.host, '標準偏差').getAttribute('aria-pressed'), 'true')
-    assert.match(app.host.querySelector('.lesson-observation').textContent, /標準偏差/u)
+    assert.equal(linkForRoute(app.host, { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' })?.dataset.navIntent, 'review')
+    assert.equal(linkForRoute(app.host, { kind: 'lesson-id', lessonId: 'math-powers-roots', sectionId: null })?.dataset.navIntent, 'review')
 
     await click(linkFor(app.host, '学習マップ'))
     assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
@@ -2535,21 +2541,30 @@ test('descriptive-statistics preview is limited to its development overview and 
   }
 })
 
-test('descriptive-statistics preview keeps local data, map progress, and provider backup unchanged', async () => {
+test('review navigation from the preview preserves saved data while a normal lesson still records visits', async () => {
   const app = await createHarness()
   const { window } = app.dom
-  const answer = fixedInstance.questionDefinitionSnapshot.content.choices[0].id
+  const answer = fixedInstance.questionDefinitionSnapshot.content.choices
+    .map((choice) => choice.id)
+    .find((choiceId) => !gradeQuestionAnswer(fixedInstance, choiceId).isCorrect)
+  assert.ok(answer, 'fixture must include a wrong answer')
+  const attempt = {
+    attemptId: 'saved-attempt-1',
+    instanceId: fixedInstance.instanceId,
+    answer,
+    gradingResult: gradeQuestionAnswer(fixedInstance, answer),
+    attemptedAt: '2026-11-06T00:00:00.000Z',
+  }
   const localRaw = serializeLocalData({
     schemaVersion: 2,
     questionInstances: [fixedInstance],
-    answerAttempts: [{
-      attemptId: 'saved-attempt-1',
-      instanceId: fixedInstance.instanceId,
-      answer,
-      gradingResult: gradeQuestionAnswer(fixedInstance, answer),
-      attemptedAt: '2026-11-06T00:00:00.000Z',
+    answerAttempts: [attempt],
+    reviewEvents: [{
+      reviewEventId: 'saved-review-1',
+      targetRef: 'descriptive-statistics#variance',
+      sourceAttemptId: attempt.attemptId,
+      reviewedAt: '2026-11-06T00:05:00.000Z',
     }],
-    reviewEvents: [],
   })
   const mapState = createInitialMapState(lessonRegistry)
   const descriptiveStatisticsProgress = mapState.lessons['descriptive-statistics']
@@ -2583,12 +2598,59 @@ test('descriptive-statistics preview keeps local data, map progress, and provide
 
   try {
     await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
-    await click(buttonFor(app.host, '偏差'))
-    await click(buttonFor(app.host, '範囲と分散'))
+    const feedbackRoute = { kind: 'feedback-id', attemptId: attempt.attemptId }
+    const feedbackHash = routeToHash(feedbackRoute)
+    const feedbackState = createRouteHistoryState(feedbackRoute, feedbackHash)
+    const previewRoute = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: null }
+    const previewHash = routeToHash(previewRoute)
+    const previewState = navigateRouteHistory(feedbackState, previewRoute, previewHash, 'review')
+    window.history.replaceState(previewState, '', `${window.location.pathname}${window.location.search}${previewHash}`)
+
+    let scrollY = 321
+    const restoredPositions = []
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY })
+    window.scrollTo = (x, y) => {
+      restoredPositions.push([x, y])
+      scrollY = y
+    }
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value() {},
+    })
+
+    const sigmaRoute = { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' }
+    const powersRoute = { kind: 'lesson-id', lessonId: 'math-powers-roots', sectionId: null }
+    for (const route of [sigmaRoute, powersRoute]) {
+      await click(linkForRoute(app.host, route))
+      await settleEffects(window)
+      assert.equal(window.location.hash, routeToHash(route))
+      await click(linkFor(app.host, '1段戻る'))
+      await settleEffects(window)
+      assert.equal(window.location.hash, previewHash)
+      assert.equal(window.scrollY, 321)
+    }
+
+    const reviewsBefore = readLocalData().data.reviewEvents
+    assert.equal(reviewsBefore.length, 1)
+    assert.equal(reviewsBefore[0].reviewEventId, 'saved-review-1')
     assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
     assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
     assert.equal(exportBackup(() => window.localStorage), backupBefore)
     assert.deepEqual(protectedWrites, [], 'preview operations must not write or delete either protected key')
+    assert.ok(restoredPositions.some(([x, y]) => x === 0 && y === 321), 'return navigation restores the saved reading position')
+
+    protectedWrites.length = 0
+    const normalRoute = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
+    const normalHash = routeToHash(normalRoute)
+    await app.remountAt(`?sfqc-preview=descriptive-statistics${normalHash}`)
+    const normalState = navigateRouteHistory(feedbackState, normalRoute, normalHash, 'review')
+    window.history.replaceState(normalState, '', `${window.location.pathname}${window.location.search}${normalHash}`)
+    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
+    await click(linkForRoute(app.host, sigmaRoute))
+    const updatedReviews = readLocalData().data.reviewEvents
+    assert.equal(updatedReviews.length, 2)
+    assert.equal(updatedReviews.at(-1).targetRef, 'math-algebra-sigma#sigma')
+    assert.deepEqual(protectedWrites, [['setItem', LOCAL_DATA_KEY]])
   } finally {
     if (setDescriptor) Object.defineProperty(window.Storage.prototype, 'setItem', setDescriptor)
     else delete window.Storage.prototype.setItem
