@@ -22,6 +22,7 @@ import type { ReadonlyQuestionInstance } from './question-contract.mjs'
 import { resolveRouteData } from './route-data.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { LessonMap, LessonReference, LessonRouteContent, ProgressView, lessonRefLabel } from './lesson-view'
+import { DescriptiveStatisticsPreview } from './descriptive-statistics-preview'
 import { LessonMapView, samePositions, type LayoutSaveResult, type Positions } from './lesson-map-view'
 import { deriveProgress } from './progress-data.mjs'
 import {
@@ -168,6 +169,11 @@ function App() {
   const [view, setView] = useState(() => resolveRouteView(
     window.location.hash, window.history.state, 'initial', 0,
   ))
+  const isDescriptiveStatisticsPreview = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).get('sfqc-preview') === 'descriptive-statistics'
+    && view.route.kind === 'lesson-id'
+    && view.route.lessonId === 'descriptive-statistics'
+    && view.route.sectionId === null
   const [storedData, setStoredData] = useState<StoredLocalData>(() => view.storedData)
   const [mapStateRead, setMapStateRead] = useState(() => readMapState(lessonRegistry))
   const initialMapState = mapStateRead.status === 'missing' || mapStateRead.status === 'ok' || mapStateRead.status === 'migrated'
@@ -827,6 +833,7 @@ function App() {
   }, [view.navigationId])
 
   useEffect(() => {
+    if (isDescriptiveStatisticsPreview) return
     if (storedData.status !== 'legacy') return
     try {
       const result = migrateLocalData(storedData.raw, storedData.data)
@@ -847,7 +854,7 @@ function App() {
       refreshRouteWithData(failed)
       setDataMessage(migrationError.message + ' データ管理画面からバックアップを保存できます。')
     }
-  }, [storedData])
+  }, [storedData, isDescriptiveStatisticsPreview])
 
   const changeMapView = (next: 'graph' | 'list') => {
     const focusedContent = mapView === 'graph' ? mapGraphContentRef.current : mapListContentRef.current
@@ -900,6 +907,14 @@ function App() {
 
   const renderLessonRoute = () => {
     if (view.route.kind !== 'lesson-id') return null
+    if (isDescriptiveStatisticsPreview) {
+      const lesson = lessonRegistry.lessons.find((item) => item.lessonId === 'descriptive-statistics')
+      if (!lesson || lesson.availability !== 'included') return null
+      return <DescriptiveStatisticsPreview
+        sections={lesson.sections}
+        currentLessonHref={`${window.location.pathname}#/lesson/descriptive-statistics`}
+      />
+    }
     if (view.resolved.status === 'data-error') return <RouteProblem message="保存データに問題があるため、このID付き画面を解決できません。データ管理画面で保存状態を確認してください。" />
     if (view.resolved.status === 'unknown-id') {
       return <RouteProblem message={view.resolved.target === 'section'
@@ -910,11 +925,19 @@ function App() {
       return <RouteProblem message="この教材はまだ収録されていません。学習マップから利用できる教材を選んでください。" />
     }
     if (view.resolved.status !== 'lesson') return null
-    return <LessonRouteContent
-      lesson={view.resolved.lesson}
-      sectionId={view.route.sectionId}
-      sectionHeadingRef={sectionHeadingRef}
-    />
+    return <>
+      <LessonRouteContent
+        lesson={view.resolved.lesson}
+        sectionId={view.route.sectionId}
+        sectionHeadingRef={sectionHeadingRef}
+      />
+      {import.meta.env.DEV && view.resolved.lesson.lessonId === 'descriptive-statistics'
+        && view.route.sectionId === null && <p className="lesson-actions">
+          <a href={`${window.location.pathname}?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics`}>
+            比較用モックを開く
+          </a>
+        </p>}
+    </>
   }
 
   const renderPracticeRoute = () => {

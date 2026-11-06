@@ -414,6 +414,17 @@ h1 {
   outline-offset: 4px;
 }
 
+.descriptive-statistics-preview-content {
+  padding: 0.75rem;
+  border-left: 3px solid var(--success);
+  background: var(--surface);
+}
+
+.descriptive-statistics-preview-content h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
 .section-list,
 .reference-group,
 .route-summary {
