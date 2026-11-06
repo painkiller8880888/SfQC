@@ -17,13 +17,21 @@ assert.ok(assets.some((url) => url.endsWith('.js')), 'production JavaScript shou
 assert.ok(assets.some((url) => url.endsWith('.css')), 'production CSS should use the Pages base path')
 
 const assetsDirectory = new URL('../dist/assets/', import.meta.url)
+const stylesheets = await Promise.all((await readdir(assetsDirectory, { recursive: true }))
+  .filter((file) => /\.css$/u.test(file))
+  .map((file) => readFile(new URL(file.replaceAll('\\', '/'), assetsDirectory), 'utf8')))
 const javascript = await Promise.all((await readdir(assetsDirectory, { recursive: true }))
   .filter((file) => /\.(?:[cm]?js)$/u.test(file))
   .map((file) => readFile(new URL(file.replaceAll('\\', '/'), assetsDirectory), 'utf8')))
 const stylesheet = await readFile(new URL(`../dist/${assets.find((url) => url.endsWith('.css')).slice('/SfQC/'.length)}`, import.meta.url), 'utf8')
 assert.match(javascript.join('\n'), /map-graph-view/, 'production JavaScript should include the integrated lesson map')
 assert.doesNotMatch(javascript.join('\n'), /map-author-editor|分野編集/u, 'production JavaScript must not include the development-only domain editor')
+assert.doesNotMatch(javascript.join('\n'), /sfqc-preview=descriptive-statistics|descriptive-statistics-preview|比較用モックを開く|一時的な比較用モック/u,
+  'production JavaScript must not include the development-only comparison preview')
 assert.match(stylesheet, /react-flow/, 'production CSS should include React Flow styles')
+assert.ok(stylesheets.length > 0, 'production assets should include at least one stylesheet')
+assert.doesNotMatch(stylesheets.join('\n'), /descriptive-statistics-preview/u,
+  'production CSS must not include development-only comparison preview styles')
 
 for (const url of assets) {
   await access(new URL(`../dist/${url.slice('/SfQC/'.length)}`, import.meta.url))

@@ -5,14 +5,16 @@ import { runInNewContext } from 'node:vm'
 import { act, createElement, StrictMode } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
-import { exportLocalData, importLocalData, readLocalData } from '../src/local-data.mjs'
-import { serializeBackup } from '../src/backup.mjs'
+import { exportLocalData, importLocalData, LOCAL_DATA_KEY, readLocalData, serializeLocalData } from '../src/local-data.mjs'
+import { exportBackup, serializeBackup } from '../src/backup.mjs'
 import { createRouteHistoryState, navigateRouteHistory } from '../src/route-history.mjs'
 import { routeToHash } from '../src/resolve-screen.mjs'
-import { createInitialMapState, MAP_STATE_KEY, readMapState, saveMapState } from '../src/map-state.mjs'
+import { createInitialMapState, MAP_STATE_KEY, readMapState, saveMapState, serializeMapState } from '../src/map-state.mjs'
 import { createMapPocGraph } from '../src/map-poc-graph.mjs'
 import { lessonDomainColors, lessonDomains } from '../src/lesson-contract.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
+import { gradeQuestionAnswer } from '../src/question-grading.mjs'
+import { fixedInstance } from './question-contract.fixture.mjs'
 
 const THEME_STORAGE_KEY = 'sfqc:theme-preference'
 const THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)'
@@ -2494,6 +2496,128 @@ test('integrated learning map Shift-click clears the selected node', async () =>
 
     assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
     assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
+  } finally {
+    await app.close()
+  }
+})
+
+test('descriptive-statistics preview is limited to its development overview and preserves query navigation', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const previewUrl = '?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics'
+    await app.remountAt(previewUrl)
+
+    assert.ok(app.host.querySelector('.descriptive-statistics-preview'))
+    assert.equal(app.host.querySelectorAll('.descriptive-statistics-preview-controls button').length, 4)
+    assert.equal(linkFor(app.host, '現行版を表示')?.getAttribute('href'), '/SfQC/#/lesson/descriptive-statistics')
+    await click(buttonFor(app.host, '標準偏差'))
+    assert.equal(buttonFor(app.host, '標準偏差').getAttribute('aria-pressed'), 'true')
+    assert.match(app.host.querySelector('.lesson-observation').textContent, /標準偏差/u)
+
+    await click(linkFor(app.host, '学習マップ'))
+    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
+    assert.equal(window.location.search, '?sfqc-preview=descriptive-statistics')
+    await click(buttonFor(app.host, '教材一覧'))
+    await click(linkForRoute(app.host, { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: null }))
+    assert.ok(app.host.querySelector('.descriptive-statistics-preview'), 'returning from the query-preserving map should reopen the preview')
+
+    await app.remountAt('?sfqc-preview=other#/lesson/descriptive-statistics')
+    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
+    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/data-types')
+    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
+    await app.remountAt('?sfqc-preview=descriptive-statistics#/practice')
+    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
+    await app.remountAt('?sfqc-preview=descriptive-statistics#/feedback')
+    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
+  } finally {
+    await app.close()
+  }
+})
+
+test('descriptive-statistics preview keeps local data, map progress, and provider backup unchanged', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const answer = fixedInstance.questionDefinitionSnapshot.content.choices[0].id
+  const localRaw = serializeLocalData({
+    schemaVersion: 2,
+    questionInstances: [fixedInstance],
+    answerAttempts: [{
+      attemptId: 'saved-attempt-1',
+      instanceId: fixedInstance.instanceId,
+      answer,
+      gradingResult: gradeQuestionAnswer(fixedInstance, answer),
+      attemptedAt: '2026-11-06T00:00:00.000Z',
+    }],
+    reviewEvents: [],
+  })
+  const mapState = createInitialMapState(lessonRegistry)
+  const descriptiveStatisticsProgress = mapState.lessons['descriptive-statistics']
+  mapState.lessons['descriptive-statistics'] = {
+    ...descriptiveStatisticsProgress,
+    status: 'completed',
+    checks: descriptiveStatisticsProgress.checks.map(() => true),
+    completedAt: '2026-11-06T00:00:00.000Z',
+  }
+  const mapRaw = serializeMapState(mapState)
+  window.localStorage.setItem(LOCAL_DATA_KEY, localRaw)
+  window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
+  const backupBefore = exportBackup(() => window.localStorage)
+  const protectedWrites = []
+  const setDescriptor = Object.getOwnPropertyDescriptor(window.Storage.prototype, 'setItem')
+  const removeDescriptor = Object.getOwnPropertyDescriptor(window.Storage.prototype, 'removeItem')
+  Object.defineProperty(window.Storage.prototype, 'setItem', {
+    ...setDescriptor,
+    value(key, value) {
+      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) protectedWrites.push(['setItem', key])
+      return setDescriptor.value.call(this, key, value)
+    },
+  })
+  Object.defineProperty(window.Storage.prototype, 'removeItem', {
+    ...removeDescriptor,
+    value(key) {
+      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) protectedWrites.push(['removeItem', key])
+      return removeDescriptor.value.call(this, key)
+    },
+  })
+
+  try {
+    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
+    await click(buttonFor(app.host, '偏差'))
+    await click(buttonFor(app.host, '範囲と分散'))
+    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
+    assert.equal(exportBackup(() => window.localStorage), backupBefore)
+    assert.deepEqual(protectedWrites, [], 'preview operations must not write or delete either protected key')
+  } finally {
+    if (setDescriptor) Object.defineProperty(window.Storage.prototype, 'setItem', setDescriptor)
+    else delete window.Storage.prototype.setItem
+    if (removeDescriptor) Object.defineProperty(window.Storage.prototype, 'removeItem', removeDescriptor)
+    else delete window.Storage.prototype.removeItem
+    await app.close()
+  }
+})
+
+test('descriptive-statistics preview pauses legacy migration only while active', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const legacyRaw = JSON.stringify({ schemaVersion: 1, questionInstances: [fixedInstance] })
+    const mapRaw = serializeMapState(createInitialMapState(lessonRegistry))
+    window.localStorage.setItem(LOCAL_DATA_KEY, legacyRaw)
+    window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
+
+    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
+    await settleEffects(window)
+    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), legacyRaw)
+    assert.ok(app.host.querySelector('.descriptive-statistics-preview'))
+
+    await click(linkFor(app.host, '学習マップ'))
+    await settleEffects(window)
+    assert.equal(window.location.search, '?sfqc-preview=descriptive-statistics')
+    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
+    assert.equal(JSON.parse(window.localStorage.getItem(LOCAL_DATA_KEY)).schemaVersion, 2)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
   } finally {
     await app.close()
   }
