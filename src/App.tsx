@@ -492,7 +492,7 @@ function App() {
       return false
     }
     setReviewMessage('')
-    if (intent === 'review' && sourceAttemptId && route.kind === 'lesson-id') {
+    if (intent === 'review' && sourceAttemptId && route.kind === 'lesson-id' && !isDescriptiveStatisticsPreview) {
       try {
         recordReviewEvent(route.lessonId + (route.sectionId ? '#' + route.sectionId : ''), sourceAttemptId)
       } catch {
