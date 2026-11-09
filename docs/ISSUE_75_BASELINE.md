@@ -315,7 +315,26 @@ Issue #80 の比較モックを、既存の単元概要route内に開発時だ�
 | 320px | 同tabを320×800 pxに設定。`innerWidth/Height=320/800`、document/body `scrollWidth=305`、article幅267.5 px、出典領域とcredit幅各211 px。文書外へ出る要素はなく横はみ出しなし。 |
 | 200% zoom | Vivaldi private windowでブラウザーzoomを200%にして、本文から末尾の出典/creditまで目視。本文と余白が縦方向に拡大され、長いURLとcreditは折り返し、横スクロールは見えなかった。200%時のDOM scrollWidthは個別計測していない。 |
 | キーボード / 支援技術 | 出典summaryへfocusを置き、Returnでnative disclosureを開くことを確認。初期状態は閉じている。ブラウザーのAX treeにはbuttonとして現れる。実スクリーンリーダーの読み上げとページ全体のTab順は未検証。 |
-| ユーザーデータ | browserで問題入力・自己評価・range操作をしていない。狭幅の測定はread-only。既存統合テストはmock操作中のhistory、localStorage 2キー、backup出力を不変とし、保存キーへのset/removeが0回であることを検査する（§10）。手動QA用PNGは保存していない。 |
+| 追加の実ブラウザーQA | 2026-11-09 16:02–16:10 JST、Vivaldiプライベートウィンドウ、ローカル開発preview `http://localhost:5184/SfQC/`。DevToolsのdevice emulationを320×790 px、ブラウザーzoomを100%に設定。操作と保存比較の詳細は下記。Vivaldiのバージョンは記録していない。 |
+
+#### 2026-11-09 実ブラウザー操作と保存比較
+
+QA専用のVivaldiプライベートウィンドウで、通常画面の問題 `q-desc-var-num-001` を開始し、0.676を送信して通常の誤答feedbackを表示した。続けて学習マップから「基本統計量」を「学習中」にした。データ管理画面では出題snapshot 1件、解答試行1件、復習イベント0件、手動進捗・自己点検「保存済み」（手動完了0/34）だった。これは専用プライベートセッションで通常UIから作成したQA用データであり、利用者の通常プロファイルは使っていない。
+
+比較モック `http://localhost:5184/SfQC/?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics` で、平均の理解確認を実際に操作した。「別の数値で試す」で9.8、10.1、10.4 mmが10.3、10.0、9.9 mmに変わった。自己評価checkboxをチェックし、再生成後もチェックが残ることを確認した。「答えと考え方を確認」を開くと平均約10.067 mmと計算が表示され、閉じると答えが隠れた。モックには回答入力・採点のUIがないため、モック内で回答やattemptは送信していない。
+
+操作図の系列A・2番目のrange sliderを画面上でドラッグし、2.2 mmから2.5 mmへ変更した。入力値と下の表が更新され、系列Aは1.000、2.500、3.000 mm、平均2.167 mm、偏差平方和2.167 mm²、3点の分散0.722 mm²、標準偏差0.850 mmになった。いずれも幅320 pxの実ブラウザー画面で見える状態を確認した。
+
+モック操作前後に、DevTools Consoleから保護キー2つのraw文字列と `src/backup.mjs` の `exportBackup()` 出力を読み取り、UTF-8 byte数とSHA-256を比較した。Consoleで実行したのは `localStorage.getItem`、`exportBackup()`、Web Cryptoのdigestによる読み取りだけで、localStorageへの書き込みや削除はしていない。モック操作中は各値が一致した。
+
+| 観測値 | モック表示前 | モック操作後 | 通常教材で追加保存後 |
+|---|---|---|---|
+| データ管理の件数 | snapshot 1、attempt 1、review 0。手動進捗は保存済み（0/34） | 同じ | snapshot 2、attempt 2、review 0。手動進捗は保存済み（0/34）。再読み込み後も2/2件 |
+| `sfqc:local-data` | 2,111 bytes; SHA-256 `65e0caeaeb5567a180e5c45b83a8025138683c99a32b432388f57170dd407e48` | 前と同一 | 3,890 bytes; SHA-256 `f5b0aa22d86f8ca3217ece23c5fbb238a5f747c7328bb9dd6fb4379bf885dcd9` |
+| `sfqc:map-state:v1` | 7,040 bytes; SHA-256 `2677e100d46fd27c1bc40332194b0a82dcc2819b38adf09b5c16838e31a8e5e0` | 前と同一 | 7,040 bytes; SHA-256 `2677e100d46fd27c1bc40332194b0a82dcc2819b38adf09b5c16838e31a8e5e0` |
+| `exportBackup()` | 9,218 bytes; SHA-256 `16c5dbfa56055212e7ee9754801877c5975f5fd3fd151593b5f38741cc2177bc` | 前と同一 | 10,997 bytes; SHA-256 `2319f7e0b7560754a4b9fd013574d4bca62443f4a5a6fd3b3fae08caf04e5d53` |
+
+モック末尾の「現行版を表示」をクリックしてpreview queryのない通常route `http://localhost:5184/SfQC/#/lesson/descriptive-statistics` に戻った。その後、通常の演習一覧から `q-desc-var-num-001` を開始し、1.013 mm²を入力・送信すると「正解です。」が表示された。データ管理はsnapshot/attemptが1/1件から2/2件になり、ページ再読み込み後も2/2件だった。保存比較でもlocal-dataとbackupだけが変わり、map-stateは不変だった。通常UIの保存が行われることと、モック操作が既存の保存データを変えないことを別々の区間で確認した。実ブラウザーの手動QA用PNGは保存していない。
 
 ### 出典と利用条件の照合
 
