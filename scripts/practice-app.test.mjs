@@ -2592,6 +2592,10 @@ test('interactive statistics preview keeps controls, calculations, and accessibl
     }
 
     assert.ok(app.host.querySelector('.interactive-variance-comparison'))
+    assert.match(app.host.querySelector('.interactive-variance-comparison').textContent, /課題A: Bを1\.9、2\.1、2\.5 mmにします/u)
+    assert.match(app.host.querySelector('.interactive-variance-comparison').textContent, /課題B: Bを1\.6、2\.0、2\.6 mmにします/u)
+    assert.match(app.host.querySelector('.interactive-variance-comparison').textContent, /偏差は変わらず、分散と標準偏差も同じです/u)
+    assert.match(app.host.querySelector('.interactive-variance-comparison').textContent, /平均からの偏差が広がるため、分散と標準偏差が増えます/u)
     assertB({
       mean: '2.067 mm',
       deviations: ['−0.267 mm', '−0.067 mm', '+0.333 mm'],
@@ -2604,6 +2608,25 @@ test('interactive statistics preview keeps controls, calculations, and accessibl
     assert.equal(input('B', 1, 'number').min, '1.0')
     assert.equal(input('B', 1, 'number').max, '3.0')
     assert.equal(input('B', 1, 'number').step, '0.1')
+
+    const b1Number = input('B', 1)
+    await changeTextInput(window, b1Number, '')
+    assert.equal(input('B', 1, 'range').value, '1.8')
+    await changeTextInput(window, b1Number, '2')
+    assert.equal(b1Number.value, '2')
+    assert.equal(input('B', 1, 'range').value, '2')
+    assert.equal(statistic('B', 'mean'), '2.133 mm')
+    await changeTextInput(window, b1Number, '2.')
+    assert.equal(input('B', 1, 'range').value, '2')
+    assert.equal(statistic('B', 'mean'), '2.133 mm')
+    await changeTextInput(window, b1Number, '2.5')
+    assert.equal(b1Number.value, '2.5')
+    assert.equal(input('B', 1, 'range').value, '2.5')
+    assert.equal(statistic('B', 'mean'), '2.300 mm')
+    await changeTextInput(window, b1Number, '2')
+    await act(async () => b1Number.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true })))
+    assert.equal(b1Number.value, '2.0')
+    await setNumber('B', 1, '1.8')
 
     const savedHistoryState = JSON.stringify(window.history.state)
     for (const invalidValue of ['', '1.05', '0.9', '3.1']) {

@@ -64,13 +64,15 @@ export function InteractiveVarianceComparison() {
       setMessages((current) => ({ ...current, [key]: '1.0〜3.0 mmの値を0.1 mm刻みで入力してください。' }))
       return
     }
-    commitValue(key, input.valueAsNumber)
+    setValues((current) => ({ ...current, [key]: input.valueAsNumber }))
+    setMessages((current) => ({ ...current, [key]: '' }))
+    setStatus('')
   }
 
-  const restoreInvalidNumber = (key: FieldKey) => {
-    if (!messages[key]) return
+  const finishNumberEdit = (key: FieldKey) => {
     const restoredValue = values[key]
     setDrafts((current) => ({ ...current, [key]: inputValue(restoredValue) }))
+    if (!messages[key]) return
     setMessages((current) => ({ ...current, [key]: '' }))
     setStatus(`${key[0]}系列${key[2]}番目の測定値を、最後に確定した ${inputValue(restoredValue)} mm に戻しました。`)
   }
@@ -146,6 +148,12 @@ export function InteractiveVarianceComparison() {
       <figcaption className="ivc-figcaption">各点から平均線までの縦線が符号付き偏差を示します。点同士は結んでいません。完全に重なる値も下のA/B別の表で確認できます。</figcaption>
     </figure>
 
+    <ol>
+      <li>課題A: Bを1.9、2.1、2.5 mmにします。平均はどう変わり、偏差・分散・標準偏差はどうなるでしょうか。</li>
+      <li>課題B: Bを1.6、2.0、2.6 mmにします。平均を保ったまま、分散・標準偏差はどう変わるでしょうか。</li>
+    </ol>
+    <p><strong>確認:</strong> 課題Aでは各値と平均が同じ0.1 mmだけ増えるため、偏差は変わらず、分散と標準偏差も同じです。課題Bでは平均は2.067 mmのまま、平均からの偏差が広がるため、分散と標準偏差が増えます。</p>
+
     <div className="ivc-controls" aria-label="操作中の6個の測定値">
       {seriesList.map((series) => <fieldset className="ivc-series-controls" key={series}>
         <legend>系列 {series}</legend>
@@ -171,7 +179,7 @@ export function InteractiveVarianceComparison() {
                 aria-invalid={Boolean(messages[key])}
                 aria-describedby={messageId}
                 onChange={(event) => editNumber(key, event)}
-                onBlur={() => restoreInvalidNumber(key)}
+                onBlur={() => finishNumberEdit(key)}
               />
             </label>
             <input
