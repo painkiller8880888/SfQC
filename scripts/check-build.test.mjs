@@ -33,7 +33,7 @@ test('check-build rejects development-only JavaScript and CSS markers', async ()
     }
 
     await writeFile(join(nestedDirectory, 'chunk.js'), 'safe')
-    await writeFile(stylesheetPath, originalStylesheet + '\n.descriptive-statistics-preview-content{padding:0}')
+    await writeFile(join(nestedDirectory, 'preview.css'), '.interactive-variance-comparison{padding:0}')
     const cssResult = spawnSync(process.execPath, [fileURLToPath(new URL('./check-build.mjs', import.meta.url))], {
       encoding: 'utf8',
     })

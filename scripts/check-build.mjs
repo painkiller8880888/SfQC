@@ -26,11 +26,11 @@ const javascript = await Promise.all((await readdir(assetsDirectory, { recursive
 const stylesheet = await readFile(new URL(`../dist/${assets.find((url) => url.endsWith('.css')).slice('/SfQC/'.length)}`, import.meta.url), 'utf8')
 assert.match(javascript.join('\n'), /map-graph-view/, 'production JavaScript should include the integrated lesson map')
 assert.doesNotMatch(javascript.join('\n'), /map-author-editor|分野編集/u, 'production JavaScript must not include the development-only domain editor')
-assert.doesNotMatch(javascript.join('\n'), /sfqc-preview=descriptive-statistics|descriptive-statistics-preview|比較用モックを開く|一時的な比較用モック/u,
+assert.doesNotMatch(javascript.join('\n'), /sfqc-preview=descriptive-statistics|descriptive-statistics-preview|interactive-variance-comparison|比較用モックを開く|一時的な比較用モック|操作中の測定値、平均、各偏差/u,
   'production JavaScript must not include the development-only comparison preview')
 assert.match(stylesheet, /react-flow/, 'production CSS should include React Flow styles')
 assert.ok(stylesheets.length > 0, 'production assets should include at least one stylesheet')
-assert.doesNotMatch(stylesheets.join('\n'), /descriptive-statistics-preview/u,
+assert.doesNotMatch(stylesheets.join('\n'), /descriptive-statistics-preview|interactive-variance-comparison/u,
   'production CSS must not include development-only comparison preview styles')
 
 for (const url of assets) {
