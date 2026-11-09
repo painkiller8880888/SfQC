@@ -2549,6 +2549,141 @@ test('descriptive-statistics preview is limited to its development overview and 
   }
 })
 
+test('interactive statistics preview keeps controls, calculations, and accessible summaries in sync without saving', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const localRaw = serializeLocalData({ schemaVersion: 2, questionInstances: [], answerAttempts: [], reviewEvents: [] })
+  const mapRaw = serializeMapState(createInitialMapState(lessonRegistry))
+  window.localStorage.setItem(LOCAL_DATA_KEY, localRaw)
+  window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
+  const writeCalls = []
+  const storagePrototype = Object.getPrototypeOf(window.localStorage)
+  const setDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
+  const removeDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'removeItem')
+  Object.defineProperty(storagePrototype, 'setItem', {
+    ...setDescriptor,
+    value(key, value) {
+      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writeCalls.push(['setItem', key])
+      return setDescriptor.value.call(this, key, value)
+    },
+  })
+  Object.defineProperty(storagePrototype, 'removeItem', {
+    ...removeDescriptor,
+    value(key) {
+      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writeCalls.push(['removeItem', key])
+      return removeDescriptor.value.call(this, key)
+    },
+  })
+
+  try {
+    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
+    const input = (series, observation, kind = 'number') => app.host.querySelector(
+      `input[data-series="${series}"][data-observation="${observation}"][data-input-kind="${kind}"]`,
+    )
+    const summary = (series) => app.host.querySelector(`[data-series-summary="${series}"]`)
+    const statistic = (series, name) => summary(series).querySelector(`[data-statistic="${name}"]`).textContent
+    const setNumber = async (series, observation, value) => changeControl(window, input(series, observation), value)
+    const assertB = ({ mean, deviations, sum, variance, standardDeviation }) => {
+      assert.equal(statistic('B', 'mean'), mean)
+      assert.equal(statistic('B', 'sum-of-squared-deviations'), sum)
+      assert.equal(statistic('B', 'variance'), variance)
+      assert.equal(statistic('B', 'standard-deviation'), standardDeviation)
+      assert.deepEqual([...summary('B').querySelectorAll('tbody tr td:last-child')].map((cell) => cell.textContent), deviations)
+    }
+
+    assert.ok(app.host.querySelector('.interactive-variance-comparison'))
+    assertB({
+      mean: '2.067 mm',
+      deviations: ['−0.267 mm', '−0.067 mm', '+0.333 mm'],
+      sum: '0.187 mm²',
+      variance: '0.062 mm²',
+      standardDeviation: '0.249 mm',
+    })
+    assert.equal(statistic('A', 'mean'), '2.067 mm')
+    assert.equal(input('B', 1, 'number').required, true)
+    assert.equal(input('B', 1, 'number').min, '1.0')
+    assert.equal(input('B', 1, 'number').max, '3.0')
+    assert.equal(input('B', 1, 'number').step, '0.1')
+
+    const savedHistoryState = JSON.stringify(window.history.state)
+    for (const invalidValue of ['', '1.05', '0.9', '3.1']) {
+      await setNumber('B', 1, invalidValue)
+      assert.equal(input('B', 1).getAttribute('aria-invalid'), 'true')
+      assert.match(app.host.querySelector('#ivc-B-1-message').textContent, /0\.1 mm刻み/u)
+      assert.equal(input('B', 1, 'range').value, '1.8')
+      assert.equal(app.host.querySelector('[data-series="B"][data-observation="1"][data-value]')?.getAttribute('data-value'), '1.8')
+      assert.equal(statistic('B', 'mean'), '2.067 mm')
+    }
+    const invalidInput = input('B', 1)
+    await act(async () => invalidInput.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true })))
+    assert.equal(invalidInput.value, '1.8')
+    assert.equal(invalidInput.getAttribute('aria-invalid'), 'false')
+    assert.match(app.host.querySelector('.ivc-status').textContent, /最後に確定した 1\.8 mm に戻しました/u)
+
+    await changeControl(window, input('B', 1, 'range'), '1.9')
+    assert.equal(input('B', 1).value, '1.9')
+    await setNumber('B', 2, '2.1')
+    await setNumber('B', 3, '2.5')
+    assertB({
+      mean: '2.167 mm',
+      deviations: ['−0.267 mm', '−0.067 mm', '+0.333 mm'],
+      sum: '0.187 mm²',
+      variance: '0.062 mm²',
+      standardDeviation: '0.249 mm',
+    })
+
+    await setNumber('B', 1, '1.8')
+    await setNumber('B', 2, '2.0')
+    await setNumber('B', 3, '2.4')
+    await setNumber('B', 1, '1.6')
+    await setNumber('B', 3, '2.6')
+    assertB({
+      mean: '2.067 mm',
+      deviations: ['−0.467 mm', '−0.067 mm', '+0.533 mm'],
+      sum: '0.507 mm²',
+      variance: '0.169 mm²',
+      standardDeviation: '0.411 mm',
+    })
+    assert.equal(statistic('A', 'mean'), '2.067 mm')
+    assert.equal(statistic('A', 'standard-deviation'), '0.822 mm')
+
+    for (const series of ['A', 'B']) {
+      for (const [observation, value] of [1.8, 2.0, 2.4].entries()) {
+        await setNumber(series, observation + 1, value.toFixed(1))
+      }
+    }
+    for (const series of ['A', 'B']) {
+      assert.equal(statistic(series, 'mean'), '2.067 mm')
+      assert.deepEqual([...summary(series).querySelectorAll('tbody tr td:first-of-type')].map((cell) => cell.textContent), [
+        '1.800 mm', '2.000 mm', '2.400 mm',
+      ])
+      assert.equal(summary(series).querySelector('caption').textContent, `系列 ${series} の測定値と平均からの偏差`)
+    }
+
+    for (const series of ['A', 'B']) {
+      for (const observation of [1, 2, 3]) await setNumber(series, observation, '2.0')
+      assert.equal(statistic(series, 'mean'), '2.000 mm')
+      assert.equal(statistic(series, 'sum-of-squared-deviations'), '0.000 mm²')
+      assert.equal(statistic(series, 'variance'), '0.000 mm²')
+      assert.equal(statistic(series, 'standard-deviation'), '0.000 mm')
+      assert.deepEqual([...summary(series).querySelectorAll('tbody tr td:last-child')].map((cell) => cell.textContent), [
+        '+0.000 mm', '+0.000 mm', '+0.000 mm',
+      ])
+    }
+
+    assert.equal(JSON.stringify(window.history.state), savedHistoryState)
+    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
+    assert.deepEqual(writeCalls, [])
+  } finally {
+    if (setDescriptor) Object.defineProperty(storagePrototype, 'setItem', setDescriptor)
+    else delete storagePrototype.setItem
+    if (removeDescriptor) Object.defineProperty(storagePrototype, 'removeItem', removeDescriptor)
+    else delete storagePrototype.removeItem
+    await app.close()
+  }
+})
+
 test('review navigation from the preview preserves saved data while a normal lesson still records visits', async () => {
   const app = await createHarness()
   const { window } = app.dom

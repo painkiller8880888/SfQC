@@ -1,4 +1,5 @@
 import { LessonReference } from './lesson-view'
+import { InteractiveVarianceComparison } from './figures/interactive-variance-comparison'
 
 type PreviewSection = { sectionId: string; title: string }
 
@@ -66,6 +67,8 @@ export function DescriptiveStatisticsPreview({ sections, currentLessonHref }: {
           <strong>理解確認</strong>
           <p>別の寸法データの分散が 0.81 mm² でした。標準偏差の値と単位を考え、分散の単位との違いを説明してください。</p>
         </aside>
+        <p>ここからは本文の計算例を操作せず、A/Bの値を変えて4つの指標の関係を復習します。</p>
+        <InteractiveVarianceComparison />
       </>}
     </section>)}
     <p><a href={currentLessonHref}>現行版を表示</a></p>
