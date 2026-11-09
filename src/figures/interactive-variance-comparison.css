@@ -8,6 +8,15 @@
   margin: 1rem 0;
 }
 
+.ivc-answer {
+  margin-block: 0.5rem;
+}
+
+.ivc-answer summary {
+  cursor: pointer;
+  line-height: 1.8;
+}
+
 .ivc-svg {
   display: block;
   width: 100%;

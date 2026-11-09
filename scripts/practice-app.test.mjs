@@ -2591,11 +2591,19 @@ test('interactive statistics preview keeps controls, calculations, and accessibl
       assert.deepEqual([...summary('B').querySelectorAll('tbody tr td:last-child')].map((cell) => cell.textContent), deviations)
     }
 
-    assert.ok(app.host.querySelector('.interactive-variance-comparison'))
-    assert.match(app.host.querySelector('.interactive-variance-comparison').textContent, /課題A: Bを1\.9、2\.1、2\.5 mmにします/u)
-    assert.match(app.host.querySelector('.interactive-variance-comparison').textContent, /課題B: Bを1\.6、2\.0、2\.6 mmにします/u)
-    assert.match(app.host.querySelector('.interactive-variance-comparison').textContent, /偏差は変わらず、分散と標準偏差も同じです/u)
-    assert.match(app.host.querySelector('.interactive-variance-comparison').textContent, /平均からの偏差が広がるため、分散と標準偏差が増えます/u)
+    const comparison = app.host.querySelector('.interactive-variance-comparison')
+    assert.ok(comparison)
+    assert.match(comparison.textContent, /課題A: Bを1\.9、2\.1、2\.5 mmにします/u)
+    const challengeItems = [...comparison.querySelectorAll('ol > li')]
+    assert.equal(challengeItems.length, 2)
+    assert.match(challengeItems[1].firstChild.textContent, /課題B: まず系列Bを初期値の1\.8、2\.0、2\.4 mmに戻してから、1\.6、2\.0、2\.6 mmにします。初期値と比べて、平均は変わるでしょうか。分散・標準偏差はどう変わるでしょうか/u)
+    const answers = [...comparison.querySelectorAll('details.ivc-answer')]
+    assert.equal(answers.length, 2)
+    assert.ok(answers.every((answer) => !answer.open))
+    assert.deepEqual(answers.map((answer) => answer.querySelector('summary').textContent), ['課題Aの確認', '課題Bの確認'])
+    assert.match(answers[0].textContent, /偏差は変わらず、分散と標準偏差も同じです/u)
+    assert.match(answers[1].textContent, /初期値に戻して比べると、平均は2\.067 mmで変わりません/u)
+    assert.match(answers[1].textContent, /平均からの偏差が広がるため、分散と標準偏差が増えます/u)
     assertB({
       mean: '2.067 mm',
       deviations: ['−0.267 mm', '−0.067 mm', '+0.333 mm'],

@@ -149,10 +149,19 @@ export function InteractiveVarianceComparison() {
     </figure>
 
     <ol>
-      <li>課題A: Bを1.9、2.1、2.5 mmにします。平均はどう変わり、偏差・分散・標準偏差はどうなるでしょうか。</li>
-      <li>課題B: Bを1.6、2.0、2.6 mmにします。平均を保ったまま、分散・標準偏差はどう変わるでしょうか。</li>
+      <li>課題A: Bを1.9、2.1、2.5 mmにします。平均はどう変わり、偏差・分散・標準偏差はどうなるでしょうか。
+        <details className="ivc-answer">
+          <summary>課題Aの確認</summary>
+          <p>課題Aでは各値と平均が初期値から同じ0.1 mmだけ増えるため、偏差は変わらず、分散と標準偏差も同じです。</p>
+        </details>
+      </li>
+      <li>課題B: まず系列Bを初期値の1.8、2.0、2.4 mmに戻してから、1.6、2.0、2.6 mmにします。初期値と比べて、平均は変わるでしょうか。分散・標準偏差はどう変わるでしょうか。
+        <details className="ivc-answer">
+          <summary>課題Bの確認</summary>
+          <p>初期値に戻して比べると、平均は2.067 mmで変わりません。平均からの偏差が広がるため、分散と標準偏差が増えます。</p>
+        </details>
+      </li>
     </ol>
-    <p><strong>確認:</strong> 課題Aでは各値と平均が同じ0.1 mmだけ増えるため、偏差は変わらず、分散と標準偏差も同じです。課題Bでは平均は2.067 mmのまま、平均からの偏差が広がるため、分散と標準偏差が増えます。</p>
 
     <div className="ivc-controls" aria-label="操作中の6個の測定値">
       {seriesList.map((series) => <fieldset className="ivc-series-controls" key={series}>
