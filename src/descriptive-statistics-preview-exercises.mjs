@@ -7,6 +7,18 @@ export const previewExerciseDefinitions = Object.freeze({
 
 const formatTenths = (value) => `${Math.floor(value / 10)}.${value % 10}`
 
+function getMeanValues(index) {
+  return [
+    95 + Math.floor(index / 121),
+    95 + Math.floor(index / 11) % 11,
+    95 + index % 11,
+  ]
+}
+
+function getMeanMultiset(index) {
+  return getMeanValues(index).sort((left, right) => left - right).join(',')
+}
+
 function getDefinition(id, index) {
   const definition = previewExerciseDefinitions[id]
   if (!definition) throw new RangeError(`Unknown preview exercise: ${id}`)
@@ -20,20 +32,17 @@ export function generateDescriptiveStatisticsPreviewExercise(id, index) {
   getDefinition(id, index)
 
   if (id === 'mean') {
-    const values = [
-      95 + Math.floor(index / 121),
-      95 + Math.floor(index / 11) % 11,
-      95 + index % 11,
-    ]
+    const values = getMeanValues(index)
     const sum = values.reduce((total, value) => total + value, 0)
     const meanThousandths = Math.round(sum * 100 / 3)
     const mean = `${Math.floor(meanThousandths / 1000)}.${String(meanThousandths % 1000).padStart(3, '0')}`
+    const exact = sum % 3 === 0
     const measurements = values.map(formatTenths)
     const sumText = formatTenths(sum)
     return {
       prompt: `別ロットの製品を3個測定したところ、寸法は${measurements.join(' mm、')} mmでした。3個の算術平均を求め、単位も答えてください。`,
-      answer: `算術平均は${mean} mmです。`,
-      solution: `${measurements.join(' + ')} = ${sumText} mm、${sumText} / 3 = ${mean} mmです。合計を測定数で割ると、そのロットの中心を表す平均が求められます。`,
+      answer: `算術平均は${exact ? '' : '約'}${mean} mmです。`,
+      solution: `${measurements.join(' + ')} = ${sumText} mm、${sumText} / 3 ${exact ? '=' : '≈'} ${mean} mmです。合計を測定数で割ると、そのロットの中心を表す平均が求められます。`,
     }
   }
 
@@ -79,5 +88,12 @@ export function nextPreviewExerciseIndex(id, index, random = Math.random) {
   if (!Number.isFinite(value) || value < 0 || value >= 1) {
     throw new RangeError('random must return a number from 0 inclusive to 1 exclusive')
   }
-  return (index + Math.floor(value * (count - 1)) + 1) % count
+  const firstOffset = Math.floor(value * (count - 1)) + 1
+  const currentMean = id === 'mean' ? getMeanMultiset(index) : null
+  for (let skipped = 0; skipped < count - 1; skipped += 1) {
+    const offset = (firstOffset - 1 + skipped) % (count - 1) + 1
+    const nextIndex = (index + offset) % count
+    if (id !== 'mean' || getMeanMultiset(nextIndex) !== currentMean) return nextIndex
+  }
+  throw new RangeError('Preview exercise has no different numeric variant')
 }

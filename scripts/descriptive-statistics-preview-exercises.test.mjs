@@ -6,6 +6,12 @@ import {
   previewExerciseDefinitions,
 } from '../src/descriptive-statistics-preview-exercises.mjs'
 
+const meanMultiset = (index) => generateDescriptiveStatisticsPreviewExercise('mean', index)
+  .prompt.match(/寸法は(.+?) mmでした/u)[1]
+  .split(' mm、')
+  .map(Number)
+  .sort((left, right) => left - right)
+
 test('preview exercises use the planned fixed examples and correct calculations', () => {
   const examples = {
     mean: {
@@ -57,8 +63,11 @@ test('all finite seed candidates are distinct and stay within their specified va
 
 test('preview exercise boundaries cover rounding, ranges, and seed validation', () => {
   assert.equal(generateDescriptiveStatisticsPreviewExercise('mean', 0).answer, '算術平均は9.500 mmです。')
-  assert.equal(generateDescriptiveStatisticsPreviewExercise('mean', 1).answer, '算術平均は9.533 mmです。')
+  const roundedMean = generateDescriptiveStatisticsPreviewExercise('mean', 1)
+  assert.equal(roundedMean.answer, '算術平均は約9.533 mmです。')
+  assert.ok(roundedMean.solution.includes('9.5 + 9.5 + 9.6 = 28.6 mm、28.6 / 3 ≈ 9.533 mm'))
   assert.equal(generateDescriptiveStatisticsPreviewExercise('mean', 1330).answer, '算術平均は10.500 mmです。')
+  assert.ok(generateDescriptiveStatisticsPreviewExercise('mean', 438).solution.includes('30.3 / 3 = 10.100 mm'))
   assert.equal(generateDescriptiveStatisticsPreviewExercise('deviation', 0).answer, '偏差は−0.1 mm、0.0 mm、+0.1 mmです。')
   assert.equal(generateDescriptiveStatisticsPreviewExercise('deviation', 188).answer, '偏差は−0.9 mm、0.0 mm、+0.9 mmです。')
   assert.equal(generateDescriptiveStatisticsPreviewExercise('variance', 0).answer, 'n − 1 で割ります。この標本では n − 1 = 3 です。')
@@ -91,4 +100,11 @@ test('regeneration always selects another finite seed, including at both ends', 
   assert.throws(() => nextPreviewExerciseIndex('mean', 0, () => 1), RangeError)
   assert.throws(() => nextPreviewExerciseIndex('mean', 0, () => Number.NaN), RangeError)
   assert.throws(() => nextPreviewExerciseIndex('mean', 0, null), TypeError)
+})
+
+test('mean regeneration excludes candidates that only reorder the same measurements', () => {
+  assert.deepEqual(meanMultiset(438), meanMultiset(768))
+  const randomToIndex768 = (768 - 438 - 1 + 1331) % 1331
+  const next = nextPreviewExerciseIndex('mean', 438, () => (randomToIndex768 + 0.5) / 1330)
+  assert.notDeepEqual(meanMultiset(next), meanMultiset(438))
 })

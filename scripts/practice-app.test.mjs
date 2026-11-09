@@ -2624,6 +2624,11 @@ test('preview exercises keep each answer, regeneration, self-check, figure, and 
         checked: exerciseCard.querySelector('input[type="checkbox"]').checked,
       }
     }
+    const meanMeasurements = (index) => generateDescriptiveStatisticsPreviewExercise('mean', index)
+      .prompt.match(/寸法は(.+?) mmでした/u)[1]
+      .split(' mm、')
+      .map(Number)
+      .sort((left, right) => left - right)
 
     for (const id of ids) {
       const exerciseCard = card(id)
@@ -2672,6 +2677,10 @@ test('preview exercises keep each answer, regeneration, self-check, figure, and 
         await click(exerciseCard.querySelector('button'))
         const after = snapshot(exerciseCard)
         assert.notEqual(after.index, before.index, `${id} should receive a different numeric variant`)
+        if (id === 'mean') {
+          assert.notDeepEqual(meanMeasurements(Number(after.index)), meanMeasurements(Number(before.index)),
+            'mean regeneration should change the measurement multiset, not only its order')
+        }
         assert.equal(after.open, false, `${id} answer should close after a numeric change`)
         assert.equal(after.checked, true, `${id} self-check should survive its numeric change`)
         const generated = generateDescriptiveStatisticsPreviewExercise(id, Number(after.index))
