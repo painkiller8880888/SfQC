@@ -13,6 +13,10 @@ import { createInitialMapState, MAP_STATE_KEY, readMapState, saveMapState, seria
 import { createMapPocGraph } from '../src/map-poc-graph.mjs'
 import { lessonDomainColors, lessonDomains } from '../src/lesson-contract.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
+import {
+  generateDescriptiveStatisticsPreviewExercise,
+  previewExerciseDefinitions,
+} from '../src/descriptive-statistics-preview-exercises.mjs'
 import { gradeQuestionAnswer } from '../src/question-grading.mjs'
 import { fixedInstance } from './question-contract.fixture.mjs'
 
@@ -2545,6 +2549,172 @@ test('descriptive-statistics preview is limited to its development overview and 
     await app.remountAt('?sfqc-preview=descriptive-statistics#/feedback')
     assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
   } finally {
+    await app.close()
+  }
+})
+
+test('preview exercises keep each answer, regeneration, self-check, figure, and saved data independent', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const wrongAnswer = fixedInstance.questionDefinitionSnapshot.content.choices
+    .map((choice) => choice.id)
+    .find((choiceId) => !gradeQuestionAnswer(fixedInstance, choiceId).isCorrect)
+  assert.ok(wrongAnswer, 'fixture must include a wrong answer')
+  const attempt = {
+    attemptId: 'preview-exercise-saved-attempt',
+    instanceId: fixedInstance.instanceId,
+    answer: wrongAnswer,
+    gradingResult: gradeQuestionAnswer(fixedInstance, wrongAnswer),
+    attemptedAt: '2026-11-06T00:00:00.000Z',
+  }
+  const localRaw = serializeLocalData({
+    schemaVersion: 2,
+    questionInstances: [fixedInstance],
+    answerAttempts: [attempt],
+    reviewEvents: [{
+      reviewEventId: 'preview-exercise-saved-review',
+      targetRef: 'descriptive-statistics#variance',
+      sourceAttemptId: attempt.attemptId,
+      reviewedAt: '2026-11-06T00:05:00.000Z',
+    }],
+  })
+  const mapState = createInitialMapState(lessonRegistry)
+  const progress = mapState.lessons['descriptive-statistics']
+  mapState.lessons['descriptive-statistics'] = {
+    ...progress,
+    status: 'completed',
+    checks: progress.checks.map(() => true),
+    completedAt: '2026-11-06T00:00:00.000Z',
+  }
+  const mapRaw = serializeMapState(mapState)
+  window.localStorage.setItem(LOCAL_DATA_KEY, localRaw)
+  window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
+  const backupBefore = exportBackup(() => window.localStorage)
+  const writeCalls = []
+  const storagePrototype = Object.getPrototypeOf(window.localStorage)
+  const setDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
+  const removeDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'removeItem')
+  Object.defineProperty(storagePrototype, 'setItem', {
+    ...setDescriptor,
+    value(key, value) {
+      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writeCalls.push(['setItem', key])
+      return setDescriptor.value.call(this, key, value)
+    },
+  })
+  Object.defineProperty(storagePrototype, 'removeItem', {
+    ...removeDescriptor,
+    value(key) {
+      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writeCalls.push(['removeItem', key])
+      return removeDescriptor.value.call(this, key)
+    },
+  })
+
+  try {
+    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
+    const ids = ['mean', 'deviation', 'variance', 'standard-deviation']
+    const card = (id) => app.host.querySelector(`[data-preview-exercise="${id}"]`)
+    const snapshot = (exerciseCard) => {
+      const details = exerciseCard.querySelector('details')
+      return {
+        index: exerciseCard.dataset.previewExerciseIndex,
+        prompt: exerciseCard.querySelector(':scope > p').textContent,
+        answer: details.querySelector('[data-preview-exercise-answer]').textContent,
+        solution: details.querySelectorAll('p')[1].textContent,
+        open: details.open,
+        checked: exerciseCard.querySelector('input[type="checkbox"]').checked,
+      }
+    }
+
+    for (const id of ids) {
+      const exerciseCard = card(id)
+      const exercise = generateDescriptiveStatisticsPreviewExercise(id, previewExerciseDefinitions[id].initialIndex)
+      assert.ok(exerciseCard, `expected the ${id} exercise`)
+      assert.equal(exerciseCard.dataset.previewExerciseIndex, String(previewExerciseDefinitions[id].initialIndex))
+      assert.equal(exerciseCard.querySelector('details').open, false)
+      assert.equal(exerciseCard.querySelector('details summary').textContent, '答えと考え方を確認')
+      assert.equal(exerciseCard.querySelector(':scope > p').textContent, exercise.prompt)
+      assert.equal(exerciseCard.querySelector('[data-preview-exercise-answer]').textContent, exercise.answer)
+      assert.equal(exerciseCard.querySelector('details').querySelectorAll('p')[1].textContent, exercise.solution)
+      const visibleText = [...exerciseCard.children]
+        .filter((child) => child.tagName !== 'DETAILS')
+        .map((child) => child.textContent)
+        .join(' ')
+      assert.ok(!visibleText.includes(exercise.answer), `${id} answer must stay inside closed details`)
+      assert.ok(!visibleText.includes(exercise.solution), `${id} explanation must stay inside closed details`)
+      assert.equal(exerciseCard.querySelector('input[type="checkbox"]').checked, false)
+      const checkbox = exerciseCard.querySelector('input[type="checkbox"]')
+      assert.ok(app.host.querySelector(`#${checkbox.getAttribute('aria-describedby')}`), `${id} self-check needs its explanation`)
+      assert.equal(exerciseCard.querySelector('input[type="number"], input[type="text"], textarea'), null,
+        'the mock must not add an answer input or automatic grading')
+      await click(exerciseCard.querySelector('details summary'))
+      await click(checkbox)
+      assert.equal(exerciseCard.querySelector('details').open, true)
+      assert.equal(checkbox.checked, true)
+    }
+
+    const figure = app.host.querySelector('.interactive-variance-comparison')
+    const figureState = () => ({
+      inputs: [...figure.querySelectorAll('input')].map((input) => input.value),
+      values: [...figure.querySelectorAll('[data-value]')].map((value) => value.getAttribute('data-value')),
+    })
+    const figureBefore = figureState()
+    const savedHistoryState = JSON.stringify(window.history.state)
+
+    for (const id of ids) {
+      const exerciseCard = card(id)
+      const details = exerciseCard.querySelector('details')
+      if (!details.open) await click(details.querySelector('summary'))
+      const before = snapshot(exerciseCard)
+      const othersBefore = ids.filter((otherId) => otherId !== id)
+        .map((otherId) => [otherId, snapshot(card(otherId))])
+
+      for (let repeat = 0; repeat < 4; repeat += 1) {
+        await click(exerciseCard.querySelector('button'))
+        const after = snapshot(exerciseCard)
+        assert.notEqual(after.index, before.index, `${id} should receive a different numeric variant`)
+        assert.equal(after.open, false, `${id} answer should close after a numeric change`)
+        assert.equal(after.checked, true, `${id} self-check should survive its numeric change`)
+        const generated = generateDescriptiveStatisticsPreviewExercise(id, Number(after.index))
+        assert.equal(after.prompt, generated.prompt)
+        assert.equal(after.answer, generated.answer)
+        assert.equal(after.solution, generated.solution)
+        assert.equal(card(id).querySelector('details').open, false)
+        for (const [otherId, state] of othersBefore) {
+          assert.deepEqual(snapshot(card(otherId)), state, `${id} regeneration must not change ${otherId}`)
+        }
+        assert.deepEqual(figureState(), figureBefore, `${id} regeneration must not change the separate review figure`)
+        before.index = after.index
+        before.prompt = after.prompt
+        before.answer = after.answer
+        before.solution = after.solution
+        before.open = after.open
+        before.checked = after.checked
+        if (repeat < 3) await click(details.querySelector('summary'))
+      }
+    }
+
+    assert.equal(JSON.stringify(window.history.state), savedHistoryState)
+    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
+    assert.equal(exportBackup(() => window.localStorage), backupBefore)
+    assert.deepEqual(writeCalls, [], 'preview exercises must not write or delete protected saved data')
+
+    await app.remount()
+    for (const id of ids) {
+      const exerciseCard = card(id)
+      assert.equal(exerciseCard.dataset.previewExerciseIndex, String(previewExerciseDefinitions[id].initialIndex))
+      assert.equal(exerciseCard.querySelector('details').open, false)
+      assert.equal(exerciseCard.querySelector('input[type="checkbox"]').checked, false)
+    }
+    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
+    assert.equal(exportBackup(() => window.localStorage), backupBefore)
+    assert.deepEqual(writeCalls, [], 'remount must not persist temporary preview state')
+  } finally {
+    if (setDescriptor) Object.defineProperty(storagePrototype, 'setItem', setDescriptor)
+    else delete storagePrototype.setItem
+    if (removeDescriptor) Object.defineProperty(storagePrototype, 'removeItem', removeDescriptor)
+    else delete storagePrototype.removeItem
     await app.close()
   }
 })
