@@ -23,6 +23,7 @@ test('check-build rejects development-only JavaScript and CSS markers', async ()
     for (const [marker, message] of [
       ['map-author-editor', /production JavaScript must not include the development-only domain editor/u],
       ['sfqc-preview=descriptive-statistics', /production JavaScript must not include the development-only comparison preview/u],
+      ['この考え方を理解できた', /production JavaScript must not include the development-only comparison preview/u],
     ]) {
       await writeFile(join(nestedDirectory, 'chunk.js'), marker)
       const result = spawnSync(process.execPath, [fileURLToPath(new URL('./check-build.mjs', import.meta.url))], {
@@ -33,12 +34,14 @@ test('check-build rejects development-only JavaScript and CSS markers', async ()
     }
 
     await writeFile(join(nestedDirectory, 'chunk.js'), 'safe')
-    await writeFile(join(nestedDirectory, 'preview.css'), '.interactive-variance-comparison{padding:0}')
-    const cssResult = spawnSync(process.execPath, [fileURLToPath(new URL('./check-build.mjs', import.meta.url))], {
-      encoding: 'utf8',
-    })
-    assert.notEqual(cssResult.status, 0)
-    assert.match(cssResult.stderr, /production CSS must not include development-only comparison preview styles/u)
+    for (const marker of ['.interactive-variance-comparison{padding:0}', '.descriptive-statistics-preview-exercise{padding:0}']) {
+      await writeFile(join(nestedDirectory, 'preview.css'), marker)
+      const cssResult = spawnSync(process.execPath, [fileURLToPath(new URL('./check-build.mjs', import.meta.url))], {
+        encoding: 'utf8',
+      })
+      assert.notEqual(cssResult.status, 0)
+      assert.match(cssResult.stderr, /production CSS must not include development-only comparison preview styles/u)
+    }
   } finally {
     if (stylesheetPath && originalStylesheet !== undefined) await writeFile(stylesheetPath, originalStylesheet)
     await rm(fixtureDirectory, { recursive: true, force: true })
