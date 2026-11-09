@@ -2611,6 +2611,22 @@ test('preview exercises keep each answer, regeneration, self-check, figure, and 
 
   try {
     await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
+    const references = app.host.querySelector('.descriptive-statistics-preview-references')
+    assert.ok(references)
+    assert.equal(references.open, false)
+    assert.equal(references.querySelectorAll('li').length, 4)
+    assert.match(references.textContent, /https:\/\/webdesk\.jsa\.or\.jp\/pdf\/qc\/md_4609\.pdf/u)
+    assert.match(references.textContent, /本文確認日/u)
+    assert.match(references.textContent, /到達確認日/u)
+    assert.match(references.textContent, /CC BY-NC-SA 4\.0/u)
+    assert.match(references.querySelector('a').textContent, /JSA「3級のレベル表」/u)
+    await click(references.querySelector('summary'))
+    assert.equal(references.open, true)
+    const licenseCredit = app.host.querySelector('.descriptive-statistics-preview-license-credit')
+    assert.ok(licenseCredit)
+    assert.equal(licenseCredit.closest('details'), null)
+    assert.match(licenseCredit.textContent, /Solarized by Ethan Schoonover/u)
+    assert.match(licenseCredit.querySelector('a').getAttribute('href'), /third-party-licenses\.txt$/u)
     const ids = ['mean', 'deviation', 'variance', 'standard-deviation']
     const card = (id) => app.host.querySelector(`[data-preview-exercise="${id}"]`)
     const snapshot = (exerciseCard) => {

@@ -113,5 +113,41 @@ export function DescriptiveStatisticsPreview({ sections, currentLessonHref }: {
       </>}
     </section>)}
     <p><a href={currentLessonHref}>現行版を表示</a></p>
+    <details className="descriptive-statistics-preview-references">
+      <summary>出典・参考資料と確認状況</summary>
+      <ul>
+        <li>
+          <a href="https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf">JSA「3級のレベル表」Ver.20150130.2、p.1</a>
+          <p>URL: https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf</p>
+          <p>本文確認日: 2026-10-21（教材registryの登録記録）。該当箇所: p.1「基本統計量とグラフ」。</p>
+          <p>到達確認日: 2026-11-09。JSA Webdeskの緊急メンテナンス案内が表示され、PDF本文は未確認です。案内の再開予定は2026-11-11 10:00 JSTです。</p>
+          <p>参照目的: QC検定範囲との対応確認。本文の転載はしていません。今回のPDF本文でライセンス条件を確認できていません。</p>
+        </li>
+        <li>
+          <a href="https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf">JSA「4級のレベル表」Ver.20150130.2、p.1「平均とばらつき」「平均と範囲」</a>
+          <p>URL: https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf</p>
+          <p>本文確認日: 2026-10-21（教材registryの登録記録）。該当箇所: 平均とばらつき、平均と範囲。</p>
+          <p>到達確認日: 2026-11-09。JSA Webdeskの緊急メンテナンス案内が表示され、PDF本文は未確認です。案内の再開予定は2026-11-11 10:00 JSTです。</p>
+          <p>参照目的: QC検定範囲との対応確認。本文の転載はしていません。今回のPDF本文でライセンス条件を確認できていません。</p>
+        </li>
+        <li>
+          <a href="https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data">OpenStax, Barbara Illowsky / Susan Dean, Introductory Statistics 2e, §2.7 (2023)</a>
+          <p>URL: https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data</p>
+          <p>本文確認日・到達確認日: 2026-11-09。該当ページを開き、本文とライセンス表示を確認しました。ページはCC BY-NC-SA 4.0とし、再利用には帰属表示・非営利・同一ライセンスでの継承が必要としています。</p>
+          <p>参照目的: 用語と式の照合。本文・図・問題は転載していません。</p>
+        </li>
+        <li>
+          <a href="https://assets.openstax.org/oscms-prodcms/media/documents/Introductory_Statistics_2e_-_WEB.pdf">OpenStax, Introductory Statistics 2e, 2023版PDF</a>
+          <p>URL: https://assets.openstax.org/oscms-prodcms/media/documents/Introductory_Statistics_2e_-_WEB.pdf</p>
+          <p>本文確認日: 未記録。2023版PDFにCC BY 4.0とある過去記録があります。</p>
+          <p>到達確認日: 2026-11-09。アクセスは403で、今回のPDF本文・ライセンス表示は未確認です。</p>
+          <p>参照目的: Web版とは別の資料として記録。今回のPDF本文から文章・図・問題を転載していません。</p>
+        </li>
+      </ul>
+    </details>
+    <p className="descriptive-statistics-preview-license-credit">
+      配色: Solarized by Ethan Schoonover (Copyright (c) 2011; MIT License).{' '}
+      <a href={import.meta.env.BASE_URL + 'third-party-licenses.txt'}>全文のライセンス通知</a>
+    </p>
   </section>
 }

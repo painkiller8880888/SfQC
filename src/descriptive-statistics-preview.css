@@ -42,3 +42,29 @@
   flex: 0 0 auto;
   margin-top: 0.35rem;
 }
+
+.descriptive-statistics-preview-references {
+  margin-block: 1.5rem;
+}
+
+.descriptive-statistics-preview-references summary {
+  min-height: 2.5rem;
+  cursor: pointer;
+}
+
+.descriptive-statistics-preview-references li {
+  margin-block: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.descriptive-statistics-preview-references li p {
+  margin-block: 0.3rem;
+  line-height: 1.7;
+}
+
+.descriptive-statistics-preview-license-credit {
+  margin-block: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
