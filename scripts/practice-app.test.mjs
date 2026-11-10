@@ -84,7 +84,7 @@ function installMatchMedia(window, initialTheme = 'light', available = true, lis
   }
 }
 
-async function createHarness({ strict = false, confirm = () => true, measureFlowNodes = false, systemTheme = 'light', supportsMatchMedia = true, supportsMatchMediaListeners = true } = {}) {
+async function createHarness({ strict = false, confirm = () => true, measureFlowNodes = false, systemTheme = 'light', supportsMatchMedia = true, supportsMatchMediaListeners = true, mode = 'development', productionPreview = false } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://sfqc.test/SfQC/#/practice',
     pretendToBeVisual: true,
@@ -133,6 +133,8 @@ async function createHarness({ strict = false, confirm = () => true, measureFlow
   }
   const server = await createServer({
     configFile: 'vite.config.ts',
+    mode,
+    ...(productionPreview ? { define: { 'import.meta.env.DEV': 'false' } } : {}),
     server: { middlewareMode: true, hmr: false },
     appType: 'custom',
   })
@@ -2549,6 +2551,50 @@ test('descriptive-statistics preview is limited to its development overview and 
     await app.remountAt('?sfqc-preview=descriptive-statistics#/feedback')
     assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
   } finally {
+    await app.close()
+  }
+})
+
+test('public preview mode renders the isolated mock without writing learning data', async () => {
+  const app = await createHarness({ mode: 'sfqc-preview', productionPreview: true })
+  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
+  const setDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
+  const removeDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'removeItem')
+  try {
+    const { window } = app.dom
+    const localRaw = '{ public preview local-data sentinel'
+    const mapRaw = '{ public preview map-state sentinel'
+    window.localStorage.setItem(LOCAL_DATA_KEY, localRaw)
+    window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
+    const writes = []
+    Object.defineProperty(storagePrototype, 'setItem', {
+      ...setDescriptor,
+      value(key, value) {
+        if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writes.push(['setItem', key])
+        return setDescriptor.value.call(this, key, value)
+      },
+    })
+    Object.defineProperty(storagePrototype, 'removeItem', {
+      ...removeDescriptor,
+      value(key) {
+        if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writes.push(['removeItem', key])
+        return removeDescriptor.value.call(this, key)
+      },
+    })
+
+    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
+    assert.ok(app.host.querySelector('.descriptive-statistics-preview'))
+    const exercise = app.host.querySelector('[data-preview-exercise="mean"]')
+    await click(exercise.querySelector('input[type="checkbox"]'))
+    await click(exercise.querySelector('button'))
+    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
+    assert.deepEqual(writes, [])
+  } finally {
+    if (setDescriptor) Object.defineProperty(storagePrototype, 'setItem', setDescriptor)
+    else delete storagePrototype.setItem
+    if (removeDescriptor) Object.defineProperty(storagePrototype, 'removeItem', removeDescriptor)
+    else delete storagePrototype.removeItem
     await app.close()
   }
 })
