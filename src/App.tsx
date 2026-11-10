@@ -57,6 +57,7 @@ type ThemePreference = 'system' | Theme
 
 const themeStorageKey = 'sfqc:theme-preference'
 const themeMediaQuery = '(prefers-color-scheme: dark)'
+const comparisonPreviewEnabled = import.meta.env.DEV || import.meta.env.MODE === 'sfqc-preview'
 
 function readSystemTheme(): Theme {
   try {
@@ -169,7 +170,7 @@ function App() {
   const [view, setView] = useState(() => resolveRouteView(
     window.location.hash, window.history.state, 'initial', 0,
   ))
-  const isDescriptiveStatisticsPreview = import.meta.env.DEV
+  const isDescriptiveStatisticsPreview = comparisonPreviewEnabled
     && new URLSearchParams(window.location.search).get('sfqc-preview') === 'descriptive-statistics'
     && view.route.kind === 'lesson-id'
     && view.route.lessonId === 'descriptive-statistics'
@@ -931,7 +932,7 @@ function App() {
         sectionId={view.route.sectionId}
         sectionHeadingRef={sectionHeadingRef}
       />
-      {import.meta.env.DEV && view.resolved.lesson.lessonId === 'descriptive-statistics'
+      {comparisonPreviewEnabled && view.resolved.lesson.lessonId === 'descriptive-statistics'
         && view.route.sectionId === null && <p className="lesson-actions">
           <a href={`${window.location.pathname}?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics`}>
             比較用モックを開く
