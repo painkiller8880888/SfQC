@@ -6,54 +6,57 @@ import {
   previewExerciseDefinitions,
 } from '../src/descriptive-statistics-preview-exercises.mjs'
 
-const meanMultiset = (index) => generateDescriptiveStatisticsPreviewExercise('mean', index)
-  .prompt.match(/寸法は(.+?) mmでした/u)[1]
-  .split(' mm、')
-  .map(Number)
-  .sort((left, right) => left - right)
+const measurements = (index) => {
+  const prompt = generateDescriptiveStatisticsPreviewExercise('mean', index).prompt
+  return prompt.match(/ところ、(.+?) でした/u)[1]
+    .split(' mm、')
+    .map((value) => Number(value.replace(/ mm$/u, '')))
+}
 
-test('preview exercises use the planned fixed examples and correct calculations', () => {
-  const examples = {
+test('preview exercises reproduce the four reviewed seed questions and calculations', () => {
+  const expected = {
     mean: {
-      prompt: '別ロットの製品を3個測定したところ、寸法は9.8 mm、10.1 mm、10.4 mmでした。3個の算術平均を求め、単位も答えてください。',
-      answer: '算術平均は10.100 mmです。',
-      contains: '30.3 / 3 = 10.100 mm',
+      prompt: '別のライン C から3本を測ったところ、98 mm、103 mm、102 mm でした。平均は何 mm ですか。',
+      fields: [{ label: '平均', unit: 'mm' }],
+      answers: [101],
+      solution: '98 + 103 + 102 = 303、303 ÷ 3 = 101 mm',
     },
     deviation: {
-      prompt: '製品寸法の平均は20.0 mmでした。測定値は19.4 mm、20.0 mm、20.6 mmです。それぞれの偏差（測定値 − 平均）を求めてください。',
-      answer: '偏差は−0.6 mm、0.0 mm、+0.6 mmです。',
-      contains: '19.4 − 20.0 = −0.6 mm',
+      prompt: '別のライン D の平均は 102 mm でした。測った3本は 100 mm、106 mm、100 mm です。それぞれの偏差（値 − 平均）を求めてください。',
+      fields: [{ label: '1本目', unit: 'mm' }, { label: '2本目', unit: 'mm' }, { label: '3本目', unit: 'mm' }],
+      answers: [-2, 4, -2],
+      solution: '100 − 102 = −2　106 − 102 = +4　100 − 102 = −2　(mm)',
     },
     variance: {
-      prompt: 'ある工程の製品寸法は同じ分布に従い、その分散は有限だとします。工程から製品を5個、互いに独立に無作為抽出しました。工程全体の分散を不偏に推定するには、偏差平方和を何で割りますか。標本数を n とした式と、この分母を使う理由を考えてください。',
-      answer: 'n − 1 で割ります。この標本では n − 1 = 4 です。',
-      contains: '同じ条件の標本を繰り返したとき平均として母分散を推定',
+      prompt: '別のライン E から3本を測ったところ、97 mm、101 mm、102 mm でした。偏差平方和 S と、n − 1 で割る不偏分散 V を求めてください。',
+      fields: [{ label: 'S', unit: 'mm²' }, { label: 'V', unit: 'mm²' }],
+      answers: [14, 7],
+      solution: '平均 = 300 ÷ 3 = 100 mm。偏差は −3、+1、+2。S = (−3)² + (+1)² + (+2)² = 9 + 1 + 4 = 14 mm²。V = 14 ÷ 2 = 7 mm²',
     },
     'standard-deviation': {
-      prompt: 'ある測定データの分散は0.81 mm²でした。標準偏差を求め、単位も答えてください。',
-      answer: '標準偏差は0.9 mmです。',
-      contains: '√(0.81 mm²) = 0.9 mm',
+      prompt: '別のライン F から3本を測ったところ、97 mm、100 mm、103 mm でした。n − 1 で割った不偏分散から求める標準偏差 s は何 mm ですか。',
+      fields: [{ label: 's', unit: 'mm' }],
+      answers: [3],
+      solution: '平均 = 100 mm、偏差は −3、0、+3。S = 18 mm²、V = 18 ÷ 2 = 9 mm²、s = √9 = 3 mm',
     },
   }
 
-  for (const [id, expected] of Object.entries(examples)) {
-    const index = previewExerciseDefinitions[id].initialIndex
-    const actual = generateDescriptiveStatisticsPreviewExercise(id, index)
-    assert.equal(actual.prompt, expected.prompt)
-    assert.equal(actual.answer, expected.answer)
-    assert.ok(actual.solution.includes(expected.contains))
-    assert.deepEqual(actual, generateDescriptiveStatisticsPreviewExercise(id, index))
+  for (const [id, expectedExercise] of Object.entries(expected)) {
+    const exercise = generateDescriptiveStatisticsPreviewExercise(id, previewExerciseDefinitions[id].initialIndex)
+    assert.deepEqual(exercise, expectedExercise)
+    assert.ok(!exercise.prompt.includes(exercise.solution), `${id} should keep its explanation out of the question`)
   }
 })
 
-test('all finite seed candidates are distinct and stay within their specified values', () => {
+test('every generated question is a distinct valid numeric exercise', () => {
   for (const [id, { count }] of Object.entries(previewExerciseDefinitions)) {
     const prompts = new Set()
     for (let index = 0; index < count; index += 1) {
       const exercise = generateDescriptiveStatisticsPreviewExercise(id, index)
       assert.ok(exercise.prompt.length)
-      assert.ok(exercise.answer.length)
       assert.ok(exercise.solution.length)
+      assert.equal(exercise.fields.length, exercise.answers.length)
+      assert.ok(exercise.answers.every(Number.isFinite))
       assert.ok(!prompts.has(exercise.prompt), `${id} repeats a displayed problem at index ${index}`)
       prompts.add(exercise.prompt)
     }
@@ -61,28 +64,7 @@ test('all finite seed candidates are distinct and stay within their specified va
   }
 })
 
-test('preview exercise boundaries cover rounding, ranges, and seed validation', () => {
-  assert.equal(generateDescriptiveStatisticsPreviewExercise('mean', 0).answer, '算術平均は9.500 mmです。')
-  const roundedMean = generateDescriptiveStatisticsPreviewExercise('mean', 1)
-  assert.equal(roundedMean.answer, '算術平均は約9.533 mmです。')
-  assert.ok(roundedMean.solution.includes('9.5 + 9.5 + 9.6 = 28.6 mm、28.6 / 3 ≈ 9.533 mm'))
-  assert.equal(generateDescriptiveStatisticsPreviewExercise('mean', 1330).answer, '算術平均は10.500 mmです。')
-  assert.ok(generateDescriptiveStatisticsPreviewExercise('mean', 438).solution.includes('30.3 / 3 = 10.100 mm'))
-  assert.equal(generateDescriptiveStatisticsPreviewExercise('deviation', 0).answer, '偏差は−0.1 mm、0.0 mm、+0.1 mmです。')
-  assert.equal(generateDescriptiveStatisticsPreviewExercise('deviation', 188).answer, '偏差は−0.9 mm、0.0 mm、+0.9 mmです。')
-  assert.equal(generateDescriptiveStatisticsPreviewExercise('variance', 0).answer, 'n − 1 で割ります。この標本では n − 1 = 3 です。')
-  assert.equal(generateDescriptiveStatisticsPreviewExercise('variance', 5).answer, 'n − 1 で割ります。この標本では n − 1 = 8 です。')
-  assert.equal(generateDescriptiveStatisticsPreviewExercise('standard-deviation', 0).answer, '標準偏差は0.1 mmです。')
-  assert.equal(generateDescriptiveStatisticsPreviewExercise('standard-deviation', 14).answer, '標準偏差は1.5 mmです。')
-  assert.match(generateDescriptiveStatisticsPreviewExercise('standard-deviation', 14).prompt, /2\.25 mm²/u)
-
-  assert.throws(() => generateDescriptiveStatisticsPreviewExercise('unknown', 0), RangeError)
-  assert.throws(() => generateDescriptiveStatisticsPreviewExercise('mean', -1), RangeError)
-  assert.throws(() => generateDescriptiveStatisticsPreviewExercise('mean', 1331), RangeError)
-  assert.throws(() => generateDescriptiveStatisticsPreviewExercise('mean', 0.5), RangeError)
-})
-
-test('regeneration always selects another finite seed, including at both ends', () => {
+test('regeneration returns a different numeric variant and validates its seed', () => {
   for (const [id, { count }] of Object.entries(previewExerciseDefinitions)) {
     for (const index of [0, Math.floor(count / 2), count - 1]) {
       for (const random of [0, 0.5, 0.999999]) {
@@ -96,15 +78,17 @@ test('regeneration always selects another finite seed, including at both ends', 
     assert.equal(nextPreviewExerciseIndex(id, 0, () => 0.999999), count - 1)
   }
 
+  const sameMeanValues = [measurements(2), measurements(7)].map((values) => values.sort((a, b) => a - b))
+  assert.deepEqual(sameMeanValues[0], sameMeanValues[1])
+  const next = nextPreviewExerciseIndex('mean', 2, () => 4.5 / (previewExerciseDefinitions.mean.count - 1))
+  assert.notDeepEqual(measurements(next).sort((a, b) => a - b), sameMeanValues[0])
+
+  assert.throws(() => generateDescriptiveStatisticsPreviewExercise('unknown', 0), RangeError)
+  assert.throws(() => generateDescriptiveStatisticsPreviewExercise('mean', -1), RangeError)
+  assert.throws(() => generateDescriptiveStatisticsPreviewExercise('mean', previewExerciseDefinitions.mean.count), RangeError)
+  assert.throws(() => generateDescriptiveStatisticsPreviewExercise('mean', 0.5), RangeError)
   assert.throws(() => nextPreviewExerciseIndex('mean', 0, () => -0.1), RangeError)
   assert.throws(() => nextPreviewExerciseIndex('mean', 0, () => 1), RangeError)
   assert.throws(() => nextPreviewExerciseIndex('mean', 0, () => Number.NaN), RangeError)
   assert.throws(() => nextPreviewExerciseIndex('mean', 0, null), TypeError)
-})
-
-test('mean regeneration excludes candidates that only reorder the same measurements', () => {
-  assert.deepEqual(meanMultiset(438), meanMultiset(768))
-  const randomToIndex768 = (768 - 438 - 1 + 1331) % 1331
-  const next = nextPreviewExerciseIndex('mean', 438, () => (randomToIndex768 + 0.5) / 1330)
-  assert.notDeepEqual(meanMultiset(next), meanMultiset(438))
 })

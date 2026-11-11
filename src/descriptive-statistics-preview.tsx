@@ -1,28 +1,46 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { LessonReference } from './lesson-view'
-import { InteractiveVarianceComparison } from './figures/interactive-variance-comparison'
 import {
   generateDescriptiveStatisticsPreviewExercise,
   nextPreviewExerciseIndex,
   previewExerciseDefinitions,
 } from './descriptive-statistics-preview-exercises.mjs'
 import type { PreviewExerciseId } from './descriptive-statistics-preview-exercises.mjs'
+import { InteractiveVarianceComparison, VarianceSimulation } from './figures/interactive-variance-comparison'
 import previewStyles from './descriptive-statistics-preview.css?inline'
+import interactiveStyles from './figures/interactive-variance-comparison.css?inline'
 
 type PreviewSection = { sectionId: string; title: string }
 
 const exerciseTitles: Record<PreviewExerciseId, string> = {
   mean: '平均',
   deviation: '偏差',
-  variance: '不偏分散',
+  variance: '偏差平方和と不偏分散',
   'standard-deviation': '標準偏差',
+}
+
+function parseAnswer(text: string) {
+  const value = text.normalize('NFKC').replace(/−/gu, '-').replace(/\s+/gu, '')
+  if (!value || !/^[+-]?\d+(\.\d+)?$/u.test(value)) return Number.NaN
+  return Number(value)
+}
+
+function scrollToPreviewSection(event: MouseEvent<HTMLAnchorElement>) {
+  event.preventDefault()
+  const targetId = event.currentTarget.getAttribute('href')?.slice(1)
+  const target = targetId ? event.currentTarget.ownerDocument.getElementById(targetId) : null
+  const heading = target?.querySelector<HTMLElement>('h2')
+  if (!heading) return
+  heading.focus({ preventScroll: true })
+  heading.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
 }
 
 function PreviewExerciseCard({ id }: { id: PreviewExerciseId }) {
   const detailsRef = useRef<HTMLDetailsElement>(null)
   const [index, setIndex] = useState(previewExerciseDefinitions[id].initialIndex)
+  const [values, setValues] = useState<string[]>([])
+  const [feedback, setFeedback] = useState({ kind: '', text: '' })
   const exercise = generateDescriptiveStatisticsPreviewExercise(id, index)
-  const descriptionId = `preview-${id}-self-assessment`
 
   return <aside
     className="lesson-check-question descriptive-statistics-preview-exercise"
@@ -30,23 +48,56 @@ function PreviewExerciseCard({ id }: { id: PreviewExerciseId }) {
     data-preview-exercise={id}
     data-preview-exercise-index={index}
   >
-    <strong>理解確認：{exerciseTitles[id]}</strong>
-    <p>{exercise.prompt}</p>
+    <h3>確かめてみよう：{exerciseTitles[id]}</h3>
+    <p className="ds-exercise-prompt">{exercise.prompt}</p>
+    <div className="ds-exercise-fields">{exercise.fields.map((field, fieldIndex) => {
+      const inputId = `preview-${id}-${fieldIndex}`
+      return <label key={field.label} htmlFor={inputId}>
+        {field.label}
+        <input
+          id={inputId}
+          inputMode="decimal"
+          autoComplete="off"
+          type="text"
+          value={values[fieldIndex] ?? ''}
+          onChange={(event) => setValues((current) => exercise.fields.map((_, currentIndex) => currentIndex === fieldIndex ? event.target.value : current[currentIndex] ?? ''))}
+        />
+        <span>{field.unit}</span>
+      </label>
+    })}</div>
+    <div className="ds-exercise-actions">
+      <button type="button" className="ds-button ds-button-primary" onClick={() => {
+        const parsed = exercise.fields.map((_, fieldIndex) => parseAnswer(values[fieldIndex] ?? ''))
+        if (parsed.some((value) => Number.isNaN(value))) {
+          setFeedback({ kind: 'ng', text: '数字で入力してください（例：12、−2、+3）。' })
+          return
+        }
+        const incorrectFields = parsed.flatMap((value, fieldIndex) => Math.abs(value - exercise.answers[fieldIndex]) > 1e-6
+          ? [exercise.fields[fieldIndex].label] : [])
+        setFeedback(incorrectFields.length
+          ? { kind: 'ng', text: `合っていないのは「${incorrectFields.join('」「')}」です。「考え方を見る」で途中の計算を確かめられます。` }
+          : { kind: 'ok', text: '正解です。' })
+      }}>答え合わせ</button>
+      <button type="button" className="ds-button" onClick={() => {
+        if (detailsRef.current) detailsRef.current.open = false
+        setIndex((current) => nextPreviewExerciseIndex(id, current))
+        setValues([])
+        setFeedback({ kind: '', text: '' })
+      }}>別の数値で</button>
+    </div>
+    <p className={`ds-exercise-feedback ${feedback.kind}`} role="status" aria-live="polite">{feedback.text}</p>
     <details ref={detailsRef}>
-      <summary>答えと考え方を確認</summary>
-      <p data-preview-exercise-answer>{exercise.answer}</p>
-      <p>{exercise.solution}</p>
+      <summary>考え方を見る</summary>
+      <p className="ds-exercise-solution" data-preview-exercise-answer>{exercise.solution}</p>
     </details>
-    <button type="button" onClick={() => {
-      if (detailsRef.current) detailsRef.current.open = false
-      setIndex((current) => nextPreviewExerciseIndex(id, current))
-    }}>別の数値で試す</button>
-    <label>
-      <input type="checkbox" aria-describedby={descriptionId} />
-      この考え方を理解できた
-    </label>
-    <p id={descriptionId}>このチェックは考え方の自己評価です。数値を変更しても保持されます。チェックは自分で変更できます。再読み込みすると未チェックに戻ります。</p>
   </aside>
+}
+
+function SectionDetails({ children, title }: { children: ReactNode; title: string }) {
+  return <details className="ds-more">
+    <summary>{title}</summary>
+    <div>{children}</div>
+  </details>
 }
 
 export function DescriptiveStatisticsPreview({ sections, currentLessonHref }: {
@@ -55,99 +106,207 @@ export function DescriptiveStatisticsPreview({ sections, currentLessonHref }: {
 }) {
   useEffect(() => {
     const style = document.createElement('style')
-    style.textContent = previewStyles
+    style.textContent = `${previewStyles}\n${interactiveStyles}`
     document.head.append(style)
     return () => style.remove()
   }, [])
 
+  const sectionTitles: Record<string, string> = {
+    mean: '平均：データの中心を1つの数で言う',
+    deviation: '偏差：1本ずつ、平均からのずれを見る',
+    variance: '分散：ずれの大きさを、打ち消さずにまとめる',
+    'standard-deviation': '標準偏差：単位を mm に戻す',
+  }
+
   return <section className="lesson-panel descriptive-statistics-preview" aria-label="基本統計量の比較用モック">
-    <p>これは一時的な比較用モックです。ここでの操作状態は保存されません。</p>
-    <div className="lesson-observation">
-      <h2>同じ平均でも、測定値の散らばりは同じでしょうか</h2>
-      <p>AとBは異なる工程です。それぞれの工程で作られる製品全体から、製品を3個ずつ独立に無作為抽出し、1個につき1回、寸法を測定しました。AとBの値を見比べ、平均だけで散らばりの違いまで説明できるか考えながら読み進めてください。</p>
-      <table>
-        <caption>製品寸法の測定値</caption>
-        <thead><tr><th scope="col">系列</th><th scope="col">測定値（mm）</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">A</th><td>1.000、2.200、3.000</td></tr>
-          <tr><th scope="row">B</th><td>1.800、2.000、2.400</td></tr>
-        </tbody>
-      </table>
+    <div className="descriptive-statistics-preview-content">
+      <header className="ds-preview-header">
+        <p className="ds-preview-lead">シャフトの長さの測定データ1組を使って、平均、偏差、分散、標準偏差を順に作っていきます。図の点は動かせます。各節の最後に、自分で計算する問題があります。</p>
+        <nav className="ds-section-nav" aria-label="節の一覧">
+          {sections.map((section, index) => <a key={section.sectionId} href={`#${section.sectionId}`} onClick={scrollToPreviewSection}>{index + 1} {section.sectionId === 'standard-deviation' ? '標準偏差' : section.sectionId === 'variance' ? '分散' : section.title}</a>)}
+          <a href="#preview-summary" onClick={scrollToPreviewSection}>まとめ</a>
+        </nav>
+      </header>
+
+      <section className="ds-intro" aria-labelledby="preview-intro-title">
+        <h2 id="preview-intro-title">2つのラインの測定結果</h2>
+        <p>目標の長さが 100 mm のシャフトを、ライン A とライン B で作っています。それぞれから3本ずつ取り出して、長さを測りました。</p>
+        <div className="ds-table-wrap">
+          <table>
+            <caption>測定した長さ（mm）</caption>
+            <thead><tr><th scope="col">ライン</th><th scope="col">1本目</th><th scope="col">2本目</th><th scope="col">3本目</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><span className="ivc-tag">A</span></th><td className="num">98</td><td className="num">100</td><td className="num">102</td></tr>
+              <tr><th scope="row"><span className="ivc-tag ivc-tag-b">B</span></th><td className="num">99</td><td className="num">100</td><td className="num">101</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="ds-ask">平均を計算すると、A も B も 100 mm です。この2つのラインは、同じ品質だといえるでしょうか。</p>
+        <p>値を見比べると、A のほうが 100 mm から離れた値を出しているように見えます。この「離れ方」を数字にする道具が、これから学ぶ偏差・分散・標準偏差です。まず平均から確認します。</p>
+      </section>
+
+      {sections.map((section, index) => {
+        const sectionId = section.sectionId
+        const title = sectionTitles[sectionId] ?? section.title
+        return <section
+          className="lesson-observation descriptive-statistics-preview-section ds-section"
+          id={sectionId}
+          aria-labelledby={`preview-${sectionId}-title`}
+          key={sectionId}
+        >
+          <span className="ds-stepno">{index + 1} / 4</span>
+          <h2 id={`preview-${sectionId}-title`} tabIndex={-1}>{title}</h2>
+          {sectionId === 'mean' && <>
+            <p className="ds-ask">3本の長さの「中心」は、数直線のどこにあるでしょう。</p>
+            <InteractiveVarianceComparison mode="mean" />
+            <p>▲の位置は、値を全部足して個数で割ると求まります。</p>
+            <div className="ds-calc">
+              <p><strong>A</strong><span>(98 + 100 + 102) ÷ 3 = 300 ÷ 3 = 100 mm</span></p>
+              <p><strong>B</strong><span>(99 + 100 + 101) ÷ 3 = 300 ÷ 3 = 100 mm</span></p>
+            </div>
+            <p>この結果を<strong>平均</strong>と呼びます。単位は元の値と同じ mm です。A も B も 100 mm なので、平均だけでは2つのラインを区別できません。次は、1本ずつが平均からどれだけ外れているかを見ます。</p>
+            <SectionDetails title="もっと正確に（記号と使える条件）">
+              <ul>
+                <li>調べたい対象全体の平均を<strong>母平均 μ</strong>、実際に測った一部（標本）の平均を<strong>標本平均 x̄</strong>と書きます。</li>
+                <li>標本平均は x̄ = (x₁ + x₂ + … + xₙ) ÷ n です。「全部足す」ことを記号 Σ で書いて、x̄ = (Σ xᵢ) ÷ n とも表します。</li>
+                <li>平均が使えるのは、値が同じ種類の量で、同じ単位で測られているときです。カテゴリに便宜上つけた番号には使いません。</li>
+                <li>平均は、実際の測定値のどれかと一致するとは限りません。</li>
+                <li><LessonReference targetRef="math-algebra-sigma#sigma" label="総和記号 Σ の読み方" />も確認できます。</li>
+              </ul>
+            </SectionDetails>
+            <PreviewExerciseCard id="mean" />
+          </>}
+          {sectionId === 'deviation' && <>
+            <p className="ds-ask">A の 98 mm は、平均の 100 mm からどちらへ、どれだけ外れているでしょう。</p>
+            <InteractiveVarianceComparison mode="deviation" />
+            <div className="ds-calc">
+              <p><strong>A</strong><span>98 − 100 = −2　100 − 100 = 0　102 − 100 = +2　(mm)</span></p>
+              <p><strong>B</strong><span>99 − 100 = −1　100 − 100 = 0　101 − 100 = +1　(mm)</span></p>
+            </div>
+            <p>「値 − 平均」を<strong>偏差</strong>と呼びます。単位は mm です。A の偏差は ±2 mm、B の偏差は ±1 mm で、A のほうが大きく外れています。</p>
+            <p>ところが、偏差を全部足すと A も B も 0 mm になります。正と負が打ち消し合うためです。図の点をどう動かしても、合計は 0 のままです。偏差を足しただけでは、ばらつきの大きさを比べられません。次は、打ち消し合わない方法を考えます。</p>
+            <SectionDetails title="もっと正確に（記号と条件）">
+              <ul>
+                <li>母集団の偏差は xᵢ − μ、標本の偏差は xᵢ − x̄ と書きます。</li>
+                <li>値と平均は、同じ量、同じ単位、同じ対象についてのものである必要があります。</li>
+                <li>偏差の合計が 0 になるのは、平均が「偏差の合計を 0 にする位置」として決まっているからです。</li>
+              </ul>
+            </SectionDetails>
+            <PreviewExerciseCard id="deviation" />
+          </>}
+          {sectionId === 'variance' && <>
+            <p className="ds-ask">正と負を打ち消さずに、3本分のずれを1つの数にするには、どうすればよいでしょう。</p>
+            <p>偏差を2乗すると、負の値も正になります。2乗は、一辺の長さが偏差の正方形の面積とみなせます。</p>
+            <InteractiveVarianceComparison mode="variance" />
+            <div className="ds-calc">
+              <p><strong>A</strong><span>(−2)² + 0² + (+2)² = 4 + 0 + 4 = 8 mm²</span></p>
+              <p><strong>B</strong><span>(−1)² + 0² + (+1)² = 1 + 0 + 1 = 2 mm²</span></p>
+            </div>
+            <p>この合計を<strong>偏差平方和</strong>（記号 S）と呼びます。2乗したので、単位は mm² です。</p>
+            <h3 className="ds-subheading">知りたいのは、ロット全体のばらつき</h3>
+            <p>調べたい対象の全部を<strong>母集団</strong>、実際に測った一部を<strong>標本</strong>と呼びます。ここでの母集団は、ラインが作るシャフトの全体（ロット全体）です。本当に知りたいのは、この母集団のばらつきで、これを<strong>母分散</strong>と呼びます。</p>
+            <p>たとえば、寸法が 98〜102 mm の5種類だけで、どれも同じ割合で入っている、とても大きなロットがあるとします。全部測れるなら、偏差を2乗して平均すれば、母分散が求まります。</p>
+            <div className="ds-calc">
+              <p><span>平均 100 mm　偏差：−2, −1, 0, +1, +2 (mm)</span></p>
+              <p><span>(4 + 1 + 0 + 1 + 4) ÷ 5 = 2 mm²</span></p>
+            </div>
+            <h3 className="ds-subheading">全部は測れないから、3本から見積もる</h3>
+            <p>現実には、ロットの全部は測れません。A と B も、3本だけ取り出した標本です。標本の3本から母分散を<strong>見積もる</strong>ときは、S を n ではなく <strong>n − 1 = 2</strong> で割ります（n は標本の本数）。</p>
+            <div className="ds-calc">
+              <p><strong>A</strong><span>8 ÷ 2 = 4 mm²</span></p>
+              <p><strong>B</strong><span>2 ÷ 2 = 1 mm²</span></p>
+            </div>
+            <p>この値を<strong>不偏分散</strong>（記号 V）と呼びます。A は 4 mm²、B は 1 mm² で、A のほうがばらついている、と数字で言えます。V は標本から出した<strong>見積もり</strong>で、母分散そのものではありません。標本が変われば、値も変わります。</p>
+            <p>n ではなく n − 1 で割るのは、標本の平均が測った3本に合わせて決まるため、平均からのずれが、ロット全体の平均からのずれより小さく出がちだからです。n で割ると母分散を小さめに見積もってしまうので、n − 1 で割ってその分を補います。</p>
+            <p>なぜちょうど n − 1 なのかは、QC検定の範囲を超えるため、この教材では説明しません。気になる人は、<a href="https://ja.wikipedia.org/wiki/%E8%87%AA%E7%94%B1%E5%BA%A6" target="_blank" rel="noopener">Wikipedia「自由度」</a>の統計学の説明を見てください。</p>
+            <SectionDetails title="確かめてみる：n − 1 で割ると、本当に母分散に合うのか">
+              <VarianceSimulation />
+            </SectionDetails>
+            <SectionDetails title="もっと正確に（分散の使い分けと注意）">
+              <ul>
+                <li><strong>母分散</strong>（記号 σ²）：母集団の全部を調べたときの分散で、偏差平方和を母集団の個数 N で割ります。</li>
+                <li><strong>不偏分散</strong>（記号 V）：標本から母分散を見積もるときに使い、n − 1 で割ります。上の A の 4 mm² と B の 1 mm² がこれです。</li>
+                <li><strong>標本内の分散</strong>：測った標本そのものの散らばりを記述するだけなら、n で割ります。A の3本では 8 ÷ 3 ≈ 2.67 mm² です。母分散の見積もりには使いません。</li>
+                <li>n − 1 で割ると平均が母分散に一致するのは、同じ母集団から独立に取った標本で、母分散が有限のときです。1回の見積もりが母分散に近いことは保証しません。</li>
+                <li>n = 3 は小さな標本です。この3本だけでライン全体の品質は判断できません。</li>
+                <li>最大値 − 最小値を<strong>範囲</strong>といいます。A は 4 mm、B は 2 mm です。範囲は両端の2点しか使わないので、途中の値の違いは表せません。</li>
+                <li>このページでは、偏差平方和を S、不偏分散を V、標準偏差を s と書きます。</li>
+              </ul>
+            </SectionDetails>
+            <PreviewExerciseCard id="variance" />
+          </>}
+          {sectionId === 'standard-deviation' && <>
+            <p className="ds-ask">分散は mm² で、長さとしては感覚がつかみにくい数です。長さの単位に戻すには、どうすればよいでしょう。</p>
+            <p>面積の平方根をとると、辺の長さに戻ります。分散の平方根が<strong>標準偏差</strong>（記号 s）です。</p>
+            <div className="ds-calc">
+              <p><strong>A</strong><span>s = √4 = 2 mm</span></p>
+              <p><strong>B</strong><span>s = √1 = 1 mm</span></p>
+            </div>
+            <InteractiveVarianceComparison mode="sd" />
+            <p>A は平均 100 mm のまわりに約 2 mm、B は約 1 mm の散らばりがある、と読めます。測定値と同じ mm で言えるので、規格や公差と比べやすくなります。</p>
+            <SectionDetails title="もっと正確に（読み方の注意）">
+              <ul>
+                <li>標準偏差は、偏差の絶対値を平均したものではありません。</li>
+                <li>分布の形などの条件が分からないまま、「大半の値が平均から s 以内に入る」とは言えません。図の帯は s の長さを見せるもので、点がすべて入る範囲ではありません。</li>
+                <li>不偏分散 V の平方根は、母標準偏差の不偏な推定値になるとは限りません。</li>
+                <li>母集団全体の標準偏差は σ、標本から計算する標準偏差は s と書きます。</li>
+                <li><LessonReference targetRef="math-powers-roots" label="平方根の復習" />を確認できます。</li>
+              </ul>
+            </SectionDetails>
+            <PreviewExerciseCard id="standard-deviation" />
+          </>}
+        </section>
+      })}
+
+      <section className="ds-summary" id="preview-summary" aria-labelledby="preview-summary-title">
+        <h2 id="preview-summary-title" tabIndex={-1}>A と B を並べる</h2>
+        <p>同じ平均 100 mm でも、散らばりを表す3つの数字ははっきり違います。</p>
+        <div className="ds-table-wrap">
+          <table className="ds-summary-table">
+            <thead><tr><th scope="col">指標</th><th scope="col">A</th><th scope="col">B</th><th scope="col">何を表すか</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">平均</th><td className="num">100 mm</td><td className="num">100 mm</td><td>データの中心</td></tr>
+              <tr><th scope="row">範囲</th><td className="num">4 mm</td><td className="num">2 mm</td><td>最大と最小の幅</td></tr>
+              <tr><th scope="row">偏差平方和 S</th><td className="num">8 mm²</td><td className="num">2 mm²</td><td>ずれの2乗の合計</td></tr>
+              <tr><th scope="row">不偏分散 V</th><td className="num">4 mm²</td><td className="num">1 mm²</td><td>S ÷ (n − 1)。工程のばらつきの見積もり</td></tr>
+              <tr><th scope="row">標準偏差 s</th><td className="num">2 mm</td><td className="num">1 mm</td><td>√V。mm に戻したばらつき</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <p className="ds-current-link"><a href={currentLessonHref}>現行版を表示</a></p>
+      <details className="descriptive-statistics-preview-references">
+        <summary>出典・参考資料と確認状況</summary>
+        <ul>
+          <li>
+            <a href="https://webdesk.jsa.or.jp/">JSA「3級のレベル表」Ver.20150130.2、p.1（JSA GROUP Webdeskトップから参照）</a>
+            <p>資料URL（参照記録）: <code>https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf</code></p>
+            <p>本文確認日: 2026-11-11。教材registryの前回確認日は2026-10-21。該当箇所: p.1「基本統計量とグラフ」。PDF p.2に「© QM / QC Examination Center, 2019」の表示があり、個別の再利用許諾表示は見当たりません。</p>
+            <p>到達確認日: 2026-11-11。公式経路はWebdeskトップ → QC検定 → 各級のレベルと内容 → 3級のレベル表です。サイト条件はトップを原則リンクフリーとし、下位ページは問い合わせを求めています。サービス規約は無承諾のコンテンツ利用とJSAページ/ファイル/画像への直接リンクを禁じています。このmockはトップページだけをリンクします。参照目的は出題範囲との照合で、本文・表・図・設問は転載・翻案していません。</p>
+          </li>
+          <li>
+            <a href="https://webdesk.jsa.or.jp/">JSA「4級のレベル表」Ver.20150130.2、p.1「平均とばらつき」「平均と範囲」（JSA GROUP Webdeskトップから参照）</a>
+            <p>資料URL（参照記録）: <code>https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf</code></p>
+            <p>本文確認日: 2026-11-11。教材registryの前回確認日は2026-10-21。該当箇所: p.1「平均とばらつき」「平均と範囲」。PDF p.1に「© QM / QC Examination Center, 2019」の表示があり、個別の再利用許諾表示は見当たりません。</p>
+            <p>到達確認日: 2026-11-11。公式経路はWebdeskトップ → QC検定 → 各級のレベルと内容 → 4級のレベル表です。参照目的は出題範囲との照合で、本文・表・図・設問は転載・翻案していません。</p>
+          </li>
+          <li>
+            <a href="https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data">OpenStax, Barbara Illowsky / Susan Dean, Introductory Statistics 2e, §2.7 (2023)</a>
+            <p>本文確認日・到達確認日: 2026-11-11。書籍詳細からView onlineを開き、目次の第2章 → §2.7へ進みました。公式経路は<a href="https://openstax.org/">OpenStaxトップ</a> → Browse the free library → Subjects → Math → Statistics → <a href="https://openstax.org/details/books/introductory-statistics-2e">Introductory Statistics 2e</a> → View online → §2.7です。</p>
+            <p>Web版<a href="https://openstax.org/books/introductory-statistics-2e/pages/preface">Preface</a>のライセンスはCC BY-NC-SA 4.0です。参照目的は用語・式の照合で、本文・図・問題は転載・翻案していません。</p>
+          </li>
+          <li>
+            <a href="https://assets.openstax.org/oscms-prodcms/media/documents/introductory-statistics-2e_-_WEB.pdf">OpenStax, Introductory Statistics 2e, 書籍詳細ページ掲載PDF</a>
+            <p>到達確認日: 2026-11-11。書籍詳細ページのGet the book → Download a PDFから取得した現行PDF（847ページ）です。本文確認日: 2026-11-11。PDF p.119（印刷p.107）の§2.7で用語・式を確認しました。</p>
+            <p>PDF p.4（印刷ページ番号なし）に©2026 Rice UniversityとCC BY-NC-SA 4.0が表示され、出版年は2023年です。非営利・改変時の同一ライセンス・配布時のcredit表示が条件で、OpenStax/Riceの商標・ロゴ・表紙はライセンス対象外です。Web Prefaceと条件は一致します（<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>）。参照のみで、本文・図・問題は転載・翻案していません。</p>
+          </li>
+        </ul>
+      </details>
+      <p className="descriptive-statistics-preview-license-credit">配色: Solarized by Ethan Schoonover (Copyright (c) 2011; MIT License).{' '}
+        <a href={import.meta.env.BASE_URL + 'third-party-licenses.txt'}>全文のライセンス通知</a>
+      </p>
+      <footer className="ds-note">教材の再設計案を確かめるためのモックです。図の操作と演習の入力は保存されません。本文の数値は計算コードで検算しています。</footer>
     </div>
-    {sections.map((section) => <section
-      className="lesson-observation descriptive-statistics-preview-section"
-      id={section.sectionId}
-      aria-labelledby={`preview-${section.sectionId}-title`}
-      key={section.sectionId}
-    >
-      <h2 id={`preview-${section.sectionId}-title`}>{section.title}</h2>
-      {section.sectionId === 'mean' && <>
-        <p>Aの値を合計して3で割ると、(1.000 + 2.200 + 3.000) / 3 = 6.200 / 3 = 31/15 ≈ 2.067 mmです。Bも (1.800 + 2.000 + 2.400) / 3 = 31/15 ≈ 2.067 mmになり、平均は同じです。</p>
-        <p>このように、数値の差が意味を持つ同じ種類の量をまとめるとき、合計を個数で割った値を算術平均として使います。平均の単位は測定値と同じmmです。</p>
-        <p>対象全体の平均を母平均 μ、観測した一部（標本）の平均を標本平均 x̄ と書きます。どちらも「値を足して個数で割る」計算です。一般には <code>μ = (Σ<sub>i=1</sub><sup>N</sup> x<sub>i</sub>)/N</code>、<code>x̄ = (Σ<sub>i=1</sub><sup>n</sup> x<sub>i</sub>)/n</code> と表します。Σの下の i=1 は足し始める位置、上の N や n は足し終わる位置です。母平均は母集団のN個、標本平均は標本のn個の値を足します。<LessonReference targetRef="math-algebra-sigma#sigma" label="総和記号の読み方" />も参照できます。</p>
-        <p>AとBは平均が同じでも、平均だけでは値の広がり方を表せません。次は各測定値が平均からどちらへどれだけ離れているかを見ます。</p>
-        <PreviewExerciseCard id="mean" />
-      </>}
-      {section.sectionId === 'deviation' && <>
-        <p>平均31/15 mmと比べると、Aの1.000 mmは平均より下、2.200 mmと3.000 mmは上にあります。測定値から平均を引くと、それぞれ −16/15 mm、2/15 mm、14/15 mmです。Bでは −4/15 mm、−1/15 mm、5/15 mmになります。このように平均からの距離を符号付きで表した差を偏差と呼びます。</p>
-        <p>値と平均は、同じ種類の量・単位で、同じ対象を表している必要があります。偏差は「測定値 − 平均」という符号付きの差で、今回はどれもmmです。</p>
-        <p>AもBも、正の偏差と負の偏差を足すと合計は0 mmです。平均を基準にすると上下の偏差が打ち消し合うため、偏差をそのまま足した値では散らばりの大きさを比べられません。次は偏差を二乗してから足します。</p>
-        <PreviewExerciseCard id="deviation" />
-      </>}
-      {section.sectionId === 'variance' && <>
-        <p>まず範囲は、最大値から最小値を引いた幅です。Aの範囲は 3.000 − 1.000 = 2.000 mm、Bは 2.400 − 1.800 = 0.600 mmです。最初の問いに戻ると、Aの測定値のほうが広く散らばっています。平均が同じかどうかだけでは分からなかった違いです。</p>
-        <p>範囲は端の2点しか使いません。たとえばC=[1.0, 2.0, 3.0] mmとD=[1.0, 1.1, 3.0] mmは、どちらも範囲が2.0 mmですが、途中の値が違います。そこで、全ての値を平均からの距離で比べる分散も見ます。偏差をそのまま足すと正負が打ち消し合うため、偏差を二乗してから足します。二乗するので単位は mm² です。Aの偏差平方和は (−16/15)² + (2/15)² + (14/15)² = (256 + 4 + 196)/225 = 152/75 mm²、Bは 14/75 mm²です。</p>
-        <p>この3個の製品そのもののばらつきを記述する分散は、偏差平方和を n=3 で割ります。Aは (152/75)/3 = 152/225 ≈ 0.676 mm²、Bは 14/225 ≈ 0.062 mm²です。対象全体の製品すべてを測定した場合は、偏差平方和を個数 N で割ったものが母分散です。</p>
-        <p>一方、工程全体の製品寸法のばらつきを標本から推定するには、各工程内の製品寸法が同じ分布に従い、測定した3個がその分布から互いに独立に抽出されていること（母分散が有限、n≥2）が条件です。この場合は不偏分散として偏差平方和を n−1=2 で割り、Aは 76/75 ≈ 1.013 mm²、Bは 7/75 ≈ 0.093 mm²と推定します。</p>
-        <p>標本平均を使って偏差を計算すると偏差平方和は小さくなりやすく、nで割るだけでは母分散を平均的に小さく見積もります。n−1で割る補正により、同じ条件の標本を繰り返したとき、不偏分散の平均は母分散に一致します。「不偏」は1回の推定値が真の値に一致したり、必ず近かったりする意味ではありません。n=3では推定の不確実性も大きく、この例の3点だけで工程全体の品質や能力は判断できません。</p>
-        <p>途中で丸めず、表示する最後の値だけを丸めます。平均からΣの計算をもう一度確認したい場合は、<LessonReference targetRef="math-algebra-sigma#sigma" label="総和記号の読み方" />を復習できます。</p>
-        <PreviewExerciseCard id="variance" />
-      </>}
-      {section.sectionId === 'standard-deviation' && <>
-        <p>分散は二乗した偏差を使うので単位が mm² です。その平方根をとると、測定値と同じmmに戻ります。この量を標準偏差と呼び、散らばりを元の測定単位で表します。平方根の計算に迷ったら、<LessonReference targetRef="math-powers-roots" label="平方根の復習" />を確認できます。</p>
-        <p>Aを3点そのものとして記述する標準偏差は √(152/225) ≈ 0.822 mm、Bは √(14/225) ≈ 0.249 mmです。標本から母分散を推定するときに不偏分散を使う場合は、そこから計算した標準偏差はAが √(76/75) ≈ 1.007 mm、Bが √(7/75) ≈ 0.306 mmです。</p>
-        <p>標準偏差は、偏差の絶対値を平均したものではありません。また、分布の形などの条件が分からないまま「大半の値が平均から標準偏差以内にある」とは言えません。不偏分散の平方根も、一般には母標準偏差の不偏推定量とは限りません。</p>
-        <PreviewExerciseCard id="standard-deviation" />
-        <p>ここからは本文の計算例を操作せず、A/Bの値を変えて4つの指標の関係を復習します。この図はA/B工程の独立した復習用で、演習の数値変更とは連動しません。</p>
-        <InteractiveVarianceComparison />
-      </>}
-    </section>)}
-    <p><a href={currentLessonHref}>現行版を表示</a></p>
-    <details className="descriptive-statistics-preview-references">
-      <summary>出典・参考資料と確認状況</summary>
-      <ul>
-        <li>
-          <a href="https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf">JSA「3級のレベル表」Ver.20150130.2、p.1</a>
-          <p>URL: https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf</p>
-          <p>本文確認日: 2026-10-21（教材registryの登録記録）。該当箇所: p.1「基本統計量とグラフ」。</p>
-          <p>到達確認日: 2026-11-09。JSA Webdeskの緊急メンテナンス案内が表示され、PDF本文は未確認です。案内の再開予定は2026-11-11 10:00 JSTです。</p>
-          <p>参照目的: QC検定範囲との対応確認。本文の転載はしていません。今回のPDF本文でライセンス条件を確認できていません。</p>
-        </li>
-        <li>
-          <a href="https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf">JSA「4級のレベル表」Ver.20150130.2、p.1「平均とばらつき」「平均と範囲」</a>
-          <p>URL: https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf</p>
-          <p>本文確認日: 2026-10-21（教材registryの登録記録）。該当箇所: 平均とばらつき、平均と範囲。</p>
-          <p>到達確認日: 2026-11-09。JSA Webdeskの緊急メンテナンス案内が表示され、PDF本文は未確認です。案内の再開予定は2026-11-11 10:00 JSTです。</p>
-          <p>参照目的: QC検定範囲との対応確認。本文の転載はしていません。今回のPDF本文でライセンス条件を確認できていません。</p>
-        </li>
-        <li>
-          <a href="https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data">OpenStax, Barbara Illowsky / Susan Dean, Introductory Statistics 2e, §2.7 (2023)</a>
-          <p>URL: https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data</p>
-          <p>本文確認日・到達確認日: 2026-11-09。該当ページを開き、本文とライセンス表示を確認しました。ページはCC BY-NC-SA 4.0とし、再利用には帰属表示・非営利・同一ライセンスでの継承が必要としています。</p>
-          <p>参照目的: 用語と式の照合。本文・図・問題は転載していません。</p>
-        </li>
-        <li>
-          <a href="https://assets.openstax.org/oscms-prodcms/media/documents/Introductory_Statistics_2e_-_WEB.pdf">OpenStax, Introductory Statistics 2e, 2023版PDF</a>
-          <p>URL: https://assets.openstax.org/oscms-prodcms/media/documents/Introductory_Statistics_2e_-_WEB.pdf</p>
-          <p>本文確認日: 未記録。2023版PDFにCC BY 4.0とある過去記録があります。</p>
-          <p>到達確認日: 2026-11-09。アクセスは403で、今回のPDF本文・ライセンス表示は未確認です。</p>
-          <p>参照目的: Web版とは別の資料として記録。今回のPDF本文から文章・図・問題を転載していません。</p>
-        </li>
-      </ul>
-    </details>
-    <p className="descriptive-statistics-preview-license-credit">
-      配色: Solarized by Ethan Schoonover (Copyright (c) 2011; MIT License).{' '}
-      <a href={import.meta.env.BASE_URL + 'third-party-licenses.txt'}>全文のライセンス通知</a>
-    </p>
   </section>
 }

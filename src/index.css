@@ -1,6 +1,8 @@
 :root {
   color-scheme: light;
-  font-family: Inter, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  --font-ui: 'BIZ UDPGothic', 'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans JP', system-ui, sans-serif;
+  --font-num: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-ui);
   color: var(--text);
   background: var(--page-background);
   font-synthesis: none;
@@ -88,6 +90,18 @@ body {
   min-height: 100vh;
   margin: 0;
   background: var(--page-background);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-ui);
+}
+
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
 }
 
 #root,
@@ -202,6 +216,10 @@ h1:focus {
   min-height: calc(100vh - 5rem);
   padding: clamp(1.25rem, 5vw, 4rem);
   place-items: start center;
+}
+
+.page-content-wide-preview {
+  padding-inline: 0;
 }
 
 .screen {
@@ -394,7 +412,7 @@ h1 {
   padding: 0.75rem;
   border-left: 3px solid var(--success);
   background: var(--surface);
-  font-family: "Cambria Math", "Yu Mincho", serif;
+  font-family: math, "Cambria Math", "Yu Mincho", serif;
   line-height: 2;
   overflow-wrap: anywhere;
 }

@@ -1105,11 +1105,14 @@ function App() {
           )}
         </main>
       ) : (
-      <main className="page-content">
+      <main className={`page-content${isDescriptiveStatisticsPreview ? ' page-content-wide-preview' : ''}`}>
         {routeMessages}
-        <article className="screen">
-          <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
-          <p className="description">{current.description}</p>
+        <article className={`screen${isDescriptiveStatisticsPreview ? ' screen-wide-preview' : ''}`}>
+          {isDescriptiveStatisticsPreview && <p className="description ds-eyebrow">SfQC · QC検定2級に向けた統計の基礎</p>}
+          <h1 id="page-title" ref={headingRef} tabIndex={-1}>{isDescriptiveStatisticsPreview ? '基本統計量' : pageTitle}</h1>
+          {isDescriptiveStatisticsPreview
+            ? <p className="description ds-title-subtitle"><em>平均が同じでも、品質は同じとは限らない</em></p>
+            : <p className="description">{current.description}</p>}
 
           {screen === 'data' ? (
             <section className="data-panel" aria-labelledby="data-title">
