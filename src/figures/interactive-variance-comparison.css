@@ -1,43 +1,84 @@
 .interactive-variance-comparison {
+  display: block;
   min-width: 0;
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
   overflow-wrap: anywhere;
 }
 
-.ivc-figure {
+.ivc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.ivc-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.ivc-tag {
+  display: inline-grid;
+  width: 1.375rem;
+  height: 1.375rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--link);
+  color: var(--page-background);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ivc-tag-b {
+  border-radius: 0.3rem;
+  background: var(--warning);
+}
+
+.ivc-svg-wrap {
   min-width: 0;
-  margin: 1rem 0;
-}
-
-.ivc-answer {
-  margin-block: 0.5rem;
-}
-
-.ivc-answer summary {
-  cursor: pointer;
-  line-height: 1.8;
 }
 
 .ivc-svg {
   display: block;
   width: 100%;
-  max-width: 24rem;
   height: auto;
-  margin-inline: auto;
 }
 
 .ivc-grid {
-  stroke: var(--border);
+  stroke: var(--ds-grid, var(--border));
   stroke-width: 1;
 }
 
-.ivc-axis {
-  stroke: var(--text-muted);
-  stroke-width: 1.5;
+.screen-wide-preview .ivc-population span,
+.screen-wide-preview .ivc-bar-row .num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
 }
 
-.ivc-label {
-  fill: var(--text);
+.ivc-base {
+  stroke: var(--border);
+  stroke-width: 2;
+}
+
+.ivc-axis-label,
+.ivc-point-label {
+  fill: var(--text-muted);
   font-family: inherit;
+  font-size: 12px;
+}
+
+.ivc-point-label {
+  fill: var(--text);
   font-size: 13px;
 }
 
@@ -49,149 +90,217 @@
   color: var(--warning);
 }
 
-.ivc-deviation,
-.ivc-mean {
+.ivc-series-label {
+  fill: currentColor;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ivc-fill {
+  fill: currentColor;
+}
+
+.ivc-dash {
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
-}
-
-.ivc-series-b .ivc-deviation,
-.ivc-series-b .ivc-mean {
-  stroke-dasharray: 6 3;
-}
-
-.ivc-point {
-  fill: currentColor;
-  stroke: var(--surface);
+  stroke-dasharray: 3 3;
   stroke-width: 1.5;
 }
 
-.ivc-figcaption {
-  color: var(--text-muted);
-  line-height: 1.7;
+.ivc-arrow {
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 4;
 }
 
-.ivc-controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+.ivc-square {
+  fill: currentColor;
+  fill-opacity: 0.22;
+  stroke: currentColor;
+  stroke-width: 1.5;
 }
 
-.ivc-series-controls {
-  min-width: 0;
-  margin: 0;
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
+.ivc-band {
+  fill: currentColor;
+  fill-opacity: 0.16;
+  stroke: currentColor;
+  stroke-dasharray: 4 3;
+  stroke-width: 1.5;
 }
 
-.ivc-series-controls legend {
-  padding-inline: 0.25rem;
+.ivc-dot {
+  fill: currentColor;
+  stroke: var(--surface);
+  stroke-width: 2;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ivc-dot:focus {
+  outline: none;
+}
+
+.ivc-dot:focus-visible {
+  stroke: var(--text);
+  stroke-width: 3;
+}
+
+.ivc-dot-number {
+  fill: var(--page-background);
+  font-family: inherit;
+  font-size: 11px;
   font-weight: 700;
+  pointer-events: none;
 }
 
-.ivc-measurement {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 7rem;
-  align-items: end;
-  gap: 0.5rem;
+.ivc-readout {
   min-width: 0;
   margin-top: 0.5rem;
+  overflow-x: auto;
 }
 
-.ivc-number-label {
-  display: grid;
-  min-width: 0;
-  gap: 0.25rem;
-}
-
-.ivc-number-input {
+.ivc-readout table {
   width: 100%;
-  min-width: 0;
-  min-height: 2.5rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--control-border);
-  border-radius: 0.4rem;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
-
-.ivc-range-input {
-  width: 100%;
-  margin: 0 0 0.5rem;
-  accent-color: var(--accent);
-}
-
-.ivc-number-input:focus-visible,
-.ivc-range-input:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-
-.ivc-field-message {
-  grid-column: 1 / -1;
-  min-height: 1.4em;
-  margin: 0;
-  color: var(--danger);
+  border-collapse: collapse;
   font-size: 0.875rem;
 }
 
-.ivc-status:empty {
-  display: none;
-}
-
-.ivc-summary-table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  overflow-wrap: anywhere;
-}
-
-.ivc-summary-table caption {
-  padding-block: 0.5rem;
-  font-weight: 700;
+.ivc-readout th,
+.ivc-readout td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
   text-align: left;
+  line-height: 1.6;
 }
 
-.ivc-summary-table th,
-.ivc-summary-table td {
-  padding: 0.35rem;
+.ivc-readout th {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.ivc-readout td.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+.ivc-caption {
+  margin-top: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+.ivc-reset {
+  margin-top: 0.5rem;
+}
+
+.ivc-simulation {
+  margin-block: 1.25rem;
+  padding: 0.875rem 1rem 1rem;
   border: 1px solid var(--border);
-  text-align: left;
-  vertical-align: top;
+  border-radius: 0.75rem;
+  background: var(--surface);
 }
 
-.ivc-summary-table th:first-child {
-  width: 4rem;
+.descriptive-statistics-preview-content .ivc-simulation h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
 }
 
-.ivc-statistics {
+.ivc-simulation p {
+  margin: 0 0 0.875rem;
+  font-size: 0.9375rem;
+}
+
+.ivc-population {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-block: 0.4rem 0.75rem;
+}
+
+.ivc-population span {
+  padding: 0.125rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--surface-subtle);
+  font-family: var(--font-num);
+}
+
+.ivc-bars {
+  margin-block: 0.5rem;
+}
+
+.ivc-bar-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.35rem 1rem;
+  grid-template-columns: minmax(7.5rem, 11rem) minmax(0, 1fr) 4.5rem;
+  align-items: center;
+  gap: 0.25rem 0.625rem;
+  margin-block: 0.375rem;
+  font-size: 0.875rem;
 }
 
-.ivc-statistics dt {
-  overflow-wrap: anywhere;
+.ivc-bar {
+  position: relative;
+  height: 0.875rem;
+  border-radius: 0.5rem;
+  background: var(--surface-subtle);
 }
 
-.ivc-statistics dd {
-  margin: 0;
+.ivc-bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: var(--link);
+}
+
+.ivc-bar > i.ivc-bar-n-minus-one {
+  background: var(--warning);
+}
+
+.ivc-bar > b {
+  position: absolute;
+  inset: -0.25rem auto -0.25rem 80%;
+  width: 2px;
+  background: var(--text);
+}
+
+.ivc-bar-row .num {
   text-align: right;
+  font-family: var(--font-num);
 }
 
-@media (max-width: 600px) {
-  .ivc-controls {
-    grid-template-columns: minmax(0, 1fr);
+.ivc-simulation-last {
+  min-height: 1.6em;
+  margin: 0.5rem 0 0 !important;
+  color: var(--text-muted);
+}
+
+.ivc-simulation-explanation {
+  margin: 0.75rem 0 0 !important;
+  font-size: 0.9375rem;
+}
+
+.ivc-simulation-actions {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .interactive-variance-comparison,
+  .ivc-simulation {
+    padding-inline: 0.5rem;
   }
 
-  .ivc-series-controls {
-    padding: 0.5rem;
+  .ivc-bar-row {
+    grid-template-columns: minmax(6.5rem, 8rem) minmax(0, 1fr) 3.5rem;
+    column-gap: 0.35rem;
   }
+}
 
-  .ivc-measurement {
-    grid-template-columns: minmax(0, 1fr) 6rem;
+@media (prefers-reduced-motion: no-preference) {
+  .ivc-bar > i {
+    transition: width 0.25s ease;
   }
 }

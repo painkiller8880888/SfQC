@@ -2520,20 +2520,46 @@ test('descriptive-statistics preview is limited to its development overview and 
     ])
     assert.equal(app.host.querySelector('.descriptive-statistics-preview-controls'), null)
     assert.equal(app.host.querySelectorAll('.lesson-check-question').length, 4)
-    assert.match(app.host.textContent, /31\/15 ≈ 2\.067 mm/u)
-    assert.match(app.host.textContent, /152\/225 ≈ 0\.676 mm²/u)
-    assert.match(app.host.textContent, /AとBは異なる工程/u)
-    assert.match(app.host.textContent, /製品を3個ずつ独立に無作為抽出/u)
-    assert.match(app.host.textContent, /Aの偏差平方和は \(−16\/15\)² \+ \(2\/15\)² \+ \(14\/15\)² = \(256 \+ 4 \+ 196\)\/225 = 152\/75 mm²/u)
-    assert.match(app.host.textContent, /この3個の製品そのもののばらつき.*n=3/u)
-    assert.match(app.host.textContent, /工程全体の製品寸法のばらつき.*n−1=2/u)
-    const previewFormulaMarkup = [...app.host.querySelectorAll('.descriptive-statistics-preview code')].map((formula) => formula.innerHTML)
-    assert.ok(previewFormulaMarkup.some((formula) => formula.includes('Σ<sub>i=1</sub><sup>N</sup> x<sub>i</sub>')))
-    assert.ok(previewFormulaMarkup.some((formula) => formula.includes('Σ<sub>i=1</sub><sup>n</sup> x<sub>i</sub>')))
-    assert.match(app.host.textContent, /n−1で割る補正/u)
+    assert.equal(app.host.querySelector('#page-title').textContent, '基本統計量')
+    assert.equal(app.host.querySelector('.ds-title-subtitle em')?.textContent, '平均が同じでも、品質は同じとは限らない')
+    assert.match(app.host.textContent, /目標の長さが 100 mm のシャフト/u)
+    assert.match(app.host.textContent, /98.*100.*102/u)
+    assert.match(app.host.textContent, /99.*100.*101/u)
+    assert.match(app.host.textContent, /A は 4 mm、B は 2 mm/u)
+    assert.match(app.host.textContent, /8 ÷ 2 = 4 mm²/u)
+    assert.match(app.host.textContent, /2 ÷ 2 = 1 mm²/u)
+    assert.match(app.host.textContent, /母平均 μ/u)
+    assert.match(app.host.textContent, /標本平均 x̄/u)
+    assert.match(app.host.textContent, /x̄ = \(x₁ \+ x₂ \+ … \+ xₙ\) ÷ n/u)
+    assert.match(app.host.textContent, /知りたいのは、ロット全体のばらつき/u)
+    assert.match(app.host.textContent, /母分散 2 と合うのは、n − 1 で割った場合/u)
+    assert.match(app.host.textContent, /1回ごとの値は母分散とずれます/u)
+    assert.equal(app.host.querySelectorAll('.ds-self-check, .ds-self-check-description').length, 0)
+    assert.ok(!app.host.textContent.includes('この考え方を理解できた'))
+    assert.equal(app.host.querySelectorAll('.interactive-variance-comparison').length, 4)
+    assert.equal(app.host.querySelectorAll('.ivc-simulation').length, 1)
+    assert.match(app.host.textContent, /全部で 125 通り/u)
+    assert.match(app.host.textContent, /1\.33/u)
+    assert.match(app.host.textContent, /2\.00/u)
+    assert.match(app.host.querySelector('#standard-deviation').textContent, /s = √4 = 2 mm/u)
+    assert.match(app.host.querySelector('#standard-deviation').textContent, /s = √1 = 1 mm/u)
     assert.equal(linkFor(app.host, '現行版を表示')?.getAttribute('href'), '/SfQC/#/lesson/descriptive-statistics')
     assert.equal(linkForRoute(app.host, { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' })?.dataset.navIntent, 'review')
     assert.equal(linkForRoute(app.host, { kind: 'lesson-id', lessonId: 'math-powers-roots', sectionId: null })?.dataset.navIntent, 'review')
+
+    const indexHash = window.location.hash
+    const indexHistoryState = JSON.stringify(window.history.state)
+    const indexLinks = [...app.host.querySelectorAll('.ds-section-nav a')]
+    assert.equal(indexLinks.length, 5)
+    for (const indexLink of indexLinks) {
+      const targetId = indexLink.getAttribute('href').slice(1)
+      const targetHeading = app.host.querySelector(`#${targetId} h2`)
+      assert.ok(targetHeading, `the ${targetId} index entry must have a heading target`)
+      await click(indexLink)
+      assert.equal(window.document.activeElement, targetHeading)
+      assert.equal(window.location.hash, indexHash, 'index navigation must preserve the app route hash')
+      assert.equal(JSON.stringify(window.history.state), indexHistoryState, 'index navigation must preserve history state')
+    }
 
     await click(linkFor(app.host, '学習マップ'))
     assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
@@ -2585,8 +2611,8 @@ test('public preview mode renders the isolated mock without writing learning dat
     await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
     assert.ok(app.host.querySelector('.descriptive-statistics-preview'))
     const exercise = app.host.querySelector('[data-preview-exercise="mean"]')
-    await click(exercise.querySelector('input[type="checkbox"]'))
-    await click(exercise.querySelector('button'))
+    await click(buttonFor(exercise, '答え合わせ'))
+    await click(buttonFor(exercise, '別の数値で'))
     assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
     assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
     assert.deepEqual(writes, [])
@@ -2599,7 +2625,7 @@ test('public preview mode renders the isolated mock without writing learning dat
   }
 })
 
-test('preview exercises keep each answer, regeneration, self-check, figure, and saved data independent', async () => {
+test('preview exercises keep each answer, regeneration, explanation, figure, and saved data independent', async () => {
   const app = await createHarness()
   const { window } = app.dom
   const wrongAnswer = fixedInstance.questionDefinitionSnapshot.content.choices
@@ -2662,8 +2688,34 @@ test('preview exercises keep each answer, regeneration, self-check, figure, and 
     assert.equal(references.open, false)
     assert.equal(references.querySelectorAll('li').length, 4)
     assert.match(references.textContent, /https:\/\/webdesk\.jsa\.or\.jp\/pdf\/qc\/md_4609\.pdf/u)
+    const jsaPdfUrls = [
+      'https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf',
+      'https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf',
+    ]
+    const referenceCodeText = [...references.querySelectorAll('code')].map((code) => code.textContent)
+    for (const pdfUrl of jsaPdfUrls) {
+      assert.ok(referenceCodeText.includes(pdfUrl), `${pdfUrl} should remain visible as plain reference text`)
+      assert.equal(references.querySelector(`a[href="${pdfUrl}"]`), null, `${pdfUrl} must not be a direct link`)
+    }
+    const jsaReferenceLinks = [...references.querySelectorAll('a[href*="jsa.or.jp"]')]
+    assert.equal(jsaReferenceLinks.length, 2)
+    assert.ok(jsaReferenceLinks.every((link) => link.href === 'https://webdesk.jsa.or.jp/'))
+    assert.match(references.textContent, /公式経路はWebdeskトップ → QC検定 → 各級のレベルと内容 → 3級のレベル表/u)
+    assert.match(references.textContent, /公式経路はWebdeskトップ → QC検定 → 各級のレベルと内容 → 4級のレベル表/u)
+    assert.match(references.textContent, /このmockはトップページだけをリンクします/u)
     assert.match(references.textContent, /本文確認日/u)
     assert.match(references.textContent, /到達確認日/u)
+    assert.match(references.textContent, /© QM \/ QC Examination Center, 2019/u)
+    assert.match(references.textContent, /個別の再利用許諾表示は見当たりません/u)
+    assert.match(references.textContent, /サービス規約は無承諾のコンテンツ利用とJSAページ\/ファイル\/画像への直接リンクを禁じています/u)
+    assert.match(references.textContent, /OpenStaxトップ.*Browse the free library.*Subjects.*Math.*Statistics.*Introductory Statistics 2e.*View online.*§2\.7/u)
+    assert.ok(references.querySelector('a[href="https://openstax.org/"]'))
+    assert.ok(references.querySelector('a[href="https://openstax.org/details/books/introductory-statistics-2e"]'))
+    assert.ok(references.querySelector('a[href="https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data"]'))
+    assert.ok(references.querySelector('a[href="https://assets.openstax.org/oscms-prodcms/media/documents/introductory-statistics-2e_-_WEB.pdf"]'))
+    assert.match(references.textContent, /PDF p\.119（印刷p\.107）/u)
+    assert.match(references.textContent, /PDF p\.4.*CC BY-NC-SA 4\.0/su)
+    assert.match(references.textContent, /Web Prefaceと条件は一致します/u)
     assert.match(references.textContent, /CC BY-NC-SA 4\.0/u)
     assert.match(references.querySelector('a').textContent, /JSA「3級のレベル表」/u)
     await click(references.querySelector('summary'))
@@ -2679,18 +2731,27 @@ test('preview exercises keep each answer, regeneration, self-check, figure, and 
       const details = exerciseCard.querySelector('details')
       return {
         index: exerciseCard.dataset.previewExerciseIndex,
-        prompt: exerciseCard.querySelector(':scope > p').textContent,
-        answer: details.querySelector('[data-preview-exercise-answer]').textContent,
-        solution: details.querySelectorAll('p')[1].textContent,
+        prompt: exerciseCard.querySelector('.ds-exercise-prompt').textContent,
+        solution: details.querySelector('[data-preview-exercise-answer]').textContent,
         open: details.open,
-        checked: exerciseCard.querySelector('input[type="checkbox"]').checked,
+        values: [...exerciseCard.querySelectorAll('.ds-exercise-fields input')].map((input) => input.value),
+        feedback: exerciseCard.querySelector('.ds-exercise-feedback').textContent,
       }
     }
     const meanMeasurements = (index) => generateDescriptiveStatisticsPreviewExercise('mean', index)
-      .prompt.match(/寸法は(.+?) mmでした/u)[1]
+      .prompt.match(/ところ、(.+?) でした/u)[1]
       .split(' mm、')
-      .map(Number)
+      .map((value) => Number(value.replace(/ mm$/u, '')))
       .sort((left, right) => left - right)
+
+    const figures = [...app.host.querySelectorAll('.interactive-variance-comparison')]
+    assert.equal(figures.length, 4)
+    const figureState = () => figures.map((figure) => ({
+      mode: figure.dataset.figureMode,
+      values: [...figure.querySelectorAll('[role="slider"]')].map((point) => point.getAttribute('aria-valuenow')),
+      readout: figure.querySelector('.ivc-readout').textContent,
+    }))
+    const figureBefore = figureState()
 
     for (const id of ids) {
       const exerciseCard = card(id)
@@ -2698,33 +2759,34 @@ test('preview exercises keep each answer, regeneration, self-check, figure, and 
       assert.ok(exerciseCard, `expected the ${id} exercise`)
       assert.equal(exerciseCard.dataset.previewExerciseIndex, String(previewExerciseDefinitions[id].initialIndex))
       assert.equal(exerciseCard.querySelector('details').open, false)
-      assert.equal(exerciseCard.querySelector('details summary').textContent, '答えと考え方を確認')
-      assert.equal(exerciseCard.querySelector(':scope > p').textContent, exercise.prompt)
-      assert.equal(exerciseCard.querySelector('[data-preview-exercise-answer]').textContent, exercise.answer)
-      assert.equal(exerciseCard.querySelector('details').querySelectorAll('p')[1].textContent, exercise.solution)
+      assert.equal(exerciseCard.querySelector('details summary').textContent, '考え方を見る')
+      assert.equal(exerciseCard.querySelector('.ds-exercise-prompt').textContent, exercise.prompt)
+      assert.equal(exerciseCard.querySelector('[data-preview-exercise-answer]').textContent, exercise.solution)
+      assert.equal(exerciseCard.querySelectorAll('.ds-exercise-fields input').length, exercise.fields.length)
       const visibleText = [...exerciseCard.children]
         .filter((child) => child.tagName !== 'DETAILS')
         .map((child) => child.textContent)
         .join(' ')
-      assert.ok(!visibleText.includes(exercise.answer), `${id} answer must stay inside closed details`)
       assert.ok(!visibleText.includes(exercise.solution), `${id} explanation must stay inside closed details`)
-      assert.equal(exerciseCard.querySelector('input[type="checkbox"]').checked, false)
-      const checkbox = exerciseCard.querySelector('input[type="checkbox"]')
-      assert.ok(app.host.querySelector(`#${checkbox.getAttribute('aria-describedby')}`), `${id} self-check needs its explanation`)
-      assert.equal(exerciseCard.querySelector('input[type="number"], input[type="text"], textarea'), null,
-        'the mock must not add an answer input or automatic grading')
+      assert.equal(exerciseCard.querySelector('input[type="checkbox"]'), null, `${id} must not render a self-assessment checkbox`)
+      assert.equal(exerciseCard.querySelector('.ds-self-check-description'), null)
+      assert.equal(exerciseCard.querySelector('.ds-exercise-feedback').textContent, '')
+      await click(exerciseCard.querySelector('.ds-exercise-actions button:first-child'))
+      assert.match(exerciseCard.querySelector('.ds-exercise-feedback').textContent, /数字で入力してください/u)
+      for (const [fieldIndex, answer] of exercise.answers.entries()) {
+        const input = exerciseCard.querySelectorAll('.ds-exercise-fields input')[fieldIndex]
+        const text = id === 'deviation' && fieldIndex === 0 ? '−2' : String(answer)
+        await changeTextInput(window, input, text)
+      }
+      await click(exerciseCard.querySelector('.ds-exercise-actions button:first-child'))
+      assert.equal(exerciseCard.querySelector('.ds-exercise-feedback').textContent, '正解です。')
+      const firstInput = exerciseCard.querySelector('.ds-exercise-fields input')
+      await changeTextInput(window, firstInput, String(exercise.answers[0] + 1))
+      await click(exerciseCard.querySelector('.ds-exercise-actions button:first-child'))
+      assert.match(exerciseCard.querySelector('.ds-exercise-feedback').textContent, /合っていない/u)
       await click(exerciseCard.querySelector('details summary'))
-      await click(checkbox)
       assert.equal(exerciseCard.querySelector('details').open, true)
-      assert.equal(checkbox.checked, true)
     }
-
-    const figure = app.host.querySelector('.interactive-variance-comparison')
-    const figureState = () => ({
-      inputs: [...figure.querySelectorAll('input')].map((input) => input.value),
-      values: [...figure.querySelectorAll('[data-value]')].map((value) => value.getAttribute('data-value')),
-    })
-    const figureBefore = figureState()
     const savedHistoryState = JSON.stringify(window.history.state)
 
     for (const id of ids) {
@@ -2736,30 +2798,30 @@ test('preview exercises keep each answer, regeneration, self-check, figure, and 
         .map((otherId) => [otherId, snapshot(card(otherId))])
 
       for (let repeat = 0; repeat < 4; repeat += 1) {
-        await click(exerciseCard.querySelector('button'))
+        await click(exerciseCard.querySelector('.ds-exercise-actions button:last-child'))
         const after = snapshot(exerciseCard)
         assert.notEqual(after.index, before.index, `${id} should receive a different numeric variant`)
         if (id === 'mean') {
           assert.notDeepEqual(meanMeasurements(Number(after.index)), meanMeasurements(Number(before.index)),
             'mean regeneration should change the measurement multiset, not only its order')
         }
-        assert.equal(after.open, false, `${id} answer should close after a numeric change`)
-        assert.equal(after.checked, true, `${id} self-check should survive its numeric change`)
+        assert.equal(after.open, false, `${id} explanation should close after a numeric change`)
         const generated = generateDescriptiveStatisticsPreviewExercise(id, Number(after.index))
         assert.equal(after.prompt, generated.prompt)
-        assert.equal(after.answer, generated.answer)
         assert.equal(after.solution, generated.solution)
+        assert.deepEqual(after.values, generated.fields.map(() => ''))
+        assert.equal(after.feedback, '')
         assert.equal(card(id).querySelector('details').open, false)
         for (const [otherId, state] of othersBefore) {
           assert.deepEqual(snapshot(card(otherId)), state, `${id} regeneration must not change ${otherId}`)
         }
-        assert.deepEqual(figureState(), figureBefore, `${id} regeneration must not change the separate review figure`)
+        assert.deepEqual(figureState(), figureBefore, `${id} regeneration must not change the separate review figures`)
         before.index = after.index
         before.prompt = after.prompt
-        before.answer = after.answer
         before.solution = after.solution
         before.open = after.open
-        before.checked = after.checked
+        before.values = after.values
+        before.feedback = after.feedback
         if (repeat < 3) await click(details.querySelector('summary'))
       }
     }
@@ -2775,7 +2837,7 @@ test('preview exercises keep each answer, regeneration, self-check, figure, and 
       const exerciseCard = card(id)
       assert.equal(exerciseCard.dataset.previewExerciseIndex, String(previewExerciseDefinitions[id].initialIndex))
       assert.equal(exerciseCard.querySelector('details').open, false)
-      assert.equal(exerciseCard.querySelector('input[type="checkbox"]').checked, false)
+      assert.equal(exerciseCard.querySelector('input[type="checkbox"]'), null)
     }
     assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
     assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
@@ -2790,7 +2852,7 @@ test('preview exercises keep each answer, regeneration, self-check, figure, and 
   }
 })
 
-test('interactive statistics preview keeps controls, calculations, and accessible summaries in sync without saving', async () => {
+test('the four interactive preview figures and n versus n − 1 simulation stay in sync without saving', async () => {
   const app = await createHarness()
   const { window } = app.dom
   const localRaw = serializeLocalData({ schemaVersion: 2, questionInstances: [], answerAttempts: [], reviewEvents: [] })
@@ -2818,132 +2880,74 @@ test('interactive statistics preview keeps controls, calculations, and accessibl
 
   try {
     await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
-    const input = (series, observation, kind = 'number') => app.host.querySelector(
-      `input[data-series="${series}"][data-observation="${observation}"][data-input-kind="${kind}"]`,
-    )
-    const summary = (series) => app.host.querySelector(`[data-series-summary="${series}"]`)
-    const statistic = (series, name) => summary(series).querySelector(`[data-statistic="${name}"]`).textContent
-    const setNumber = async (series, observation, value) => changeControl(window, input(series, observation), value)
-    const assertB = ({ mean, deviations, sum, variance, standardDeviation }) => {
-      assert.equal(statistic('B', 'mean'), mean)
-      assert.equal(statistic('B', 'sum-of-squared-deviations'), sum)
-      assert.equal(statistic('B', 'variance'), variance)
-      assert.equal(statistic('B', 'standard-deviation'), standardDeviation)
-      assert.deepEqual([...summary('B').querySelectorAll('tbody tr td:last-child')].map((cell) => cell.textContent), deviations)
-    }
+    const figures = [...app.host.querySelectorAll('.interactive-variance-comparison')]
+    assert.deepEqual(figures.map((figure) => figure.dataset.figureMode), ['mean', 'deviation', 'variance', 'sd'])
+    const figure = (mode) => figures.find((item) => item.dataset.figureMode === mode)
+    const point = (mode, series, index) => figure(mode).querySelector(`[data-k="${series}${index}"]`)
+    const values = (mode) => [...figure(mode).querySelectorAll('[role="slider"]')].map((slider) => slider.getAttribute('aria-valuenow'))
+    const rowValue = (mode, row, series) => figure(mode).querySelectorAll('tbody tr')[row].querySelectorAll('td')[series === 'A' ? 0 : 1].textContent
 
-    const comparison = app.host.querySelector('.interactive-variance-comparison')
-    assert.ok(comparison)
-    assert.match(comparison.textContent, /課題A: Bを1\.9、2\.1、2\.5 mmにします/u)
-    const challengeItems = [...comparison.querySelectorAll('ol > li')]
-    assert.equal(challengeItems.length, 2)
-    assert.match(challengeItems[1].firstChild.textContent, /課題B: まず系列Bを初期値の1\.8、2\.0、2\.4 mmに戻してから、1\.6、2\.0、2\.6 mmにします。初期値と比べて、平均は変わるでしょうか。分散・標準偏差はどう変わるでしょうか/u)
-    const answers = [...comparison.querySelectorAll('details.ivc-answer')]
-    assert.equal(answers.length, 2)
-    assert.ok(answers.every((answer) => !answer.open))
-    assert.deepEqual(answers.map((answer) => answer.querySelector('summary').textContent), ['課題Aの確認', '課題Bの確認'])
-    assert.match(answers[0].textContent, /偏差は変わらず、分散と標準偏差も同じです/u)
-    assert.match(answers[1].textContent, /初期値に戻して比べると、平均は2\.067 mmで変わりません/u)
-    assert.match(answers[1].textContent, /平均からの偏差が広がるため、分散と標準偏差が増えます/u)
-    assertB({
-      mean: '2.067 mm',
-      deviations: ['−0.267 mm', '−0.067 mm', '+0.333 mm'],
-      sum: '0.187 mm²',
-      variance: '0.062 mm²',
-      standardDeviation: '0.249 mm',
+    for (const item of figures) {
+      const sliders = [...item.querySelectorAll('[role="slider"]')]
+      assert.equal(sliders.length, 6)
+      assert.ok(sliders.every((slider) => slider.tabIndex === 0))
+      assert.ok(sliders.every((slider) => slider.getAttribute('aria-valuemin') === '96' && slider.getAttribute('aria-valuemax') === '104'))
+    }
+    assert.deepEqual(values('mean'), ['98', '100', '102', '99', '100', '101'])
+    assert.equal(rowValue('mean', 1, 'A'), '100')
+    assert.equal(rowValue('mean', 1, 'B'), '100')
+    assert.equal(rowValue('deviation', 1, 'A'), '−2, 0, +2')
+    assert.equal(rowValue('variance', 1, 'A'), '8')
+    assert.equal(rowValue('variance', 2, 'A'), '4')
+    assert.equal(rowValue('sd', 2, 'A'), '2')
+    assert.equal(rowValue('variance', 1, 'B'), '2')
+    assert.equal(rowValue('variance', 2, 'B'), '1')
+    assert.equal(rowValue('sd', 2, 'B'), '1')
+
+    await act(async () => point('mean', 'A', 0).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })))
+    assert.equal(point('mean', 'A', 0).getAttribute('aria-valuenow'), '99')
+    assert.equal(rowValue('mean', 1, 'A'), '100.33')
+    assert.equal(point('deviation', 'A', 0).getAttribute('aria-valuenow'), '98', 'each section keeps its own figure state')
+    await act(async () => point('mean', 'A', 0).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true })))
+    assert.equal(point('mean', 'A', 0).getAttribute('aria-valuenow'), '104')
+    await act(async () => point('mean', 'A', 0).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true })))
+    assert.equal(point('mean', 'A', 0).getAttribute('aria-valuenow'), '96')
+    await click(figure('mean').querySelector('.ivc-reset'))
+    assert.deepEqual(values('mean'), ['98', '100', '102', '99', '100', '101'])
+
+    const meanSvg = figure('mean').querySelector('svg')
+    const chartWidth = Number(meanSvg.getAttribute('viewBox').split(' ')[2])
+    const padding = chartWidth < 480 ? 22 : 32
+    const pixelPerMm = (chartWidth - 2 * padding) / 8
+    Object.defineProperty(meanSvg, 'getBoundingClientRect', { value: () => ({ left: 0, width: chartWidth }) })
+    const draggedPoint = point('mean', 'A', 0)
+    const dispatchPointer = (type, clientX) => meanSvg.dispatchEvent(new window.MouseEvent(type, { bubbles: true, cancelable: true, clientX }))
+    await act(async () => {
+      draggedPoint.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientX: padding + (98 - 96) * pixelPerMm }))
+      dispatchPointer('pointermove', padding + (101 - 96) * pixelPerMm)
+      dispatchPointer('pointerup', padding + (101 - 96) * pixelPerMm)
     })
-    assert.equal(statistic('A', 'mean'), '2.067 mm')
-    assert.equal(input('B', 1, 'number').required, true)
-    assert.equal(input('B', 1, 'number').min, '1.0')
-    assert.equal(input('B', 1, 'number').max, '3.0')
-    assert.equal(input('B', 1, 'number').step, '0.1')
+    assert.equal(point('mean', 'A', 0).getAttribute('aria-valuenow'), '101')
+    await click(figure('mean').querySelector('.ivc-reset'))
+    assert.equal(draggedPoint.getAttribute('aria-valuenow'), '98')
 
-    const b1Number = input('B', 1)
-    await changeTextInput(window, b1Number, '')
-    assert.equal(input('B', 1, 'range').value, '1.8')
-    await changeTextInput(window, b1Number, '2')
-    assert.equal(b1Number.value, '2')
-    assert.equal(input('B', 1, 'range').value, '2')
-    assert.equal(statistic('B', 'mean'), '2.133 mm')
-    await changeTextInput(window, b1Number, '2.')
-    assert.equal(input('B', 1, 'range').value, '2')
-    assert.equal(statistic('B', 'mean'), '2.133 mm')
-    await changeTextInput(window, b1Number, '2.5')
-    assert.equal(b1Number.value, '2.5')
-    assert.equal(input('B', 1, 'range').value, '2.5')
-    assert.equal(statistic('B', 'mean'), '2.300 mm')
-    await changeTextInput(window, b1Number, '2')
-    await act(async () => b1Number.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true })))
-    assert.equal(b1Number.value, '2.0')
-    await setNumber('B', 1, '1.8')
+    const simulation = app.host.querySelector('.ivc-simulation')
+    assert.ok(simulation)
+    assert.match(simulation.textContent, /全部で 125 通り/u)
+    assert.match(simulation.textContent, /n で割った場合は 1\.33/u)
+    assert.match(simulation.textContent, /n − 1 で割った場合は 2\.00/u)
+    assert.equal(simulation.querySelector('.ivc-bar').getAttribute('aria-valuemax'), '4')
+    assert.equal(simulation.querySelector('.ivc-simulation-last').textContent, 'まだ取り出していません。')
+    const [oneDraw, oneHundred, reset] = simulation.querySelectorAll('.ivc-simulation-actions button')
+    await click(oneDraw)
+    assert.match(simulation.querySelector('.ivc-simulation-last').textContent, /1 回の平均を表示中/u)
+    assert.ok([...simulation.querySelectorAll('.ivc-bar')].every((bar) => Number(bar.getAttribute('aria-valuenow')) > 0))
+    await click(oneHundred)
+    assert.match(simulation.querySelector('.ivc-simulation-last').textContent, /101 回取り出した平均/u)
+    await click(reset)
+    assert.equal(simulation.querySelector('.ivc-simulation-last').textContent, 'まだ取り出していません。')
+    assert.ok([...simulation.querySelectorAll('.ivc-bar')].every((bar) => bar.getAttribute('aria-valuenow') === '0'))
 
-    const savedHistoryState = JSON.stringify(window.history.state)
-    for (const invalidValue of ['', '1.05', '0.9', '3.1']) {
-      await setNumber('B', 1, invalidValue)
-      assert.equal(input('B', 1).getAttribute('aria-invalid'), 'true')
-      assert.match(app.host.querySelector('#ivc-B-1-message').textContent, /0\.1 mm刻み/u)
-      assert.equal(input('B', 1, 'range').value, '1.8')
-      assert.equal(app.host.querySelector('[data-series="B"][data-observation="1"][data-value]')?.getAttribute('data-value'), '1.8')
-      assert.equal(statistic('B', 'mean'), '2.067 mm')
-    }
-    const invalidInput = input('B', 1)
-    await act(async () => invalidInput.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true })))
-    assert.equal(invalidInput.value, '1.8')
-    assert.equal(invalidInput.getAttribute('aria-invalid'), 'false')
-    assert.match(app.host.querySelector('.ivc-status').textContent, /最後に確定した 1\.8 mm に戻しました/u)
-
-    await changeControl(window, input('B', 1, 'range'), '1.9')
-    assert.equal(input('B', 1).value, '1.9')
-    await setNumber('B', 2, '2.1')
-    await setNumber('B', 3, '2.5')
-    assertB({
-      mean: '2.167 mm',
-      deviations: ['−0.267 mm', '−0.067 mm', '+0.333 mm'],
-      sum: '0.187 mm²',
-      variance: '0.062 mm²',
-      standardDeviation: '0.249 mm',
-    })
-
-    await setNumber('B', 1, '1.8')
-    await setNumber('B', 2, '2.0')
-    await setNumber('B', 3, '2.4')
-    await setNumber('B', 1, '1.6')
-    await setNumber('B', 3, '2.6')
-    assertB({
-      mean: '2.067 mm',
-      deviations: ['−0.467 mm', '−0.067 mm', '+0.533 mm'],
-      sum: '0.507 mm²',
-      variance: '0.169 mm²',
-      standardDeviation: '0.411 mm',
-    })
-    assert.equal(statistic('A', 'mean'), '2.067 mm')
-    assert.equal(statistic('A', 'standard-deviation'), '0.822 mm')
-
-    for (const series of ['A', 'B']) {
-      for (const [observation, value] of [1.8, 2.0, 2.4].entries()) {
-        await setNumber(series, observation + 1, value.toFixed(1))
-      }
-    }
-    for (const series of ['A', 'B']) {
-      assert.equal(statistic(series, 'mean'), '2.067 mm')
-      assert.deepEqual([...summary(series).querySelectorAll('tbody tr td:first-of-type')].map((cell) => cell.textContent), [
-        '1.800 mm', '2.000 mm', '2.400 mm',
-      ])
-      assert.equal(summary(series).querySelector('caption').textContent, `系列 ${series} の測定値と平均からの偏差`)
-    }
-
-    for (const series of ['A', 'B']) {
-      for (const observation of [1, 2, 3]) await setNumber(series, observation, '2.0')
-      assert.equal(statistic(series, 'mean'), '2.000 mm')
-      assert.equal(statistic(series, 'sum-of-squared-deviations'), '0.000 mm²')
-      assert.equal(statistic(series, 'variance'), '0.000 mm²')
-      assert.equal(statistic(series, 'standard-deviation'), '0.000 mm')
-      assert.deepEqual([...summary(series).querySelectorAll('tbody tr td:last-child')].map((cell) => cell.textContent), [
-        '+0.000 mm', '+0.000 mm', '+0.000 mm',
-      ])
-    }
-
-    assert.equal(JSON.stringify(window.history.state), savedHistoryState)
     assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
     assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
     assert.deepEqual(writeCalls, [])
