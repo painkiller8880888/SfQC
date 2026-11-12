@@ -14,7 +14,7 @@ GitHub Pagesで公開し、学習・採点・進捗保存をブラウザ内で�
 
 現在の教材改修は[親Issue #73](https://github.com/painkiller8880888/SfQC/issues/73)で追跡しています。先行する文書整理は[#74](https://github.com/painkiller8880888/SfQC/issues/74)、その受入後に現行版の比較基準を記録する[#75](https://github.com/painkiller8880888/SfQC/issues/75)へ進みます。#75〜#81が参照する既存契約と未決事項は、[比較モックの適用範囲と既存契約の確認記録](docs/MVP_DESIGN_DRAFT.md#mock-contract-snapshot)を参照してください。各Issueの目的と受入条件はIssue本文が正本です。
 
-P2.1の確定契約と完了状況は[親Issue #43](https://github.com/painkiller8880888/SfQC/issues/43)、過去の実行順は[P2.1実装計画の完了記録](docs/P2_1_IMPLEMENTATION_PLAN.md)、P2の履歴資料は[legacy index](docs/legacy/README.md)を参照してください。文書の分類と優先順位は[AGENTS.md](AGENTS.md#文書の優先順位)にあります。legacy資料と旧パスの案内は履歴であり、現行の実装指示ではありません。
+P2.1の確定契約と完了状況は[親Issue #43](https://github.com/painkiller8880888/SfQC/issues/43)、過去の実行順は[P2.1実装計画の完了記録](docs/P2_1_IMPLEMENTATION_PLAN.md)、P2の履歴資料は[legacy index](docs/legacy/README.md)を参照してください。文書の分類と優先順位は[AGENTS.md](AGENTS.md#文書の優先順位)にあります。#81から本実装へ移す場合の調査報告は[基本統計量モックから本実装への移行案](docs/ISSUE_81_INVESTIGATION_REPORT.md)を参照してください。legacy資料と旧パスの案内は履歴であり、現行の実装指示ではありません。
 
 ## 開発の進め方
 

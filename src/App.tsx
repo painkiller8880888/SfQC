@@ -23,6 +23,7 @@ import { resolveRouteData } from './route-data.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { LessonMap, LessonReference, LessonRouteContent, ProgressView, lessonRefLabel } from './lesson-view'
 import { DescriptiveStatisticsPreview } from './descriptive-statistics-preview'
+import { DescriptiveStatisticsExercisePreview } from './descriptive-statistics-exercise-preview'
 import { LessonMapView, samePositions, type LayoutSaveResult, type Positions } from './lesson-map-view'
 import { deriveProgress } from './progress-data.mjs'
 import {
@@ -170,11 +171,16 @@ function App() {
   const [view, setView] = useState(() => resolveRouteView(
     window.location.hash, window.history.state, 'initial', 0,
   ))
+  const previewKind = new URLSearchParams(window.location.search).get('sfqc-preview')
   const isDescriptiveStatisticsPreview = comparisonPreviewEnabled
-    && new URLSearchParams(window.location.search).get('sfqc-preview') === 'descriptive-statistics'
+    && previewKind === 'descriptive-statistics'
     && view.route.kind === 'lesson-id'
     && view.route.lessonId === 'descriptive-statistics'
     && view.route.sectionId === null
+  const isDescriptiveStatisticsExercisePreview = comparisonPreviewEnabled
+    && previewKind === 'descriptive-statistics-exercises'
+    && view.route.kind === 'practice'
+  const isComparisonPreview = isDescriptiveStatisticsPreview || isDescriptiveStatisticsExercisePreview
   const [storedData, setStoredData] = useState<StoredLocalData>(() => view.storedData)
   const [mapStateRead, setMapStateRead] = useState(() => readMapState(lessonRegistry))
   const initialMapState = mapStateRead.status === 'missing' || mapStateRead.status === 'ok' || mapStateRead.status === 'migrated'
@@ -364,7 +370,8 @@ function App() {
       : view.resolved.status === 'feedback'
         ? '解答結果'
         : current.title
-  const pageTitle = entityTitle
+  const pageTitle = isDescriptiveStatisticsExercisePreview ? '確認問題'
+    : isDescriptiveStatisticsPreview ? '基本統計量' : entityTitle
   const documentTitle = screen === 'lesson' && view.resolved.status === 'lesson' && view.resolved.section
     ? view.resolved.section.title + ' | ' + view.resolved.lesson.title
     : pageTitle
@@ -493,7 +500,7 @@ function App() {
       return false
     }
     setReviewMessage('')
-    if (intent === 'review' && sourceAttemptId && route.kind === 'lesson-id' && !isDescriptiveStatisticsPreview) {
+    if (intent === 'review' && sourceAttemptId && route.kind === 'lesson-id' && !isComparisonPreview) {
       try {
         recordReviewEvent(route.lessonId + (route.sectionId ? '#' + route.sectionId : ''), sourceAttemptId)
       } catch {
@@ -834,7 +841,7 @@ function App() {
   }, [view.navigationId])
 
   useEffect(() => {
-    if (isDescriptiveStatisticsPreview) return
+    if (isComparisonPreview) return
     if (storedData.status !== 'legacy') return
     try {
       const result = migrateLocalData(storedData.raw, storedData.data)
@@ -855,7 +862,7 @@ function App() {
       refreshRouteWithData(failed)
       setDataMessage(migrationError.message + ' データ管理画面からバックアップを保存できます。')
     }
-  }, [storedData, isDescriptiveStatisticsPreview])
+  }, [storedData, isComparisonPreview])
 
   const changeMapView = (next: 'graph' | 'list') => {
     const focusedContent = mapView === 'graph' ? mapGraphContentRef.current : mapListContentRef.current
@@ -914,6 +921,7 @@ function App() {
       return <DescriptiveStatisticsPreview
         sections={lesson.sections}
         currentLessonHref={`${window.location.pathname}#/lesson/descriptive-statistics`}
+        practicePreviewHref={`${window.location.pathname}?sfqc-preview=descriptive-statistics-exercises#/practice`}
       />
     }
     if (view.resolved.status === 'data-error') return <RouteProblem message="保存データに問題があるため、このID付き画面を解決できません。データ管理画面で保存状態を確認してください。" />
@@ -936,6 +944,12 @@ function App() {
         && view.route.sectionId === null && <p className="lesson-actions">
           <a href={`${window.location.pathname}?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics`}>
             比較用モックを開く
+          </a>
+        </p>}
+      {comparisonPreviewEnabled && view.resolved.lesson.lessonId === 'descriptive-statistics'
+        && view.route.sectionId === null && <p className="lesson-actions">
+          <a href={`${window.location.pathname}?sfqc-preview=descriptive-statistics-exercises#/practice`}>
+            演習の比較用モックを開く
           </a>
         </p>}
     </>
@@ -1105,13 +1119,15 @@ function App() {
           )}
         </main>
       ) : (
-      <main className={`page-content${isDescriptiveStatisticsPreview ? ' page-content-wide-preview' : ''}`}>
+      <main className={`page-content${isComparisonPreview ? ' page-content-wide-preview' : ''}`}>
         {routeMessages}
-        <article className={`screen${isDescriptiveStatisticsPreview ? ' screen-wide-preview' : ''}`}>
-          {isDescriptiveStatisticsPreview && <p className="description ds-eyebrow">SfQC · QC検定2級に向けた統計の基礎</p>}
-          <h1 id="page-title" ref={headingRef} tabIndex={-1}>{isDescriptiveStatisticsPreview ? '基本統計量' : pageTitle}</h1>
-          {isDescriptiveStatisticsPreview
-            ? <p className="description ds-title-subtitle"><em>平均が同じでも、品質は同じとは限らない</em></p>
+        <article className={`screen${isComparisonPreview ? ' screen-wide-preview' : ''}`}>
+          {isComparisonPreview && <p className="description ds-eyebrow">SfQC · QC検定2級に向けた統計の基礎</p>}
+          <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
+          {isComparisonPreview
+            ? <p className="description ds-title-subtitle">{isDescriptiveStatisticsPreview
+              ? <em>平均が同じでも、品質は同じとは限らない</em>
+              : '平均、偏差、分散、標準偏差の理解を確かめる問題です。'}</p>
             : <p className="description">{current.description}</p>}
 
           {screen === 'data' ? (
@@ -1151,6 +1167,8 @@ function App() {
             </section>
           ) : screen === 'practice' && view.route.kind === 'practice-id' ? (
             renderPracticeRoute()
+          ) : screen === 'practice' && isDescriptiveStatisticsExercisePreview ? (
+            <DescriptiveStatisticsExercisePreview currentPracticeHref={`${window.location.pathname}#/practice`} />
           ) : screen === 'practice' ? (
             <PracticeSelectionView
               questions={practiceQuestions}
