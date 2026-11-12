@@ -100,9 +100,10 @@ function SectionDetails({ children, title }: { children: ReactNode; title: strin
   </details>
 }
 
-export function DescriptiveStatisticsPreview({ sections, currentLessonHref }: {
+export function DescriptiveStatisticsPreview({ sections, currentLessonHref, practicePreviewHref }: {
   sections: readonly PreviewSection[]
   currentLessonHref: string
+  practicePreviewHref: string
 }) {
   useEffect(() => {
     const style = document.createElement('style')
@@ -276,6 +277,7 @@ export function DescriptiveStatisticsPreview({ sections, currentLessonHref }: {
       </section>
 
       <p className="ds-current-link"><a href={currentLessonHref}>現行版を表示</a></p>
+      <p><a href={practicePreviewHref}>演習の比較用モックを開く</a></p>
       <details className="descriptive-statistics-preview-references">
         <summary>出典・参考資料と確認状況</summary>
         <ul>

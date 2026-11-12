@@ -23,6 +23,7 @@ test('check-build rejects development-only JavaScript and CSS markers', async ()
     for (const [marker, message] of [
       ['map-author-editor', /production JavaScript must not include the development-only domain editor/u],
       ['sfqc-preview=descriptive-statistics', /production JavaScript must not include the development-only comparison preview/u],
+      ['descriptive-statistics-exercise-preview', /production JavaScript must not include the development-only comparison preview/u],
       ['この考え方を理解できた', /production JavaScript must not include the development-only comparison preview/u],
     ]) {
       await writeFile(join(nestedDirectory, 'chunk.js'), marker)
@@ -34,7 +35,7 @@ test('check-build rejects development-only JavaScript and CSS markers', async ()
     }
 
     await writeFile(join(nestedDirectory, 'chunk.js'), 'safe')
-    for (const marker of ['.interactive-variance-comparison{padding:0}', '.descriptive-statistics-preview-exercise{padding:0}']) {
+    for (const marker of ['.interactive-variance-comparison{padding:0}', '.descriptive-statistics-preview-exercise{padding:0}', '.ds-practice-question{padding:0}']) {
       await writeFile(join(nestedDirectory, 'preview.css'), marker)
       const cssResult = spawnSync(process.execPath, [fileURLToPath(new URL('./check-build.mjs', import.meta.url))], {
         encoding: 'utf8',

@@ -17,6 +17,7 @@ import {
   generateDescriptiveStatisticsPreviewExercise,
   previewExerciseDefinitions,
 } from '../src/descriptive-statistics-preview-exercises.mjs'
+import { generateDescriptiveStatisticsExercisePreviewQuestion } from '../src/descriptive-statistics-exercise-preview-data.mjs'
 import { gradeQuestionAnswer } from '../src/question-grading.mjs'
 import { fixedInstance } from './question-contract.fixture.mjs'
 
@@ -2581,6 +2582,102 @@ test('descriptive-statistics preview is limited to its development overview and 
   }
 })
 
+test('descriptive-statistics exercise preview stays in the shared shell with independent, unpersisted question state', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const previewUrl = '?sfqc-preview=descriptive-statistics-exercises#/practice'
+    await app.remountAt('#/lesson/descriptive-statistics')
+    assert.equal(linkFor(app.host, '演習の比較用モックを開く')?.getAttribute('href'), `/SfQC/${previewUrl}`)
+
+    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
+    assert.equal(linkFor(app.host, '演習の比較用モックを開く')?.getAttribute('href'), `/SfQC/${previewUrl}`)
+
+    await app.remountAt(previewUrl)
+    const preview = app.host.querySelector('.descriptive-statistics-exercise-preview')
+    assert.ok(preview)
+    assert.equal(app.host.querySelector('#page-title').textContent, '確認問題')
+    assert.equal(preview.querySelectorAll('.ds-practice-question').length, 5)
+    assert.equal(preview.querySelectorAll('.ds-practice-question details[open]').length, 0)
+    assert.equal(preview.textContent.includes('確認問題のモックです。解答は保存されません。'), false)
+    assert.equal(preview.textContent.includes('実装時に解説ページへのリンクにします。'), false)
+
+    for (const card of preview.querySelectorAll('.ds-practice-question')) {
+      assert.ok(card.querySelector('.ds-practice-question-heading h2'))
+      const categoryIndex = Number(card.dataset.practiceCategory)
+      const typeIndex = Number(card.dataset.practiceType)
+      const seed = Number(card.dataset.practiceSeed)
+      const question = generateDescriptiveStatisticsExercisePreviewQuestion(categoryIndex, typeIndex, seed)
+      assert.deepEqual([...card.querySelectorAll('.ds-practice-question-heading a')].map((link) => link.getAttribute('href')),
+        question.sections.map((sectionId) => `#/lesson/descriptive-statistics/${sectionId}`))
+      assert.ok(card.querySelector('.ds-practice-question-heading a[data-nav-intent="normal"]'))
+    }
+
+    const cards = [...preview.querySelectorAll('.ds-practice-question')]
+    const card = cards[0]
+    const initialQuestion = generateDescriptiveStatisticsExercisePreviewQuestion(
+      Number(card.dataset.practiceCategory), Number(card.dataset.practiceType), Number(card.dataset.practiceSeed),
+    )
+    if (initialQuestion.type === 'choice') {
+      await click(card.querySelector(`input[type="radio"][value="${initialQuestion.answer}"]`))
+    } else {
+      await changeTextInput(window, card.querySelector('input[type="text"]'), String(initialQuestion.answer))
+    }
+    await click(buttonFor(card, '答え合わせ'))
+    assert.equal(card.querySelector('.ds-exercise-feedback').textContent, '正解です。')
+    assert.equal(card.querySelector('details').open, true)
+    assert.equal(card.querySelector('.ds-practice-check input').checked, false, 'grading must not set the manual check')
+    assert.match(preview.querySelector('.ds-practice-toolbar [role="status"]').textContent, /正解 1 \/ 5 問/u)
+
+    const snapshots = cards.slice(1).map((other) => ({
+      seed: other.dataset.practiceSeed,
+      type: other.dataset.practiceType,
+      prompt: other.querySelector('.ds-practice-prompt').textContent,
+    }))
+    const previousType = card.dataset.practiceType
+    const previousPrompt = card.querySelector('.ds-practice-prompt').textContent
+    await click(card.querySelector('.ds-practice-check input'))
+    assert.equal(card.querySelector('.ds-practice-check input').checked, true)
+    await click(buttonFor(card, 'この問題を入れ替える'))
+    const refreshed = preview.querySelector('[data-practice-category="0"]')
+    assert.notEqual(refreshed.dataset.practiceType, previousType)
+    assert.notEqual(refreshed.querySelector('.ds-practice-prompt').textContent, previousPrompt)
+    assert.equal(refreshed.querySelector('details').open, false)
+    assert.equal(refreshed.querySelector('.ds-exercise-feedback').textContent, '')
+    assert.equal(refreshed.querySelector('.ds-practice-check input').checked, true, 'regeneration must not change the explicit check')
+    assert.equal(preview.querySelector('.ds-practice-toolbar [role="status"]').textContent, '')
+    assert.deepEqual([...preview.querySelectorAll('.ds-practice-question')].slice(1).map((other) => ({
+      seed: other.dataset.practiceSeed,
+      type: other.dataset.practiceType,
+      prompt: other.querySelector('.ds-practice-prompt').textContent,
+    })), snapshots, 'replacing one question must leave every other question untouched')
+
+    const beforeGlobal = [...preview.querySelectorAll('.ds-practice-question')].map((item) => item.dataset.practiceType)
+    await click(buttonFor(preview, '別の問題にする（5問すべて）'))
+    const afterGlobal = [...preview.querySelectorAll('.ds-practice-question')].map((item) => item.dataset.practiceType)
+    assert.deepEqual(afterGlobal.map((type, index) => type !== beforeGlobal[index]), [true, true, true, true, true])
+    assert.equal(preview.querySelector('[data-practice-category="0"] .ds-practice-check input').checked, true)
+
+    const updatedCard = preview.querySelector('[data-practice-category="0"]')
+    const updatedQuestion = generateDescriptiveStatisticsExercisePreviewQuestion(
+      Number(updatedCard.dataset.practiceCategory), Number(updatedCard.dataset.practiceType), Number(updatedCard.dataset.practiceSeed),
+    )
+    const sectionLink = updatedCard.querySelector(`a[href="#/lesson/descriptive-statistics/${updatedQuestion.sections[0]}"]`)
+    assert.ok(sectionLink)
+    await click(sectionLink)
+    assert.equal(window.location.hash, `#/lesson/descriptive-statistics/${updatedQuestion.sections[0]}`)
+    assert.equal(app.host.querySelector('.descriptive-statistics-exercise-preview'), null)
+    assert.ok(app.host.querySelector('.lesson-panel'))
+
+    await app.remountAt('?sfqc-preview=descriptive-statistics-exercises#/lesson/descriptive-statistics')
+    assert.equal(app.host.querySelector('.descriptive-statistics-exercise-preview'), null)
+    await app.remountAt('?sfqc-preview=descriptive-statistics-exercises#/feedback')
+    assert.equal(app.host.querySelector('.descriptive-statistics-exercise-preview'), null)
+  } finally {
+    await app.close()
+  }
+})
+
 test('public preview mode renders the isolated mock without writing learning data', async () => {
   const app = await createHarness({ mode: 'sfqc-preview', productionPreview: true })
   const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
@@ -2613,6 +2710,25 @@ test('public preview mode renders the isolated mock without writing learning dat
     const exercise = app.host.querySelector('[data-preview-exercise="mean"]')
     await click(buttonFor(exercise, '答え合わせ'))
     await click(buttonFor(exercise, '別の数値で'))
+    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
+    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
+    assert.deepEqual(writes, [])
+
+    await app.remountAt('?sfqc-preview=descriptive-statistics-exercises#/practice')
+    const exercisePreview = app.host.querySelector('.descriptive-statistics-exercise-preview')
+    assert.ok(exercisePreview)
+    const card = exercisePreview.querySelector('.ds-practice-question')
+    const question = generateDescriptiveStatisticsExercisePreviewQuestion(
+      Number(card.dataset.practiceCategory), Number(card.dataset.practiceType), Number(card.dataset.practiceSeed),
+    )
+    if (question.type === 'choice') {
+      await click(card.querySelector(`input[type="radio"][value="${question.answer}"]`))
+    } else {
+      await changeTextInput(window, card.querySelector('input[type="text"]'), String(question.answer))
+    }
+    await click(buttonFor(card, '答え合わせ'))
+    await click(buttonFor(card, 'この問題を入れ替える'))
+    await click(card.querySelector('.ds-practice-check input'))
     assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
     assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
     assert.deepEqual(writes, [])

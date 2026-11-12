@@ -13,10 +13,13 @@ const javascript = await Promise.all(files.filter((file) => /\.(?:[cm]?js)$/u.te
   .map((file) => readFile(new URL(file.replaceAll('\\', '/'), assetsDirectory), 'utf8')))
 const bundle = javascript.join('\n')
 assert.match(bundle, /sfqc-preview=descriptive-statistics/u, 'public preview should include its direct-entry route')
+assert.match(bundle, /sfqc-preview=descriptive-statistics-exercises/u, 'public preview should include the exercise mock route')
 assert.match(bundle, /descriptive-statistics-preview/u, 'public preview should include the mock')
+assert.match(bundle, /descriptive-statistics-exercise-preview/u, 'public preview should include the exercise mock')
 assert.match(bundle, /interactive-variance-comparison/u, 'public preview should include the interactive figure')
 assert.doesNotMatch(bundle, /map-author-editor|分野編集/u, 'public preview must not enable the development-only author editor')
 assert.match(bundle, /\.descriptive-statistics-preview-exercise\{/u, 'public preview should include its inline mock styles')
+assert.match(bundle, /\.ds-practice-question\{/u, 'public preview should include its exercise mock styles')
 assert.match(bundle, /\.interactive-variance-comparison\{/u, 'public preview should include its inline figure styles')
 
 for (const url of assets) await access(new URL(`../dist/preview/${url.slice('/SfQC/preview/'.length)}`, import.meta.url))
