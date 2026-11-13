@@ -52,7 +52,7 @@ function InlineExercise({ exerciseId }: {
   const grade = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const results = exercise.fields.map((_, fieldIndex) => gradeDecimalAnswer(
-      normalizeNumericInput(answers[fieldIndex] ?? ''), String(exercise.answers[fieldIndex]), 0,
+      normalizeNumericInput(answers[fieldIndex] ?? ''), exercise.answers[fieldIndex], 0,
     ))
     if (results.some((result) => result.status === 'invalid')) {
       setFeedback('入力形式を確認してください（例：12、−2、0.5）。')

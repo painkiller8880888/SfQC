@@ -5,6 +5,7 @@ import {
   nextPreviewExerciseIndex,
   previewExerciseDefinitions,
 } from '../src/descriptive-statistics-preview-exercises.mjs'
+import { gradeDecimalAnswer } from '../src/question-grading.mjs'
 
 const measurements = (index) => {
   const prompt = generateDescriptiveStatisticsPreviewExercise('mean', index).prompt
@@ -18,25 +19,25 @@ test('preview exercises reproduce the four reviewed seed questions and calculati
     mean: {
       prompt: '別のライン C から3本を測ったところ、98 mm、103 mm、102 mm でした。平均は何 mm ですか。',
       fields: [{ label: '平均', unit: 'mm' }],
-      answers: [101],
+      answers: ['101'],
       solution: '98 + 103 + 102 = 303、303 ÷ 3 = 101 mm',
     },
     deviation: {
       prompt: '別のライン D の平均は 102 mm でした。測った3本は 100 mm、106 mm、100 mm です。それぞれの偏差（値 − 平均）を求めてください。',
       fields: [{ label: '1本目', unit: 'mm' }, { label: '2本目', unit: 'mm' }, { label: '3本目', unit: 'mm' }],
-      answers: [-2, 4, -2],
+      answers: ['-2', '4', '-2'],
       solution: '100 − 102 = −2　106 − 102 = +4　100 − 102 = −2　(mm)',
     },
     variance: {
       prompt: '別のライン E から3本を測ったところ、97 mm、101 mm、102 mm でした。偏差平方和 S と、n − 1 で割る不偏分散 V を求めてください。',
       fields: [{ label: 'S', unit: 'mm²' }, { label: 'V', unit: 'mm²' }],
-      answers: [14, 7],
+      answers: ['14', '7'],
       solution: '平均 = 300 ÷ 3 = 100 mm。偏差は −3、+1、+2。S = (−3)² + (+1)² + (+2)² = 9 + 1 + 4 = 14 mm²。V = 14 ÷ 2 = 7 mm²',
     },
     'standard-deviation': {
       prompt: '別のライン F から3本を測ったところ、97 mm、100 mm、103 mm でした。n − 1 で割った不偏分散から求める標準偏差 s は何 mm ですか。',
       fields: [{ label: 's', unit: 'mm' }],
-      answers: [3],
+      answers: ['3'],
       solution: '平均 = 100 mm、偏差は −3、0、+3。S = 18 mm²、V = 18 ÷ 2 = 9 mm²、s = √9 = 3 mm',
     },
   }
@@ -48,7 +49,7 @@ test('preview exercises reproduce the four reviewed seed questions and calculati
   }
 })
 
-test('every generated question is a distinct valid numeric exercise', () => {
+test('every generated question is distinct and exposes canonical safe-integer answer strings', () => {
   for (const [id, { count }] of Object.entries(previewExerciseDefinitions)) {
     const prompts = new Set()
     for (let index = 0; index < count; index += 1) {
@@ -56,7 +57,12 @@ test('every generated question is a distinct valid numeric exercise', () => {
       assert.ok(exercise.prompt.length)
       assert.ok(exercise.solution.length)
       assert.equal(exercise.fields.length, exercise.answers.length)
-      assert.ok(exercise.answers.every(Number.isFinite))
+      for (const answer of exercise.answers) {
+        assert.equal(typeof answer, 'string')
+        assert.match(answer, /^-?(?:0|[1-9]\d*)$/u)
+        assert.ok(Number.isSafeInteger(Number(answer)))
+        assert.deepEqual(gradeDecimalAnswer(answer, answer, 0), { status: 'graded', isCorrect: true })
+      }
       assert.ok(!prompts.has(exercise.prompt), `${id} repeats a displayed problem at index ${index}`)
       prompts.add(exercise.prompt)
     }

@@ -1879,7 +1879,8 @@ test('section checks stay local while independent judgments and manual completio
     assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, 'invalid input must not create a judgment')
 
     const expected = generateDescriptiveStatisticsPreviewExercise('mean', previewExerciseDefinitions.mean.initialIndex).answers[0]
-    await changeTextInput(window, input, '0' + String(expected))
+    assert.equal(typeof expected, 'string')
+    await changeTextInput(window, input, '0' + expected)
     await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
     assert.match(exercise.querySelector('[role="status"]').textContent, /入力形式/u)
     assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, 'invalid input must not create a judgment')
@@ -1910,6 +1911,33 @@ test('section checks stay local while independent judgments and manual completio
     window.Storage.prototype.getItem = previousGet
     window.Storage.prototype.setItem = previousSet
     window.Storage.prototype.removeItem = previousRemove
+    await app.close()
+  }
+})
+
+test('comparison preview grades generated answer strings without deleting internal whitespace', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    window.history.replaceState(null, '', `${window.location.pathname}?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics`)
+    await app.remount()
+    const exercise = app.host.querySelector('.descriptive-statistics-preview-exercise[data-preview-exercise="mean"]')
+    assert.ok(exercise)
+    const input = exercise.querySelector('input')
+    const grade = exercise.querySelector('.ds-button-primary')
+    for (const invalid of ['0101', '10 1']) {
+      await changeTextInput(window, input, invalid)
+      await click(grade)
+      assert.match(exercise.querySelector('.ds-exercise-feedback').textContent, /入力形式/u)
+      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null)
+    }
+    for (const [answer, expectedFeedback] of [['１０１', /正解/u], ['101.4', /正解/u], ['101.5', /合っていない/u]]) {
+      await changeTextInput(window, input, answer)
+      await click(grade)
+      assert.match(exercise.querySelector('.ds-exercise-feedback').textContent, expectedFeedback)
+      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null)
+    }
+  } finally {
     await app.close()
   }
 })
