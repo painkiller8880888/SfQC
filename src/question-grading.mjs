@@ -92,6 +92,22 @@ function correctResult() {
   return { status: 'graded', isCorrect: true, feedback: null }
 }
 
+/** @param {unknown} answer @param {unknown} expected @param {unknown} roundingDigits @returns {import('./question-grading.d.mts').DecimalAnswerGradingResult} */
+export function gradeDecimalAnswer(answer, expected, roundingDigits) {
+  if (typeof roundingDigits !== 'number' || !Number.isSafeInteger(roundingDigits)
+    || roundingDigits < 0 || Object.is(roundingDigits, -0)) {
+    return { status: 'invalid', reason: 'invalid-rounding-digits' }
+  }
+  const expectedValue = parseDecimal(expected)
+  if (expectedValue === null) return { status: 'invalid', reason: 'invalid-expected-value' }
+  const answerValue = parseDecimal(answer)
+  if (answerValue === null) return { status: 'invalid', reason: 'invalid-answer-format' }
+  return {
+    status: 'graded',
+    isCorrect: compareDecimal(roundDecimal(answerValue, roundingDigits), roundDecimal(expectedValue, roundingDigits)) === 0,
+  }
+}
+
 /** @param {ReadonlyQuestionInstance} instance @param {unknown} answer @returns {QuestionGradingResult} */
 export function gradeQuestionAnswer(instance, answer) {
   if (!validateQuestionInstance(instance)) return { status: 'invalid', reason: 'invalid-instance' }
