@@ -6,11 +6,11 @@ const contexts = [
 ]
 
 export const descriptiveStatisticsExerciseCategories = Object.freeze([
-  Object.freeze({ title: '平均と偏差' }),
-  Object.freeze({ title: 'データの変換' }),
-  Object.freeze({ title: '不偏分散' }),
-  Object.freeze({ title: '総合' }),
-  Object.freeze({ title: '分散と標準偏差' }),
+  Object.freeze({ id: 'mean-deviation', title: '平均と偏差' }),
+  Object.freeze({ id: 'data-transformation', title: 'データの変換' }),
+  Object.freeze({ id: 'unbiased-variance', title: '不偏分散' }),
+  Object.freeze({ id: 'comprehensive', title: '総合' }),
+  Object.freeze({ id: 'variance-standard-deviation', title: '分散と標準偏差' }),
 ])
 
 const kana = ['ア', 'イ', 'ウ', 'エ']
@@ -66,6 +66,11 @@ function signed(value) {
 function numberText(value) {
   const rounded = Math.round(value * 100) / 100
   return `${rounded < 0 ? '−' : ''}${Math.abs(rounded)}`
+}
+
+function decimalAnswer(value) {
+  if (!Number.isSafeInteger(value)) throw new RangeError('numeric exercise answer must be a safe integer')
+  return String(value)
 }
 
 function context(random) {
@@ -127,7 +132,7 @@ function firstMeanQuestion(random) {
   }
   const remaining = -deviations.reduce((sum, value) => sum + value, 0)
   return {
-    type: 'numeric', unit: c.unit, answer: mean + remaining, sections: ['deviation'],
+    type: 'numeric', unit: c.unit, answer: decimalAnswer(mean + remaining), sections: ['deviation'],
     prompt: `ある工程から5個の${c.noun}を測ったところ、平均は ${mean} ${c.unit} でした。そのうち4個の偏差は ${deviations.map(signed).join('、')}（${c.unit}）です。残りの1個の測定値は何 ${c.unit} ですか。`,
     explanation: `偏差の合計は、平均を基準にしているので、必ず 0 になります。4個の偏差の合計は ${deviations.map((value) => value < 0 ? `(${signed(value)})` : String(value)).join(' + ')} = ${signed(deviations.reduce((sum, value) => sum + value, 0))} なので、残りの偏差は ${signed(remaining)} ${c.unit} です。測定値は ${mean} + (${signed(remaining)}) = ${mean + remaining} ${c.unit} です。`,
   }
@@ -140,7 +145,7 @@ function secondMeanQuestion(random) {
   const change = pick(random, [1, 2, -1, -2])
   const added = mean + (count + 1) * change
   return {
-    type: 'numeric', unit: c.unit, answer: added, sections: ['mean'],
+    type: 'numeric', unit: c.unit, answer: decimalAnswer(added), sections: ['mean'],
     prompt: `${c.noun}を ${count} 個測ったところ、平均は ${mean} ${c.unit} でした。ここへ1個を追加して ${count + 1} 個にしたところ、平均は ${mean + change} ${c.unit} になりました。追加した1個の測定値は何 ${c.unit} ですか。`,
     explanation: `平均 × 個数 ＝ 合計 です。追加前の合計は ${mean} × ${count} = ${mean * count}、追加後の合計は ${mean + change} × ${count + 1} = ${(mean + change) * (count + 1)} です。その差 ${(mean + change) * (count + 1)} − ${mean * count} = ${added} ${c.unit} が、追加した測定値です。`,
   }
@@ -174,7 +179,7 @@ function secondTransformationQuestion(random) {
   const variance = int(random, 2, 9)
   const answer = factor * factor * variance
   return {
-    type: 'numeric', unit: `${c.unit}²`, answer, sections: ['variance', 'standard-deviation'],
+    type: 'numeric', unit: `${c.unit}²`, answer: decimalAnswer(answer), sections: ['variance', 'standard-deviation'],
     prompt: `拡大して測定する装置で、すべての測定値が実際の ${factor} 倍で記録されます。実際の測定値の不偏分散が ${variance} ${c.unit}² のとき、この装置で記録された測定値の不偏分散は何 ${c.unit}² ですか。`,
     explanation: `測定値が ${factor} 倍になると、平均も偏差も ${factor} 倍になります。分散は偏差を2乗して作るので ${factor}² = ${factor * factor} 倍になり、${variance} × ${factor * factor} = ${answer} ${c.unit}² です。標準偏差は ${factor} 倍です。`,
   }
@@ -210,7 +215,7 @@ function secondVarianceQuestion(random) {
   const divisor = whole ? count : count - 1
   const sumSquares = divisor * variance
   return {
-    type: 'numeric', unit: `${c.unit}²`, answer: variance, sections: ['variance'],
+    type: 'numeric', unit: `${c.unit}²`, answer: decimalAnswer(variance), sections: ['variance'],
     prompt: whole
       ? `1ロットの ${count} 個すべての${c.noun}を測ったところ、偏差平方和 S は ${sumSquares} ${c.unit}² でした。このロットの分散は何 ${c.unit}² ですか。`
       : `あるロットから ${count} 個を抜き取って${c.noun}を測ったところ、偏差平方和 S は ${sumSquares} ${c.unit}² でした。このロット全体の分散を見積もると、何 ${c.unit}² ですか。`,
@@ -252,7 +257,7 @@ function fourthVarianceQuestion(random) {
   const values2 = deviations2.map((value) => mean2 + value)
   const answer = Math.abs(k1 - k2)
   return {
-    type: 'numeric', unit: c.unit, answer, sections: ['variance', 'standard-deviation'],
+    type: 'numeric', unit: c.unit, answer: decimalAnswer(answer), sections: ['variance', 'standard-deviation'],
     prompt: `ラインP と ラインQ から、${c.noun}を5個ずつ測りました（下の表、単位は ${c.unit}）。それぞれの標準偏差 s を求めたとき、大きいほうと小さいほうの差は何 ${c.unit} ですか。`,
     table: { rows: [{ label: 'ラインP', values: values1 }, { label: 'ラインQ', values: values2 }] },
     explanation: `${lineExplanation('P', mean1, deviations1, k1)}　${lineExplanation('Q', mean2, deviations2, k2)}　標準偏差は偏差から作るので、平均の位置が違っても比べられます。差は ${Math.max(k1, k2)} − ${Math.min(k1, k2)} = ${answer} ${c.unit} です。`,
@@ -270,7 +275,7 @@ function fifthVarianceQuestion(random) {
   const sd = int(random, 2, 6)
   const sumSquares = (count - 1) * sd * sd
   return {
-    type: 'numeric', unit: c.unit, answer: sd, sections: ['variance', 'standard-deviation'],
+    type: 'numeric', unit: c.unit, answer: decimalAnswer(sd), sections: ['variance', 'standard-deviation'],
     prompt: `${c.noun}を ${count} 個測った標本の偏差平方和 S が ${sumSquares} ${c.unit}² でした。この標本の標準偏差 s は何 ${c.unit} ですか。`,
     explanation: `標本から求める分散は、S を n − 1 = ${count - 1} で割ります。V = ${sumSquares} ÷ ${count - 1} = ${sd * sd} ${c.unit}²。標準偏差は分散の平方根なので、s = √${sd * sd} = ${sd} ${c.unit} です。`,
   }
@@ -348,7 +353,7 @@ function secondStandardDeviationQuestion(random) {
   const halfWidth = sd * multiple
   const variance = sd * sd
   return {
-    type: 'numeric', unit: '倍', answer: multiple, sections: ['standard-deviation'],
+    type: 'numeric', unit: '倍', answer: decimalAnswer(multiple), sections: ['standard-deviation'],
     prompt: `${c.noun}の規格は、中心値 ${c.base} ${c.unit} に対して ±${halfWidth} ${c.unit} です。工程の不偏分散は ${variance} ${c.unit}² でした。規格の幅の半分（${halfWidth} ${c.unit}）は、標準偏差の何倍ですか。`,
     explanation: `分散（${c.unit}²）のままでは、${c.unit} で表した規格の幅と比べられません。標準偏差 s = √${variance} = ${sd} ${c.unit} にすると同じ単位になり、${halfWidth} ÷ ${sd} = ${multiple} 倍と分かります。`,
   }

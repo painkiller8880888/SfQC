@@ -31,7 +31,7 @@ test('exercise preview covers the five lesson areas with deterministic question 
         assert.ok(Number.isInteger(first.answer) && first.answer >= 0 && first.answer < first.choices.length)
         assert.equal(new Set(first.choices).size, first.choices.length)
       } else {
-        assert.ok(Number.isFinite(first.answer))
+        assert.match(first.answer, /^[+-]?\d+(\.\d+)?$/u)
         assert.ok(first.unit.length > 0)
         assert.ok(first.explanation.includes(String(first.answer)))
       }
@@ -48,7 +48,7 @@ test('generated line comparison table agrees with the asked standard-deviation d
       return Math.sqrt(variance)
     }
     const [left, right] = question.table.rows
-    assert.equal(Math.abs(standardDeviation(left) - standardDeviation(right)), question.answer)
+    assert.equal(Math.abs(standardDeviation(left) - standardDeviation(right)), Number(question.answer))
   }
 })
 

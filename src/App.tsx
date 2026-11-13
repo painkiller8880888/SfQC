@@ -14,30 +14,25 @@ import {
   type NavigationIntent,
   type RouteHistoryState,
 } from './route-history.mjs'
-import { exportBackup, exportLegacyLocalData, importBackup } from './backup.mjs'
+import { exportLearningBackup, importLearningBackup, recheckLearningBackupImport, type LearningBackupImportResult } from './backup.mjs'
 import { LocalDataError, migrateLocalData, readLocalData, type LocalData } from './local-data.mjs'
-import { availablePracticeQuestions, createPracticeInstance, createSimilarPractice, recordReviewEvent, submitPracticeAnswer } from './practice-actions.mjs'
-import { PracticeQuestionView, PracticeSelectionView } from './practice-view'
+import { availablePracticeQuestions, createSimilarPractice, recordReviewEvent, submitPracticeAnswer } from './practice-actions.mjs'
+import { PracticeQuestionView } from './practice-view'
 import type { ReadonlyQuestionInstance } from './question-contract.mjs'
-import { resolveRouteData } from './route-data.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
-import { LessonMap, LessonReference, LessonRouteContent, ProgressView, lessonRefLabel } from './lesson-view'
+import { LessonMap, LessonReference, LessonRouteContent, lessonRefLabel } from './lesson-view'
 import { DescriptiveStatisticsPreview } from './descriptive-statistics-preview'
 import { DescriptiveStatisticsExercisePreview } from './descriptive-statistics-exercise-preview'
+import { DescriptiveStatisticsCourse } from './descriptive-statistics-course'
+import { CourseProgressView } from './course-progress-view'
 import { LessonMapView, samePositions, type LayoutSaveResult, type Positions } from './lesson-map-view'
-import { deriveProgress } from './progress-data.mjs'
+import { deriveCourseProgress } from './course-progress.mjs'
 import {
-  countCompletedManualProgress,
-  updateManualProgress,
   type ManualProgressCommand,
+  type ManualProgressState,
 } from './manual-progress.mjs'
-import {
-  createInitialMapState,
-  MapStateError,
-  readMapState,
-  saveMapState,
-  type MapState,
-} from './map-state.mjs'
+import { readLearningState, saveLearningState, type LearningState, type LearningStateReadResult } from './learning-state.mjs'
+import { appendPracticeResult, readPracticeResults, recheckPracticeResult, type PracticeResultSaveResult, type PracticeResultsReadResult } from './practice-results.mjs'
 import {
   applyRouteNavigationEffect,
   refreshRouteView,
@@ -59,6 +54,40 @@ type ThemePreference = 'system' | Theme
 const themeStorageKey = 'sfqc:theme-preference'
 const themeMediaQuery = '(prefers-color-scheme: dark)'
 const comparisonPreviewEnabled = import.meta.env.DEV || import.meta.env.MODE === 'sfqc-preview'
+
+type PendingJudgement = {
+  id: string
+  record: { categoryId: string; isCorrect: boolean; attemptedAt: string }
+  status: 'waiting' | 'not-written' | 'unknown' | 'conflict'
+  pendingResult?: PracticeResultSaveResult
+}
+
+function emptyLearningState(): LearningState {
+  return {
+    schemaVersion: 1,
+    lessons: Object.fromEntries(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, { completedAt: null }])),
+    positions: {},
+  }
+}
+
+function manualProgressFromLearning(state: LearningState): ManualProgressState {
+  return Object.fromEntries(lessonRegistry.lessons.map((lesson) => {
+    const completedAt = state.lessons[lesson.lessonId]?.completedAt ?? null
+    return [lesson.lessonId, {
+      status: completedAt ? 'completed' : 'not-started',
+      checks: lesson.learningObjectives.map(() => false),
+      completedAt,
+    }]
+  }))
+}
+
+function isReadableLearningState(read: LearningStateReadResult): read is Extract<LearningStateReadResult, { status: 'missing' | 'ok' }> {
+  return read.status === 'missing' || read.status === 'ok'
+}
+
+function isReadablePracticeResults(read: PracticeResultsReadResult): read is Extract<PracticeResultsReadResult, { status: 'missing' | 'ok' }> {
+  return read.status === 'missing' || read.status === 'ok'
+}
 
 function readSystemTheme(): Theme {
   try {
@@ -182,15 +211,12 @@ function App() {
     && view.route.kind === 'practice'
   const isComparisonPreview = isDescriptiveStatisticsPreview || isDescriptiveStatisticsExercisePreview
   const [storedData, setStoredData] = useState<StoredLocalData>(() => view.storedData)
-  const [mapStateRead, setMapStateRead] = useState(() => readMapState(lessonRegistry))
-  const initialMapState = mapStateRead.status === 'missing' || mapStateRead.status === 'ok' || mapStateRead.status === 'migrated'
-    ? mapStateRead.state : createInitialMapState(lessonRegistry)
-  const [manualProgress, setManualProgress] = useState(() => initialMapState.lessons)
+  const [mapStateRead, setMapStateRead] = useState(() => readLearningState(lessonRegistry))
+  const initialMapState = isReadableLearningState(mapStateRead) ? mapStateRead.state : emptyLearningState()
+  const [manualProgress, setManualProgress] = useState(() => manualProgressFromLearning(initialMapState))
   const [positionSyncRevision, setPositionSyncRevision] = useState(0)
-  const [mapStateConfirmed, setMapStateConfirmed] = useState(() => ['missing', 'ok', 'migrated'].includes(mapStateRead.status))
-  const initialMapMessage = mapStateRead.status === 'migrated' && mapStateRead.changedLessonIds.length
-    ? `教材改訂を検出しました。${mapStateRead.changedLessonIds.length}単元の自己点検を再確認してください。内容は次の手動操作時に保存されます。`
-    : mapStateRead.status === 'invalid' || mapStateRead.status === 'unsupported' || mapStateRead.status === 'unreadable'
+  const [mapStateConfirmed, setMapStateConfirmed] = useState(() => isReadableLearningState(mapStateRead))
+  const initialMapMessage = mapStateRead.status === 'invalid' || mapStateRead.status === 'unsupported' || mapStateRead.status === 'unreadable'
       ? mapStateRead.error.message : ''
   const [mapStateMessage, setMapStateMessage] = useState(initialMapMessage)
   const [dataMessage, setDataMessage] = useState('')
@@ -211,15 +237,23 @@ function App() {
   const mapGraphButtonRef = useRef<HTMLButtonElement>(null)
   const mapListButtonRef = useRef<HTMLButtonElement>(null)
   const viewRef = useRef(view)
-  const mapStateRef = useRef<MapState>(initialMapState)
+  const mapStateRef = useRef<LearningState>(initialMapState)
   const mapStateReadRef = useRef(mapStateRead)
   const publishedPositionsRef = useRef(initialMapState.positions)
-  const expectedMapRawRef = useRef(mapStateRead.raw ?? null)
-  const mapStateConfirmedRef = useRef(['missing', 'ok', 'migrated'].includes(mapStateRead.status))
+  const expectedMapRawRef = useRef(isReadableLearningState(mapStateRead) ? mapStateRead.raw : null)
+  const mapStateConfirmedRef = useRef(isReadableLearningState(mapStateRead))
   const navigationIdRef = useRef(0)
   const lastHandledRef = useRef('')
   const busyRef = useRef(false)
   const practiceBusyRef = useRef(false)
+  const [practiceResultsRead, setPracticeResultsRead] = useState(() => readPracticeResults())
+  const practiceResultsReadRef = useRef(practiceResultsRead)
+  const expectedPracticeRawRef = useRef(isReadablePracticeResults(practiceResultsRead) ? practiceResultsRead.raw : null)
+  const [pendingJudgements, setPendingJudgements] = useState<PendingJudgement[]>([])
+  const pendingJudgementsRef = useRef<PendingJudgement[]>([])
+  const judgementIdRef = useRef(0)
+  const [pendingBackupImport, setPendingBackupImport] = useState<LearningBackupImportResult | null>(null)
+  const keepJudgementsAfterRestoreRef = useRef(true)
   const onMapMove = useCallback((viewport: Viewport) => {
     mapViewportRef.current = viewport
   }, [])
@@ -264,10 +298,10 @@ function App() {
     saveThemePreference(preference)
   }
 
-  const publishMapStateRead = (next: ReturnType<typeof readMapState>, syncPositions = true) => {
+  const publishMapStateRead = (next: LearningStateReadResult, syncPositions = true) => {
     mapStateReadRef.current = next
     setMapStateRead(next)
-    if (next.status === 'missing' || next.status === 'ok' || next.status === 'migrated') {
+    if (isReadableLearningState(next)) {
       const positionsChanged = !samePositions(publishedPositionsRef.current, next.state.positions)
       publishedPositionsRef.current = next.state.positions
       if (syncPositions && positionsChanged) setPositionSyncRevision((revision) => revision + 1)
@@ -275,96 +309,168 @@ function App() {
       expectedMapRawRef.current = next.raw
       mapStateConfirmedRef.current = true
       setMapStateConfirmed(true)
-      setManualProgress(next.state.lessons)
-      if (next.status === 'migrated' && next.changedLessonIds.length) {
-        setMapStateMessage(`教材改訂を検出しました。${next.changedLessonIds.length}単元の自己点検を再確認してください。内容は次の手動操作時に保存されます。`)
-      } else {
-        setMapStateMessage('')
-      }
+      setManualProgress(manualProgressFromLearning(next.state))
+      setMapStateMessage('')
     } else {
       setMapStateMessage('error' in next ? next.error.message : '手動進捗を読み取れません。')
     }
   }
 
-  const refreshMapState = () => publishMapStateRead(readMapState(lessonRegistry))
+  const refreshMapState = () => publishMapStateRead(readLearningState(lessonRegistry))
 
   const onMapLayoutSave = useCallback((positions: Positions): LayoutSaveResult => {
     const currentRead = mapStateReadRef.current
-    if (!['missing', 'ok', 'migrated'].includes(currentRead.status)) {
+    if (!isReadableLearningState(currentRead)) {
       setMapStateMessage('手動進捗の保存状態を確認できないため、配置の編集と保存を停止しています。データ管理画面で保存状態を確認してください。')
       return { ok: false, positions: mapStateRef.current.positions }
     }
-    const candidate: MapState = {
+    const candidate: LearningState = {
       ...mapStateRef.current,
       positions: { ...mapStateRef.current.positions, ...positions },
     }
-    try {
-      const result = saveMapState(candidate, expectedMapRawRef.current, lessonRegistry)
+    const result = saveLearningState(candidate, expectedMapRawRef.current, lessonRegistry)
+    if (result.status === 'saved') {
       mapStateRef.current = result.state
       publishedPositionsRef.current = result.state.positions
       expectedMapRawRef.current = result.raw
-      const read = { status: 'ok' as const, raw: result.raw, state: result.state, changedLessonIds: [] }
+      const unresolvedIds = isReadableLearningState(result.latest) ? result.latest.unresolvedIds : { lessons: [], positions: [] }
+      const read = { status: 'ok' as const, raw: result.raw, state: result.state, unresolvedIds }
       mapStateReadRef.current = read
       setMapStateRead(read)
-      setManualProgress(result.state.lessons)
+      setManualProgress(manualProgressFromLearning(result.state))
       mapStateConfirmedRef.current = true
       setMapStateConfirmed(true)
       setMapStateMessage('')
       return { ok: true, positions: result.state.positions }
-    } catch (error) {
-      let confirmedPositions = mapStateRef.current.positions
-      if (error instanceof MapStateError && error.code === 'storage-unavailable') {
-        publishMapStateRead({ status: 'unreadable', error }, false)
-      } else if (!(error instanceof MapStateError) || error.code !== 'storage-write-failed') {
-        const latest = readMapState(lessonRegistry)
-        publishMapStateRead(latest, false)
-        if (latest.status === 'missing' || latest.status === 'ok' || latest.status === 'migrated') {
-          confirmedPositions = latest.state.positions
-        }
-      }
-      setMapStateMessage(error instanceof Error ? error.message : '配置を保存できませんでした。')
-      return { ok: false, positions: confirmedPositions }
     }
+    publishMapStateRead(result.latest, false)
+    setMapStateMessage(result.error?.message ?? '配置を保存できませんでした。')
+    return { ok: false, positions: isReadableLearningState(result.latest) ? result.latest.state.positions : mapStateRef.current.positions }
   }, [])
 
   const onManualProgressAction = useCallback((lessonId: string, command: ManualProgressCommand) => {
     const currentRead = mapStateReadRef.current
-    if (!['missing', 'ok', 'migrated'].includes(currentRead.status)) {
+    if (!isReadableLearningState(currentRead)) {
       setMapStateMessage('手動進捗を確認できないため、編集と保存を停止しています。データ管理画面で保存状態を確認してください。')
       return
     }
-    const action = command.type === 'complete'
-      ? { ...command, completedAt: new Date().toISOString() }
-      : command
-    const lessons = updateManualProgress(mapStateRef.current.lessons, lessonId, action)
-    if (lessons === mapStateRef.current.lessons) return
-    const candidate: MapState = { ...mapStateRef.current, lessons: lessons as MapState['lessons'] }
-    try {
-      const result = saveMapState(candidate, expectedMapRawRef.current, lessonRegistry)
+    if (command.type !== 'complete' && command.type !== 'reopen') return
+    const prior = mapStateRef.current.lessons[lessonId]
+    if (!prior) return
+    const completedAt = command.type === 'complete' ? new Date().toISOString() : null
+    if (prior.completedAt === completedAt) return
+    const candidate: LearningState = {
+      ...mapStateRef.current,
+      lessons: { ...mapStateRef.current.lessons, [lessonId]: { completedAt } },
+    }
+    const result = saveLearningState(candidate, expectedMapRawRef.current, lessonRegistry)
+    if (result.status === 'saved') {
       mapStateRef.current = result.state
       expectedMapRawRef.current = result.raw
-      const read = { status: 'ok' as const, raw: result.raw, state: result.state, changedLessonIds: [] }
+      const unresolvedIds = isReadableLearningState(result.latest) ? result.latest.unresolvedIds : { lessons: [], positions: [] }
+      const read = { status: 'ok' as const, raw: result.raw, state: result.state, unresolvedIds }
       mapStateReadRef.current = read
       setMapStateRead(read)
-      setManualProgress(result.state.lessons)
+      setManualProgress(manualProgressFromLearning(result.state))
       setMapStateConfirmed(true)
       mapStateConfirmedRef.current = true
       setMapStateMessage('')
-    } catch (error) {
-      if (error instanceof MapStateError && error.code === 'storage-unavailable') {
-        const unreadable = { status: 'unreadable' as const, error }
-        mapStateReadRef.current = unreadable
-        setMapStateRead(unreadable)
-      } else if (error instanceof MapStateError && error.code !== 'storage-write-failed') {
-        refreshMapState()
-      }
-      setMapStateMessage(error instanceof Error ? error.message : '手動進捗を保存できませんでした。')
+    } else {
+      publishMapStateRead(result.latest)
+      setMapStateMessage(result.error?.message ?? '手動進捗を保存できませんでした。')
     }
   }, [])
+
+  const publishPracticeResultsRead = (next: PracticeResultsReadResult) => {
+    practiceResultsReadRef.current = next
+    setPracticeResultsRead(next)
+    if (isReadablePracticeResults(next)) expectedPracticeRawRef.current = next.raw
+  }
+
+  const publishPendingJudgements = (next: PendingJudgement[]) => {
+    pendingJudgementsRef.current = next
+    setPendingJudgements(next)
+  }
+
+  const savePendingJudgement = (id: string) => {
+    const current = pendingJudgementsRef.current.find((item) => item.id === id)
+    if (!current || current.status === 'unknown') return
+    const result = appendPracticeResult(current.record as Parameters<typeof appendPracticeResult>[0], expectedPracticeRawRef.current)
+    publishPracticeResultsRead(result.latest)
+    if (result.status === 'saved') {
+      publishPendingJudgements(pendingJudgementsRef.current.filter((item) => item.id !== id))
+      return
+    }
+    publishPendingJudgements(pendingJudgementsRef.current.map((item) => item.id !== id ? item : {
+      ...item,
+      status: result.status === 'unknown' ? 'unknown' : result.status === 'conflict' ? 'conflict' : 'not-written',
+      pendingResult: result,
+    }))
+  }
+
+  const drainPendingJudgements = () => {
+    for (const candidate of pendingJudgementsRef.current) {
+      if (candidate.status === 'unknown') return
+      if (candidate.status !== 'waiting') continue
+      savePendingJudgement(candidate.id)
+      if (pendingJudgementsRef.current.some((item) => item.status === 'unknown')) return
+    }
+  }
+
+  const handleFirstGrade = (categoryId: string, isCorrect: boolean) => {
+    const candidate: PendingJudgement = {
+      id: 'judgement-' + Date.now() + '-' + (++judgementIdRef.current),
+      record: { categoryId, isCorrect, attemptedAt: new Date().toISOString() },
+      status: 'waiting',
+    }
+    publishPendingJudgements([...pendingJudgementsRef.current, candidate])
+    drainPendingJudgements()
+  }
+
+  const retryPendingJudgement = (candidate: PendingJudgement) => {
+    if (candidate.status === 'unknown' && candidate.pendingResult) {
+      const result = recheckPracticeResult(candidate.pendingResult)
+      publishPracticeResultsRead(result.latest)
+      if (result.status === 'saved') {
+        publishPendingJudgements(pendingJudgementsRef.current.filter((item) => item.id !== candidate.id))
+        drainPendingJudgements()
+        return
+      }
+      publishPendingJudgements(pendingJudgementsRef.current.map((item) => item.id === candidate.id ? {
+        ...item,
+        status: result.status === 'unknown' ? 'unknown' : result.status === 'conflict' ? 'conflict' : 'not-written',
+        pendingResult: result,
+      } : item))
+      if (result.status !== 'unknown') drainPendingJudgements()
+      return
+    }
+    if (candidate.status === 'conflict' && !window.confirm('保存状態が変わっています。この判定を現在の保存済み記録に追加しますか？')) return
+    publishPendingJudgements(pendingJudgementsRef.current.map((item) => item.id === candidate.id ? { ...item, status: 'waiting' } : item))
+    drainPendingJudgements()
+  }
+
+  const recheckPracticeStorage = () => {
+    const latest = readPracticeResults()
+    publishPracticeResultsRead(latest)
+    if (latest.status === 'missing' || latest.status === 'ok') drainPendingJudgements()
+  }
+
+  useEffect(() => {
+    if (pendingJudgements.length === 0) return
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeUnload)
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload)
+  }, [pendingJudgements.length])
+
   const screen = screenForRoute(view.route)
   const current = screens[screen]
   const entityTitle = view.resolved.status === 'lesson'
     ? view.resolved.section?.title ?? view.resolved.lesson.title
+    : view.resolved.status === 'course-practice'
+      ? view.resolved.lesson.title + 'の演習'
     : view.resolved.status === 'practice'
       ? view.resolved.instance.questionId + 'の演習'
       : view.resolved.status === 'feedback'
@@ -379,35 +485,26 @@ function App() {
   const storageIssue = storageError || storedData.status === 'migration-failed'
     ? storedData.error
     : null
-  const hasCounts = storedData.status === 'missing' || storedData.status === 'ok'
-    || storedData.status === 'legacy' || storedData.status === 'migration-failed'
-  const canWritePracticeData = storedData.status === 'missing' || storedData.status === 'ok' || storedData.status === 'legacy'
   const mapStateUnavailable = mapStateRead.status === 'invalid' || mapStateRead.status === 'unsupported' || mapStateRead.status === 'unreadable'
-  const canExportCombined = !storageError && !mapStateUnavailable
-  const canExportPractice = !storageError
+  const practiceResultsUnavailable = practiceResultsRead.status === 'invalid' || practiceResultsRead.status === 'unsupported' || practiceResultsRead.status === 'unreadable'
+  const canExportCombined = isReadableLearningState(mapStateRead) && isReadablePracticeResults(practiceResultsRead)
   const mapStateStatusLabel = mapStateRead.status === 'missing' ? '未作成（初期値）'
     : mapStateRead.status === 'ok' ? '保存済み'
-      : mapStateRead.status === 'migrated' ? '教材改訂を反映（次回操作時に保存）'
-        : mapStateRead.status === 'invalid' ? '破損または容量超過'
-          : mapStateRead.status === 'unsupported' ? '未対応の保存形式'
-            : '読み込み不能'
+      : mapStateRead.status === 'invalid' ? '破損または容量超過'
+        : mapStateRead.status === 'unsupported' ? '未対応の保存形式'
+          : '読み込み不能'
   const manualProgressDisabled = mapStateUnavailable
   const manualProgressNotice = mapStateUnavailable
     ? mapStateConfirmed
       ? '手動進捗の保存状態を確認できません。画面には最後に確認した値を表示し、編集と保存を停止しています。'
       : '手動進捗の保存状態を確認できません。画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'
-    : '手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。'
+    : '手動完了とマップ配置はこのブラウザーに保存され、演習結果とは別に集計されます。バックアップに含まれます。'
   const practiceQuestions = availablePracticeQuestions()
-  const manualCompletedCount = countCompletedManualProgress(manualProgress, lessonRegistry)
+  const manualCompletedCount = Object.values(manualProgress).filter((item) => item.status === 'completed').length
   const progress = useMemo(() => {
-    if (storedData.status === 'invalid' || storedData.status === 'unreadable') return null
-    return deriveProgress(storedData.data, lessonRegistry, Date.now())
-  }, [view.navigationId, storedData])
-  const canResolveProgressRoute = (route: Extract<AppRoute, { kind: 'feedback-id' | 'practice-id' }>) => {
-    const resolved = resolveRouteData(route, storedData)
-    return route.kind === 'feedback-id' ? resolved.status === 'feedback' : resolved.status === 'practice'
-  }
-
+    if (!isReadableLearningState(mapStateRead) || !isReadablePracticeResults(practiceResultsRead)) return null
+    return deriveCourseProgress(mapStateRead.state, practiceResultsRead.results, lessonRegistry)
+  }, [mapStateRead, practiceResultsRead])
   const publishRouteView = (next: RouteView) => {
     setPendingPracticeNavigation((pending) =>
       pending?.sourceEntryId === next.historyState.entryId ? pending : null)
@@ -548,17 +645,18 @@ function App() {
   const requestLessonDomainDownload = useCallback((json: string) =>
     requestDownload(json, 'sfqc-lesson-domain-draft.json'), [])
 
-  const handleExport = (kind: 'combined' | 'practice') => {
+  const handleExport = () => {
     if (busyRef.current) return
     busyRef.current = true
     setBusy(true)
     setDataMessage('')
     try {
-      const json = kind === 'combined' ? exportBackup() : exportLegacyLocalData()
-      if (!requestDownload(json, kind === 'combined' ? 'sfqc-backup.json' : 'sfqc-practice-v2.json')) {
+      const json = exportLearningBackup()
+      if (!requestDownload(json, 'sfqc-learning-backup.json')) {
         throw new Error('JSONファイルを書き出せませんでした。')
       }
-      setDataMessage(kind === 'combined' ? '全データの書き出しを開始しました。' : '演習記録のみの書き出しを開始しました。')
+      setDataMessage('学習進捗と保存済み演習結果の書き出しを開始しました。'
+        + (pendingJudgementsRef.current.length ? ' このバックアップには未保存の判定' + pendingJudgementsRef.current.length + '件が含まれません。' : ''))
     } catch (error) {
       setDataMessage(error instanceof Error ? error.message : '書き出しに失敗しました。')
     } finally {
@@ -597,31 +695,6 @@ function App() {
       refreshRouteWithData(readLocalData())
     }
     setPracticeError(error instanceof Error ? error.message : '保存に失敗しました。')
-  }
-
-  const handleStartPractice = (questionId: string) => {
-    if (practiceBusyRef.current) return
-    if (!canWritePracticeData) {
-      setPracticeError('保存データを読み込めないため、新しい出題を記録できません。')
-      return
-    }
-    practiceBusyRef.current = true
-    setPracticeBusy(true)
-    setPracticeError('')
-    let saved = false
-    try {
-      const record = createPracticeInstance(questionId)
-      saved = true
-      openSavedPracticeRoute(record, { kind: 'practice-id', instanceId: record.instance.instanceId },
-        '出題snapshotは保存済みですが、画面を開けませんでした。保存済みの出題を開いてください。')
-    } catch (error) {
-      handlePracticeFailure(error)
-    } finally {
-      if (!saved) {
-        practiceBusyRef.current = false
-        setPracticeBusy(false)
-      }
-    }
   }
 
   const handleSimilarPractice = (instance: ReadonlyQuestionInstance) => {
@@ -687,6 +760,43 @@ function App() {
     )) setPendingPracticeNavigation(null)
   }
 
+  const applyLearningBackupResult = (result: LearningBackupImportResult) => {
+    if (result.status === 'imported') {
+      publishMapStateRead(result.latest.learningState)
+      publishPracticeResultsRead(result.latest.practiceResults)
+      if (keepJudgementsAfterRestoreRef.current) {
+        publishPendingJudgements(pendingJudgementsRef.current.map((item) => ({
+          ...item, status: 'not-written', pendingResult: undefined,
+        })))
+      } else {
+        publishPendingJudgements([])
+      }
+      setPendingBackupImport(null)
+      setDataMessage('学習進捗と保存済み演習結果を復元しました。'
+        + (keepJudgementsAfterRestoreRef.current && pendingJudgementsRef.current.length
+          ? ' 未保存の判定は候補として保持しました。必要に応じて再保存してください。' : ''))
+      return
+    }
+    if (isReadableLearningState(result.latest.learningState)) publishMapStateRead(result.latest.learningState)
+    if (isReadablePracticeResults(result.latest.practiceResults)) publishPracticeResultsRead(result.latest.practiceResults)
+    if (result.pending) {
+      setPendingBackupImport(result)
+      setDataMessage(result.status === 'recovery-required'
+        ? '復元結果を確定できません。保存状態を再確認し、必要なら救出rawを保全してください。'
+        : '復元の保存状態を確定できません。再確認が必要です。')
+      return
+    }
+    setPendingBackupImport(null)
+    setDataMessage(result.status === 'cancelled'
+      ? '復元をキャンセルしました。保存データは変更されていません。'
+      : result.error?.message ?? '復元は完了しませんでした（' + result.status + '）。')
+  }
+
+  const handleRecheckBackupImport = () => {
+    if (!pendingBackupImport?.pending) return
+    applyLearningBackupResult(recheckLearningBackupImport(pendingBackupImport.pending, lessonRegistry))
+  }
+
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget
     const file = input.files?.[0]
@@ -695,62 +805,48 @@ function App() {
       input.value = ''
       return
     }
+    if (pendingJudgementsRef.current.some((item) => item.status === 'unknown')) {
+      setDataMessage('未保存判定の保存状態を再確認してから、バックアップを復元してください。')
+      input.value = ''
+      return
+    }
+    if (pendingBackupImport?.pending) {
+      setDataMessage('前回のバックアップ復元の保存状態を再確認してから、新しい復元を開始してください。')
+      input.value = ''
+      return
+    }
+
+    let keepJudgements = true
+    if (pendingJudgementsRef.current.length > 0) {
+      const count = pendingJudgementsRef.current.length
+      keepJudgements = window.confirm('未保存の判定' + count + '件があります。復元後も候補として保持しますか？ OKで保持、キャンセルで次の確認へ進みます。')
+      if (!keepJudgements && !window.confirm('未保存の判定' + count + '件を破棄してバックアップを復元しますか？')) {
+        input.value = ''
+        setDataMessage('復元をキャンセルしました。未保存の判定は保持されています。')
+        return
+      }
+    }
 
     busyRef.current = true
     setBusy(true)
     setDataMessage('')
+    keepJudgementsAfterRestoreRef.current = keepJudgements
     try {
-      const result = await importBackup(file, (state) => {
-        if (state.kind === 'legacy') {
-          const imported = state.importCounts.questionInstances + '件のsnapshot、' + state.importCounts.answerAttempts + '件の解答試行、' + state.importCounts.reviewEvents + '件の復習イベント'
-          return window.confirm(state.damaged
-            ? '現在の演習記録は破損しているか未対応形式のため、通常の方法で読み出せません。選択したファイル（' + imported + '）で演習記録のみを置き換えますか？手動進捗と配置は維持します。'
-            : '演習記録のみを置き換えます。現在はsnapshot ' + state.existingCounts?.questionInstances + '件、解答試行 ' + state.existingCounts?.answerAttempts + '件、復習イベント ' + state.existingCounts?.reviewEvents + '件です。選択したファイル（' + imported + '）を読み込みますか？手動進捗と配置は維持します。')
-        }
-        const existingPractice = state.existing.localData
-        const existingMap = state.existing.mapState
-        const imported = state.imported.localData
-        const mapImported = state.imported.mapState.completedLessons
-        const statusLabel = (status: string) => ({
-          missing: '未保存', ok: '保存済み', migrated: '教材改訂を反映中',
-          damaged: '破損', unsupported: '未対応形式', unreadable: '読み込み不能',
-        }[status] ?? status)
-        return window.confirm(
-          '全データを統合バックアップで置き換えます。現在の演習記録は' + statusLabel(existingPractice.status)
-          + '（snapshot ' + existingPractice.counts.questionInstances + '件、解答試行 ' + existingPractice.counts.answerAttempts
-          + '件、復習イベント ' + existingPractice.counts.reviewEvents + '件）、手動進捗は' + statusLabel(existingMap.status)
-          + '（完了 ' + existingMap.completedLessons + '単元）です。選択したファイルの演習記録 '
-          + imported.questionInstances + '件・解答試行 ' + imported.answerAttempts + '件・復習イベント '
-          + imported.reviewEvents + '件、手動完了 ' + mapImported + '単元で置き換えますか？',
-        )
-      }, {
+      const result = await importLearningBackup(file, (state) => window.confirm(
+        '全データを新形式のバックアップで置き換えます。現在は手動完了'
+        + state.existing.learningState.completedLessons + '単元・演習判定'
+        + state.existing.practiceResults.records + '件、選択ファイルは手動完了'
+        + state.imported.learningState.completedLessons + '単元・演習判定'
+        + state.imported.practiceResults.records + '件です。復元しますか？',
+      ), {
         requestRecoveryDownload: (json) => requestDownload(json, 'sfqc-recovery-raw.json'),
         confirmRecovery: () => window.confirm('元データの保全ファイルのダウンロード要求を出しました。ブラウザーは実際にファイルへ保存されたかを確認できません。保全ファイルを保存できたことを確認した場合だけ続行してください。'),
       })
-      if (result.status === 'cancelled') {
-        setDataMessage('復元をキャンセルしました。演習記録と手動進捗は変更されていません。')
-      } else {
-        const importedData = { status: 'ok' as const, raw: result.raw, data: result.data }
-        refreshRouteWithData(importedData)
-        if (result.kind === 'backup') {
-          const importedMapState = { status: 'ok' as const, raw: result.mapRaw, state: result.mapState, changedLessonIds: [] }
-          publishMapStateRead(importedMapState)
-          if (result.changedLessonIds.length) {
-            setMapStateMessage(`教材改訂により、${result.changedLessonIds.length}単元の自己点検を未確認にしました。`)
-          }
-          setDataMessage('演習記録と手動進捗・配置を復元しました。')
-        } else {
-          setDataMessage('演習記録のみを復元しました。手動進捗と配置は維持しました。')
-        }
-      }
+      applyLearningBackupResult(result)
     } catch (error) {
-      const message = error instanceof Error ? error.message : '復元に失敗しました。'
-      setDataMessage(message + (error && typeof error === 'object' && 'recoveryRequired' in error && error.recoveryRequired
-        ? ' ' + ('recoveryDownloadFailed' in error && error.recoveryDownloadFailed
-          ? '救出ファイルを書き出せませんでした。保存状態を直ちに確認してください。'
-          : '救出rawファイルを保存し、READMEの保守復旧手順を確認してください。') : ''))
-      refreshRouteWithData(readLocalData())
+      setDataMessage(error instanceof Error ? error.message : '復元に失敗しました。')
       refreshMapState()
+      recheckPracticeStorage()
     } finally {
       input.value = ''
       busyRef.current = false
@@ -899,6 +995,21 @@ function App() {
         : '画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'}
     </p>}
     {!mapStateUnavailable && mapStateMessage && <p className="storage-alert" role="status" aria-live="polite">{mapStateMessage}</p>}
+    {practiceResultsUnavailable && <p className="storage-alert" role="alert">{'error' in practiceResultsRead ? practiceResultsRead.error.message : '演習結果を読み取れません。'} <button type="button" onClick={recheckPracticeStorage}>保存状態を再確認</button></p>}
+    {pendingJudgements.length > 0 && <section className="practice-recovery" role="status" aria-live="polite">
+      <h2>未保存の判定</h2>
+      <p>未保存の判定{pendingJudgements.length}件はこのページのメモリにあります。再読み込みすると失われます。</p>
+      <ul>{pendingJudgements.map((candidate) => <li key={candidate.id}>
+        {candidate.record.categoryId}：{candidate.record.isCorrect ? '正解' : '不正解'} · {candidate.status === 'unknown' ? '保存結果未確認' : candidate.status === 'conflict' ? '保存データに競合' : candidate.status === 'not-written' ? '未保存' : '保存待ち'}
+        {' '}<button type="button" onClick={() => retryPendingJudgement(candidate)}>
+          {candidate.status === 'unknown' ? '保存状態を再確認' : candidate.status === 'conflict' ? '確認して再保存' : '再保存'}
+        </button>
+      </li>)}</ul>
+    </section>}
+    {pendingBackupImport?.pending && <section className="practice-recovery" role="alert">
+      <p>バックアップ復元の状態を確認できません。復元中の保存データを再確認してください。</p>
+      <button type="button" onClick={handleRecheckBackupImport}>復元状態を再確認</button>
+    </section>}
     {view.historyWarning && (
       <p className="storage-alert" role="status">
         このURLの復帰情報は利用できないため、保存データとURLだけで画面を開きました。読書位置や復習経路の一部は復元できないことがあります。
@@ -953,6 +1064,31 @@ function App() {
           </a>
         </p>}
     </>
+  }
+
+  const renderCourseLessonRoute = () => {
+    if (view.route.kind !== 'course-lesson') return null
+    if (view.resolved.status === 'unknown-id') return <RouteProblem message="指定した節は教材レジストリにありません。目次から利用できる節を選んでください。" />
+    if (view.resolved.status === 'unavailable-lesson') return <RouteProblem message="この教材はまだ収録されていません。" />
+    if (view.resolved.status !== 'lesson') return null
+    return <DescriptiveStatisticsCourse
+      lesson={view.resolved.lesson}
+      activeSectionId={view.route.sectionId}
+      sectionHeadingRef={sectionHeadingRef}
+      onFirstGrade={handleFirstGrade}
+    />
+  }
+
+  const renderCoursePracticeRoute = () => {
+    if (view.route.kind !== 'course-practice') return null
+    if (view.resolved.status === 'unknown-id') return <RouteProblem message="指定した単元は教材レジストリにありません。" />
+    if (view.resolved.status === 'unavailable-lesson') return <RouteProblem message="この教材はまだ収録されていません。" />
+    if (view.resolved.status !== 'course-practice') return null
+    if (view.route.courseId !== 'descriptive-statistics') return <RouteProblem message="この単元の演習は準備中です。" />
+    return <DescriptiveStatisticsExercisePreview
+      currentLessonHref={routeToHash({ kind: 'course-lesson', courseId: view.route.courseId, sectionId: 'mean' })}
+      onFirstGrade={handleFirstGrade}
+    />
   }
 
   const renderPracticeRoute = () => {
@@ -1133,17 +1269,14 @@ function App() {
           {screen === 'data' ? (
             <section className="data-panel" aria-labelledby="data-title">
               <h2 id="data-title">保存データ</h2>
-              <p>出題snapshot：{hasCounts ? storedData.data.questionInstances.length + '件' : '読み込みエラー'}</p>
-              <p>解答試行：{hasCounts ? storedData.data.answerAttempts.length + '件' : '読み込みエラー'}</p>
-              <p>復習イベント：{hasCounts ? storedData.data.reviewEvents.length + '件' : '読み込みエラー'}</p>
-              <p>手動進捗・自己点検：{mapStateStatusLabel}{!mapStateUnavailable ? `（手動完了 ${manualCompletedCount} / ${lessonRegistry.lessons.length}）` : ''}</p>
-              <p>データはこのブラウザー内に保存され、サーバーへ送信されません。統合バックアップは演習記録・手動進捗・配置を含みます。演習記録のみの書き出しも選べます。</p>
+              <p>保存済み演習判定：{isReadablePracticeResults(practiceResultsRead) ? practiceResultsRead.results.records.length + '件' : '読み込みエラー'}</p>
+              <p>未保存の判定：{pendingJudgements.length}件（このページのメモリ上に保持）</p>
+              <p>手動進捗・マップ配置：{mapStateStatusLabel}{!mapStateUnavailable ? `（手動完了 ${manualCompletedCount} / ${lessonRegistry.lessons.length}）` : ''}</p>
+              <p>データはこのブラウザー内に保存され、サーバーへ送信されません。統合バックアップは手動進捗、マップ配置、保存済み演習判定を含みます。</p>
+              {pendingJudgements.length > 0 && <p className="storage-alert" role="status">このバックアップには未保存の判定{pendingJudgements.length}件が含まれません。</p>}
               <div className="data-actions">
-                <button type="button" onClick={() => handleExport('combined')} disabled={busy || !canExportCombined}>
+                <button type="button" onClick={handleExport} disabled={busy || !canExportCombined}>
                   全データを書き出し
-                </button>
-                <button type="button" onClick={() => handleExport('practice')} disabled={busy || !canExportPractice}>
-                  演習記録のみを書き出し（schema v2）
                 </button>
                 <label htmlFor="backup-file">JSONを読み込む</label>
                 <input
@@ -1151,13 +1284,15 @@ function App() {
                   type="file"
                   accept="application/json,.json"
                   onChange={handleImport}
-                  disabled={busy}
+                  disabled={busy || !!pendingBackupImport?.pending || pendingJudgements.some((item) => item.status === 'unknown')}
                 />
               </div>
-              <p className="data-limit">演習記録：schemaVersion 2・snapshot最大500件・JSONはUTF-8で2 MiBまで。手動進捗：独立保存領域・64 KiBまで。</p>
-              <p>容量上限を超えるときは未編集バックアップを保存し、複製したJSONを整理してから読み込みます。snapshotを除く場合は参照する解答試行も、解答試行を除く場合は参照する復習イベントも一緒に除いてください。保存履歴は自動削除しません。</p>
+              {mapStateUnavailable && <button type="button" onClick={refreshMapState}>手動進捗の保存状態を再確認</button>}
+              <p className="data-limit">手動進捗・マップ配置は64 KiB、演習判定は最大25件・8 KiBです。</p>
               <p className="data-message" role="status" aria-live="polite">{dataMessage}</p>
             </section>
+          ) : screen === 'lesson' && view.route.kind === 'course-lesson' ? (
+            renderCourseLessonRoute()
           ) : screen === 'lesson' && view.route.kind === 'lesson-id' ? (
             renderLessonRoute()
           ) : screen === 'lesson' ? (
@@ -1165,28 +1300,19 @@ function App() {
               <h2 id="lesson-selection-title">単元を選んでください</h2>
               <p>学習マップから収録済みの単元または節を選ぶと、教材を表示できます。</p>
             </section>
+          ) : screen === 'practice' && view.route.kind === 'course-practice' ? (
+            renderCoursePracticeRoute()
           ) : screen === 'practice' && view.route.kind === 'practice-id' ? (
             renderPracticeRoute()
           ) : screen === 'practice' && isDescriptiveStatisticsExercisePreview ? (
-            <DescriptiveStatisticsExercisePreview currentPracticeHref={`${window.location.pathname}#/practice`} />
+            <DescriptiveStatisticsExercisePreview currentLessonHref={routeToHash({ kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'mean' })} />
           ) : screen === 'practice' ? (
-            <PracticeSelectionView
-              questions={practiceQuestions}
-              disabled={!canWritePracticeData || practiceBusy}
-              error={practiceError}
-              onStart={handleStartPractice}
-            />
+            <RouteProblem message="演習は学習マップから単元を選んで開いてください。" />
           ) : screen === 'feedback' && view.route.kind === 'feedback-id' ? (
             renderFeedbackRoute()
           ) : screen === 'progress' ? (
             progress
-              ? <ProgressView
-                progress={progress}
-                canResolveRoute={canResolveProgressRoute}
-                unavailableMessage={storedData.status === 'migration-failed'
-                  ? '保存形式の移行に失敗したため、この保存IDは開けません。'
-                  : '保存IDを現在のデータから解決できません。'}
-              />
+              ? <CourseProgressView progress={progress} />
               : <section className="placeholder" aria-labelledby="progress-unavailable-title">
                 <h2 id="progress-unavailable-title">進捗を集計できません</h2>
                 <p>保存データを検証できないため、数値を表示していません。データ管理画面で保存状態を確認してください。</p>

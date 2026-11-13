@@ -128,6 +128,18 @@ function isBodyBlock(value) {
       && hasKeys(value, ['kind', 'label', 'targetRef'])
       && isInlineLessonRef({ label: value.label, targetRef: value.targetRef })
   }
+  if (value.kind === 'heading') return hasOnlyKeys(value, ['kind', 'level', 'text'])
+    && hasKeys(value, ['kind', 'level', 'text']) && value.level === 3 && isText(value.text)
+  if (value.kind === 'table') return hasOnlyKeys(value, ['kind', 'caption', 'columns', 'rows'])
+    && hasKeys(value, ['kind', 'caption', 'columns', 'rows']) && isText(value.caption)
+    && isArray(value.columns) && value.columns.length >= 2 && value.columns.every(isText)
+    && isArray(value.rows) && value.rows.length > 0 && value.rows.every((row) =>
+      isArray(row) && row.length === value.columns.length && row.every(isText))
+  if (value.kind === 'details') return hasOnlyKeys(value, ['kind', 'summary', 'blocks'])
+    && hasKeys(value, ['kind', 'summary', 'blocks']) && isText(value.summary)
+    && isArray(value.blocks) && value.blocks.length > 0 && value.blocks.every(isBodyBlock)
+  if (value.kind === 'exerciseSlot') return hasOnlyKeys(value, ['kind', 'exerciseId'])
+    && hasKeys(value, ['kind', 'exerciseId']) && typeof value.exerciseId === 'string' && idPattern.test(value.exerciseId)
   return value.kind === 'figureRef'
     && hasOnlyKeys(value, ['kind', 'figureId'])
     && hasKeys(value, ['kind', 'figureId'])
@@ -176,6 +188,12 @@ function isFigure(value) {
       && ['linear', 'log', 'categorical'].includes(axis.scale)
   }) || new Set(value.axes.map((axis) => axis.axis)).size !== 2) return false
   return true
+}
+
+function isCourseReference(value) {
+  if (!hasOnlyKeys(value, ['title', 'url', 'details']) || !hasKeys(value, ['title', 'url', 'details'])
+    || !isText(value.title) || !isText(value.details) || typeof value.url !== 'string') return false
+  try { return new URL(value.url).protocol === 'https:' } catch { return false }
 }
 
 function isSource(value, officialSourceItemIds) {
@@ -236,10 +254,11 @@ function isLesson(value) {
     ])
   }
   if (value.availability === 'included') {
+    const optionalKeys = ['overview', 'references', 'credit']
     return hasOnlyKeys(value, [
       'availability', 'lessonId', 'title', 'domain', 'learningObjectives', 'declaredSectionIds',
       'commonPrerequisites', 'conditionalPrerequisites', 'optionalReviews', 'questionIds',
-      'sourceItemIds', 'sourceRefs', 'revision', 'sections', 'figures',
+      'sourceItemIds', 'sourceRefs', 'revision', 'sections', 'figures', ...optionalKeys,
     ])
       && hasKeys(value, ['sections', 'figures'])
       && value.declaredSectionIds.length > 0
@@ -251,6 +270,9 @@ function isLesson(value) {
       && isArray(value.figures)
       && value.figures.every(isFigure)
       && new Set(value.figures.map((figure) => figure.figureId)).size === value.figures.length
+      && (!Object.hasOwn(value, 'overview') || isArray(value.overview) && value.overview.every(isBodyBlock))
+      && (!Object.hasOwn(value, 'references') || isArray(value.references) && value.references.every(isCourseReference))
+      && (!Object.hasOwn(value, 'credit') || isText(value.credit))
   }
   return false
 }

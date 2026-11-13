@@ -59,8 +59,8 @@
   stroke-width: 1;
 }
 
-.screen-wide-preview .ivc-population span,
-.screen-wide-preview .ivc-bar-row .num {
+.ivc-population span,
+.ivc-bar-row .num {
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
 }
@@ -203,7 +203,7 @@
   background: var(--surface);
 }
 
-.descriptive-statistics-preview-content .ivc-simulation h3 {
+.ivc-simulation h3 {
   margin: 0 0 0.4rem;
   font-size: 1rem;
 }

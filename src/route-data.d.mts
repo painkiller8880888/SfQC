@@ -10,6 +10,7 @@ type RouteLocalDataReadResult = LocalDataReadResult
 export type RouteDataResult =
   | { status: 'screen' }
   | { status: 'lesson'; lesson: IncludedLessonDefinition; section: IncludedLessonDefinition['sections'][number] | null }
+  | { status: 'course-practice'; lesson: IncludedLessonDefinition }
   | { status: 'practice'; data: LocalData; instance: ReadonlyQuestionInstance }
   | { status: 'feedback'; data: LocalData; attempt: AnswerAttempt; instance: ReadonlyQuestionInstance }
   | { status: 'unknown-id'; target: 'lesson' | 'section' | 'instance' | 'attempt' }

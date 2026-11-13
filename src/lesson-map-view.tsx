@@ -21,7 +21,7 @@ import { lessonDomainColors, lessonDomains, type LessonDomain } from './lesson-c
 import { lessonRegistry } from './lesson-registry.mjs'
 import type { ManualProgressCommand, ManualProgressState } from './manual-progress.mjs'
 import type { MapState } from './map-state.mjs'
-import type { ProgressData } from './progress-data.mjs'
+import type { CourseProgress } from './course-progress.mjs'
 import { LessonDetailCard } from './lesson-view'
 
 export type Positions = MapState['positions']
@@ -47,7 +47,7 @@ export function shouldSaveMapLayout(changes: NodeChange<MapPocNode>[], candidate
     && !samePositions(confirmed, candidate)
 }
 
-export function getMapProgressSummary(progress: ProgressData | null, lessonId: string) {
+export function getMapProgressSummary(progress: CourseProgress | null, lessonId: string) {
   const observation = progress?.lessons.find((item) => item.lessonId === lessonId)
   if (!observation) return {
     label: '集計未確認',
@@ -55,8 +55,8 @@ export function getMapProgressSummary(progress: ProgressData | null, lessonId: s
   }
   const counts = `${observation.correctCount}/${observation.attemptCount}回`
   if (observation.correctRate === null) return {
-    label: '—（試行0回）',
-    ariaLabel: `正答率未記録、正答数/試行数 ${counts}`,
+    label: observation.hasPractice ? '未記録（試行0回）' : '演習なし',
+    ariaLabel: observation.hasPractice ? `正答率未記録、正答数/試行数 ${counts}` : 'この単元には現在、保存対象の演習がありません',
   }
   const percentage = Math.round(observation.correctRate * 100)
   return {
@@ -85,7 +85,7 @@ type LessonMapViewProps = {
   theme: 'light' | 'dark'
   viewport: Viewport | null
   selectedLessonId: string | null
-  progress: ProgressData | null
+  progress: CourseProgress | null
   manualProgress: ManualProgressState
   manualProgressDisabled?: boolean
   positions: Positions

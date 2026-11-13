@@ -28,6 +28,10 @@ export type LessonBodyBlock =
   | { kind: 'formula'; parts: FormulaPart[] }
   | ({ kind: 'lessonRef' } & InlineLessonRef)
   | { kind: 'figureRef'; figureId: string }
+  | { kind: 'heading'; level: 3; text: string }
+  | { kind: 'table'; caption: string; columns: string[]; rows: string[][] }
+  | { kind: 'details'; summary: string; blocks: LessonBodyBlock[] }
+  | { kind: 'exerciseSlot'; exerciseId: string }
 
 export type SectionDefinition = {
   sectionId: string
@@ -94,6 +98,9 @@ export type IncludedLessonDefinition = LessonBase & {
   availability: 'included'
   sections: SectionDefinition[]
   figures: FigureDefinition[]
+  overview?: LessonBodyBlock[]
+  references?: { title: string; url: string; details: string }[]
+  credit?: string
 }
 
 export type LessonDefinition = PlannedLessonDefinition | IncludedLessonDefinition

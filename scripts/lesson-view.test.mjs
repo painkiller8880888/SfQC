@@ -6,6 +6,7 @@ import { createServer } from 'vite'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 import { questionRegistry } from '../src/question-registry.mjs'
 import { deriveProgress } from '../src/progress-data.mjs'
+import { deriveCourseProgress } from '../src/course-progress.mjs'
 import { gradeQuestionAnswer } from '../src/question-grading.mjs'
 import { createInitialManualProgress } from '../src/manual-progress.mjs'
 import { createMapPocGraph } from '../src/map-poc-graph.mjs'
@@ -22,14 +23,16 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     const { LessonDetailCard, LessonMap, LessonReference, LessonRouteContent, ProgressView, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
     const render = (component, props = {}) => renderToStaticMarkup(createElement(component, props))
     const emptyData = { schemaVersion: 2, questionInstances: [], answerAttempts: [], reviewEvents: [] }
-    const emptyProgress = deriveProgress(emptyData, lessonRegistry, Date.parse('2026-10-27T00:00:00.000Z'))
+    const emptyProgress = deriveCourseProgress(null, { schemaVersion: 1, records: [] }, lessonRegistry)
     const map = render(LessonMap, { progress: emptyProgress })
     const included = lessonRegistry.lessons.filter((lesson) => lesson.availability === 'included')
     const expectedSectionRoutes = new Set(included.flatMap((lesson) => lesson.sections
-      .map((section) => `#/lesson/${lesson.lessonId}/${section.sectionId}`)))
-    const mapSectionRoutes = new Set([...map.matchAll(/href="(#\/lesson\/[^"]+)"/gu)]
+      .map((section) => lesson.lessonId === 'descriptive-statistics'
+        ? `#/course/${lesson.lessonId}/lesson/${section.sectionId}`
+        : `#/lesson/${lesson.lessonId}/${section.sectionId}`)))
+    const mapSectionRoutes = new Set([...map.matchAll(/href="(#\/(?:course|lesson)\/[^"]+)"/gu)]
       .map((match) => match[1])
-      .filter((href) => href.split('/').length === 4))
+      .filter((href) => href.startsWith('#/course/') || href.split('/').length === 4))
 
     assert.deepEqual([...mapSectionRoutes].sort(), [...expectedSectionRoutes].sort())
     assert.match(map, /収録済みの単元/u)
@@ -44,6 +47,12 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.equal(resolveLessonRef('math-algebra-sigma#missing'), null)
     assert.equal(resolveLessonRef('mean-inference#z'), null)
     assert.equal(resolveLessonRef('future-lesson'), null)
+    assert.deepEqual(resolveLessonRef('descriptive-statistics#variance'), {
+      kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance',
+    })
+    assert.deepEqual(resolveLessonRef('descriptive-statistics'), {
+      kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'mean',
+    })
     assert.equal(resolveLessonRef('math-algebra-sigma').sectionId, null)
 
     const fixedContent = fixedInstance.questionDefinitionSnapshot.content
@@ -66,8 +75,11 @@ test('registry-driven map, references, lesson blocks, and app routes render only
         reviewedAt: '2026-10-26T01:00:00.000Z',
       }],
     }, lessonRegistry, Date.parse('2026-10-27T00:00:00.000Z'))
-    const progressMap = render(LessonMap, { progress })
-    assert.match(progressMap, /状態：回答記録あり · 回答試行：1回 · 誤答からの復習候補：あり/u)
+    const courseProgress = deriveCourseProgress(null, { schemaVersion: 1, records: [
+      { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-10-26T00:00:00.000Z' },
+    ] }, lessonRegistry)
+    const progressMap = render(LessonMap, { progress: courseProgress })
+    assert.match(progressMap, /回答試行：1回 · 正答率 0%/u)
     const progressView = render(ProgressView, {
       progress,
       canResolveRoute: () => true,
@@ -77,7 +89,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.match(progressView, /href="#\/feedback\/progress-ui-attempt" data-nav-intent="normal">誤答と復習先を見る/u)
     assert.match(progressView, /href="#\/practice\/attempt-question-1" data-nav-intent="normal">同じ出題へ戻る/u)
     assert.match(progressView, /href="#\/lesson\/math-algebra-sigma\/sigma" data-nav-intent="normal"/u)
-    assert.match(progressView, /href="#\/lesson\/descriptive-statistics\/variance" data-nav-intent="normal"/u)
+    assert.match(progressView, /href="#\/course\/descriptive-statistics\/lesson\/variance" data-nav-intent="normal"/u)
     assert.match(progressView, /記録された復習先への訪問/u)
     const failedRouteProgress = render(ProgressView, {
       progress,
@@ -102,14 +114,14 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.match(descriptiveCard, /<h2[^>]*>基本統計量<\/h2>/u)
     assert.match(descriptiveCard, /収録済み：4 \/ 4 節/u)
     assert.match(descriptiveCard, /学習目標/u)
-    assert.match(descriptiveCard, /手動進捗：未開始/u)
-    assert.match(descriptiveCard, /手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。/u)
-    assert.equal((descriptiveCard.match(/type="checkbox"/gu) ?? []).length, descriptive.learningObjectives.length)
-    assert.match(descriptiveCard, />Start<\/button>/u)
+    assert.match(descriptiveCard, /手動進捗：未完了/u)
+    assert.match(descriptiveCard, /手動完了はこのブラウザーに保存され、演習記録とは別に集計されます。バックアップに含まれます。/u)
+    assert.equal((descriptiveCard.match(/type="checkbox"/gu) ?? []).length, 0)
+    assert.doesNotMatch(descriptiveCard, />Start<\/button>/u)
     assert.match(descriptiveCard, />Mark completed<\/button>/u)
-    assert.match(descriptiveCard, /href="#\/lesson\/descriptive-statistics" data-nav-intent="normal">解説を読む/u)
-    assert.match(descriptiveCard, /href="#\/practice" data-nav-intent="normal">演習問題一覧を開く（全単元共通）/u)
-    assert.match(descriptiveCard, /href="#\/progress" data-nav-intent="normal">全単元の演習記録・集計を見る/u)
+    assert.match(descriptiveCard, /href="#\/course\/descriptive-statistics\/lesson\/mean" data-nav-intent="normal">解説を読む/u)
+    assert.match(descriptiveCard, /href="#\/course\/descriptive-statistics\/practice" data-nav-intent="normal">演習問題一覧を開く/u)
+    assert.match(descriptiveCard, /href="#\/progress" data-nav-intent="normal">進捗を見る/u)
     assert.match(descriptiveCard, /共通必須前提/u)
     assert.match(descriptiveCard, /任意復習/u)
     assert.doesNotMatch(descriptiveCard, /方法条件付き必須/u)
@@ -137,19 +149,21 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     })
     assert.doesNotMatch(arithmeticCard, /演習問題一覧を開く/u)
 
-    const variance = render(LessonRouteContent, {
+    const { DescriptiveStatisticsCourse } = await server.ssrLoadModule('/src/descriptive-statistics-course.tsx')
+    const variance = render(DescriptiveStatisticsCourse, {
       lesson: descriptive,
-      sectionId: 'variance',
+      activeSectionId: 'variance',
       sectionHeadingRef: { current: null },
+      onFirstGrade: () => {},
     })
-    assert.match(variance, /Σ<sub>i=1<\/sub><sup>n<\/sup>/u)
-    assert.match(variance, /href="#\/lesson\/math-algebra-sigma\/sigma" data-nav-intent="review" aria-label="Σ：総和記号の読み方"/u)
-    assert.equal((variance.match(/class="variance-figure"/gu) ?? []).length, 1)
-    assert.ok(variance.indexOf('例：偏差平方和') < variance.indexOf('class="variance-figure"'))
-    assert.ok(variance.indexOf('class="variance-figure"') < variance.indexOf('同じ3点が調べたい対象'))
-    assert.match(variance, /76\/75 ≈ 1\.013 mm²/u)
-    assert.match(variance, /href="#\/practice" data-nav-intent="normal">利用できる演習問題を選ぶ/u)
-    assert.doesNotMatch(variance, /演習の開始・回答入力は準備中です。/u)
+    assert.match(variance, /id="course-section-variance"/u)
+    assert.equal((variance.match(/class="course-section"/gu) ?? []).length, 4)
+    assert.equal((variance.match(/class="interactive-variance-comparison/g) ?? []).length, 4)
+    assert.equal((variance.match(/class="course-inline-exercise"/gu) ?? []).length, 4)
+    assert.match(variance, /href="#\/lesson\/math-algebra-sigma\/sigma" data-nav-intent="review"/u)
+    assert.match(variance, /n − 1/u)
+    assert.match(variance, /class="course-references"/u)
+    assert.match(variance, /href="#\/course\/descriptive-statistics\/practice"/u)
 
     const mathBridge = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'math-powers-roots')
     assert.ok(mathBridge)
@@ -204,7 +218,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
 
     globalThis.window.location.hash = '#/progress'
     const progressScreen = render(App)
-    assert.match(progressScreen, /記録の見方/u)
+    assert.match(progressScreen, /進捗の見方/u)
     assert.doesNotMatch(progressScreen, /学習状況や復習対象の表示は/u)
     globalThis.window.localStorage.getItem = () => '{broken'
     const invalidProgressScreen = render(App)
@@ -217,16 +231,21 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.match(legacyLessonRoute, /単元を選んでください/u)
     assert.doesNotMatch(legacyLessonRoute, /variance-figure/u)
 
-    globalThis.window.location.hash = '#/lesson/descriptive-statistics/variance'
+    globalThis.window.location.hash = '#/course/descriptive-statistics/lesson/variance'
     const actualVarianceRoute = render(App)
     assert.match(actualVarianceRoute, /<h1[^>]*>範囲と分散<\/h1>/u)
-    assert.match(actualVarianceRoute, /class="variance-figure"/u)
+    assert.match(actualVarianceRoute, /class="course-sections"/u)
+    assert.match(actualVarianceRoute, /class="course-inline-exercise"/u)
     assert.doesNotMatch(actualVarianceRoute, /<h1[^>]*>範囲と分散 \| 基本統計量/u)
 
     globalThis.window.location.hash = '#/practice'
-    const practiceSelection = render(App)
-    assert.match(practiceSelection, /この問題を始める/u)
-    assert.doesNotMatch(practiceSelection, /href="#\/feedback"/u)
+    const retiredPracticeRoute = render(App)
+    assert.match(retiredPracticeRoute, /演習は学習マップから単元を選んで開いてください/u)
+    assert.doesNotMatch(retiredPracticeRoute, /href="#\/feedback"/u)
+    globalThis.window.location.hash = '#/course/descriptive-statistics/practice'
+    const coursePractice = render(App)
+    assert.match(coursePractice, /基本統計量の演習/u)
+    assert.match(coursePractice, /問1：平均と偏差/u)
     globalThis.window.location.hash = '#/practice/missing-instance'
     const missingPractice = render(App)
     assert.doesNotMatch(missingPractice, /href="#\/feedback"/u)

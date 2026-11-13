@@ -1,0 +1,253 @@
+.course-practice-content {
+  width: 100%;
+  min-width: 0;
+  margin-inline: auto;
+  padding: 0.5rem 0.75rem 2rem;
+  line-height: 1.85;
+}
+
+.course-practice-content p,
+.course-practice-content li {
+  line-height: 1.85;
+}
+
+.ds-practice-question summary:focus-visible,
+.ds-practice-choice:focus-within,
+.ds-practice-number input:focus-visible,
+.ds-button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.ds-button {
+  max-width: 100%;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--control-border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--link);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.ds-button:hover {
+  border-color: var(--text-muted);
+}
+
+.ds-button-primary {
+  border-color: var(--link);
+  background: var(--link);
+  color: var(--surface);
+  font-weight: 700;
+}
+
+.ds-practice-header > p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.ds-practice-toolbar,
+.ds-practice-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.875rem;
+  align-items: center;
+  margin-block: 1rem 0.5rem;
+}
+
+.ds-practice-toolbar p,
+.ds-practice-footer p {
+  margin: 0;
+}
+
+.ds-practice-list {
+  scroll-margin-top: 1rem;
+}
+
+.ds-practice-question {
+  min-width: 0;
+  margin-block: 1.125rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.ds-practice-question-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.ds-practice-question-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.ds-practice-question-heading p,
+.ds-practice-prompt,
+.ds-practice-calculation p,
+.ds-practice-question > p {
+  margin: 0 0 0.625rem;
+}
+
+.ds-practice-question-heading p {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.ds-practice-question-heading a {
+  color: var(--link);
+}
+
+.ds-practice-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+  margin-block: 0.75rem 1rem;
+}
+
+.ds-practice-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.ds-practice-table-wrap caption {
+  padding-bottom: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  text-align: left;
+}
+
+.ds-practice-table-wrap th,
+.ds-practice-table-wrap td {
+  padding: 0.4rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.ds-practice-table-wrap th {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.ds-practice-calculation {
+  min-width: 0;
+  overflow-x: auto;
+  margin-block: 0.75rem 1rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.625rem;
+  background: var(--surface-subtle);
+  font-family: math, "Cambria Math", "Yu Mincho", serif;
+  font-size: 0.875rem;
+}
+
+.ds-practice-calculation p {
+  min-width: max-content;
+  margin: 0;
+  line-height: 2;
+}
+
+.ds-practice-answer {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.ds-practice-answer fieldset {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ds-practice-answer legend {
+  margin-bottom: 0.375rem;
+  font-weight: 650;
+}
+
+.ds-practice-choice {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--page-background);
+  cursor: pointer;
+}
+
+.ds-practice-choice input {
+  flex: none;
+  margin-top: 0.45rem;
+  accent-color: var(--accent);
+}
+
+.ds-practice-choice b {
+  color: var(--text-muted);
+}
+
+.ds-practice-choice:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.ds-practice-number {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.ds-practice-number input {
+  width: 6.5em;
+  min-height: 2.5rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--control-border);
+  border-radius: 0.5rem;
+  background: var(--page-background);
+  color: var(--text);
+  font: inherit;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-practice-question details {
+  margin-top: 0.4rem;
+}
+
+.ds-practice-question details summary {
+  min-height: 2.5rem;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.ds-practice-question .ds-exercise-solution {
+  margin: 0.3rem 0 0;
+  font-family: math, "Cambria Math", "Yu Mincho", serif;
+  font-size: 0.9rem;
+  line-height: 1.9;
+}
+
+.ds-practice-question .ds-exercise-feedback {
+  min-height: 1.6em;
+  margin-block: 0.5rem 0.25rem;
+}
+
+@media (max-width: 480px) {
+  .ds-practice-question {
+    padding-inline: 0.75rem;
+  }
+
+  .ds-practice-calculation {
+    margin-inline: -0.25rem;
+    padding-inline: 0.5rem;
+  }
+}

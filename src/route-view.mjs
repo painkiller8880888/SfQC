@@ -1,25 +1,34 @@
 import { createRouteHistoryState, validateRouteHistoryState } from './route-history.mjs'
-import { readLocalData } from './local-data.mjs'
 import { resolveRoute } from './resolve-screen.mjs'
 import { resolveRouteData, validateRouteHistoryReferences } from './route-data.mjs'
+
+const emptyLegacyData = {
+  status: 'missing', raw: null,
+  data: { schemaVersion: 2, questionInstances: [], answerAttempts: [], reviewEvents: [] },
+}
 
 export function resolveRouteView(
   hash,
   rawState,
   navigationCause,
   navigationId,
-  storedData = readLocalData(),
+  storedData = emptyLegacyData,
 ) {
   const route = resolveRoute(hash)
   let historyState = validateRouteHistoryState(rawState, hash)
-  if (historyState && !validateRouteHistoryReferences(historyState, storedData)) historyState = null
+  if (historyState && (historyState.resumeAttemptId !== null
+    || historyState.returnStack.some((frame) => frame.resumeAttemptId !== null))
+    && !validateRouteHistoryReferences(historyState, storedData)) historyState = null
   const stateNeedsRepair = historyState === null
+  const navigation = stateNeedsRepair && navigationCause !== 'initial' ? 'normal'
+    : stateNeedsRepair && route.kind === 'course-lesson' ? 'section'
+      : navigationCause
   return {
     route,
     historyState: historyState ?? createRouteHistoryState(route, hash),
     storedData,
     resolved: resolveRouteData(route, storedData),
-    navigation: stateNeedsRepair && navigationCause !== 'initial' ? 'normal' : navigationCause,
+    navigation,
     navigationId,
     historyWarning: rawState !== null && stateNeedsRepair,
     stateNeedsRepair,

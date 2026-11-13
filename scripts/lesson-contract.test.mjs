@@ -24,7 +24,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
   assert.ok(lesson(lessonRegistry, 'math-algebra-sigma').declaredSectionIds.includes('sigma'))
   assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').availability, 'included')
-  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 4)
+  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 5)
   assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').questionIds, ['q-desc-var-sc-001', 'q-desc-var-num-001', 'q-desc-mean-sc-001', 'q-desc-sd-sc-001', 'q-desc-var-gen-num-001'])
   const expectedSections = new Map([
     ['data-types', ['types']],
@@ -43,14 +43,19 @@ test('fixture and the six included lessons satisfy the contract and keep other l
       assert.equal(item.revision, 1)
       continue
     }
-    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 4 : 2)
+    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 5 : 2)
     assert.deepEqual(item.declaredSectionIds, sectionIds)
     assert.equal(item.sections.length, sectionIds.length)
     const paragraphs = item.sections.flatMap((section) => section.blocks
       .filter((block) => block.kind === 'paragraph')
       .map((block) => block.parts.filter((part) => part.kind === 'text').map((part) => part.text).join('')))
-    assert.ok(paragraphs.some((paragraph) => paragraph.includes('例：')))
-    assert.ok(paragraphs.some((paragraph) => paragraph.startsWith('出典')))
+    if (item.lessonId !== 'descriptive-statistics') {
+      assert.ok(paragraphs.some((paragraph) => paragraph.includes('例：')))
+      assert.ok(paragraphs.some((paragraph) => paragraph.startsWith('出典')))
+    } else {
+      assert.equal(item.references.length, 4)
+      assert.ok(item.overview.some((block) => block.kind === 'table'))
+    }
   }
   assert.equal(lessonRegistry.officialSourceItemIds.length, 64)
   assert.deepEqual(lesson(lessonRegistry, 'data-types').sourceRefs, ['jsa-l3', 'jsa-l4'])
@@ -59,86 +64,47 @@ test('fixture and the six included lessons satisfy the contract and keep other l
     .some((citation) => citation.sourceItemId === 'SRC-0062' && citation.location === 'p.1「品質保証：プロセス保証」'))
 })
 
-test('descriptive statistics distinguish variance purposes and independently check the worked example', () => {
+test('basic statistics course covers the worked comparison, drills, code figures, and sources', () => {
   const descriptive = lesson(lessonRegistry, 'descriptive-statistics')
-  const sectionText = new Map(descriptive.sections.map((section) => [section.sectionId,
-    section.blocks.map((block) => block.kind === 'paragraph'
-      ? block.parts.filter((part) => part.kind === 'text').map((part) => part.text).join('')
-      : block.kind === 'formula' ? block.parts.map((part) => part.kind === 'mathSymbol' ? part.symbol : part.text).join('') : '').join(' ')]))
-  const sectionFormulas = new Map(descriptive.sections.map((section) => [section.sectionId,
-    section.blocks.filter((block) => block.kind === 'formula').map((block) => block.parts)]))
-
-  assert.ok(sectionText.get('mean').includes('Σ_{i=1}^{N} xᵢ は、添字 i を1から N まで')
-    && sectionText.get('mean').includes('その範囲の xᵢ をすべて足す記号'))
-  assert.ok(sectionText.get('mean').includes('31/15 = 2.0666… mm'))
-  assert.ok(sectionText.get('mean').includes('測定値 1.000 mm、2.200 mm、3.000 mm'))
-  assert.ok(sectionText.get('mean').includes('量的データ') && sectionText.get('mean').includes('μ') && sectionText.get('mean').includes('x̄'))
-  assert.ok(sectionText.get('deviation').includes('−16/15 mm'))
-  assert.ok(sectionText.get('deviation').includes('2/15 mm') && sectionText.get('deviation').includes('14/15 mm'))
-  assert.ok(sectionText.get('variance').includes('母集団全体を記述する母分散は偏差平方和を N で割り')
-    && sectionText.get('variance').includes('標本そのものを記述する分散は偏差平方和を n で割った平均')
-    && sectionText.get('variance').includes('母分散を推定する不偏分散は、標本の偏差平方和を n−1 で割った推定量'))
-  assert.ok(sectionText.get('variance').includes('母分散の不偏推定量（不偏分散）'))
-  assert.ok(sectionText.get('variance').includes('標本分散として n=3'))
-  assert.ok(sectionText.get('variance').includes('152/225 ≈ 0.676 mm²'))
-  assert.ok(sectionText.get('variance').includes('76/75 ≈ 1.013 mm²'))
-  assert.ok(sectionText.get('variance').includes('n≥2') && sectionText.get('variance').includes('母分散が有限'))
-  assert.ok(sectionText.get('variance').includes('3.000 − 1.000 = 2.000 mm'))
-  assert.ok(sectionText.get('standard-deviation').includes('0.822 mm') && sectionText.get('standard-deviation').includes('1.007 mm'))
-  assert.ok(sectionText.get('standard-deviation').includes('大半の値が入るとは結論できません'))
-  assert.ok(sectionText.get('standard-deviation').includes('2026-10-21')
-    && sectionText.get('standard-deviation').includes('2026-10-23')
-    && sectionText.get('standard-deviation').includes('2-7-measures-of-the-spread-of-the-data'))
-  assert.deepEqual(sectionFormulas.get('mean'), [[{
-    kind: 'mathText',
-    text: '母平均：μ = (Σ_{i=1}^{N} xᵢ)/N; 標本平均：x̄ = (Σ_{i=1}^{n} xᵢ)/n',
-  }]])
-  assert.deepEqual(sectionFormulas.get('deviation'), [[{
-    kind: 'mathText',
-    text: '母集団の偏差：xᵢ − μ; 標本の偏差：xᵢ − x̄',
-  }]])
-  assert.deepEqual(sectionFormulas.get('variance'), [
-    [{
-      kind: 'mathText',
-      text: '母分散：σ² = (Σ_{i=1}^{N}(xᵢ − μ)²)/N; 標本分散（標本内の記述）：(Σ_{i=1}^{n}(xᵢ − x̄)²)/n; 母分散の不偏推定量（不偏分散）：s² = (Σ_{i=1}^{n}(xᵢ − x̄)²)/(n−1); 範囲 = 最大値 − 最小値',
-    }],
-    [
-      { kind: 'mathText', text: '標本平方偏差和：' },
-      { kind: 'mathSymbol', symbol: 'Σ', lessonRef: { label: '総和記号の読み方', targetRef: 'math-algebra-sigma#sigma' } },
-      { kind: 'mathText', text: '_{i=1}^{n}(xᵢ − x̄)²' },
-    ],
+  const allBlocks = (blocks) => blocks.flatMap((block) => [
+    block,
+    ...(block.kind === 'details' ? allBlocks(block.blocks) : []),
   ])
-  assert.deepEqual(sectionFormulas.get('standard-deviation'), [[{
-    kind: 'mathText',
-    text: '母標準偏差：σ = √σ²; 不偏分散から計算する標本標準偏差：s = √s²',
-  }]])
-  const varianceBlocks = descriptive.sections.find((section) => section.sectionId === 'variance').blocks
-  const firstVarianceFormulaIndex = varianceBlocks.findIndex((block) => block.kind === 'formula')
-  const linkedSigmaFormulaIndex = varianceBlocks.findIndex((block) => block.kind === 'formula'
-    && block.parts.some((part) => part.kind === 'mathSymbol' && part.symbol === 'Σ'))
-  assert.equal(linkedSigmaFormulaIndex, firstVarianceFormulaIndex + 2)
-  assert.ok(descriptive.optionalReviews.some((review) => review.fromRef === 'descriptive-statistics#variance'
-    && review.targetRef === 'math-algebra-sigma#sigma' && review.context.includes('平均節で意味を説明')))
+  const allCourseBlocks = [
+    ...allBlocks(descriptive.overview),
+    ...descriptive.sections.flatMap((section) => allBlocks(section.blocks)),
+  ]
+  const courseText = JSON.stringify({ overview: descriptive.overview, sections: descriptive.sections })
 
-  const data = [1, 2.2, 3]
-  const sum = data.reduce((total, value) => total + value, 0)
-  const mean = sum / data.length
-  const deviations = data.map((value) => value - mean)
-  const directSum = deviations.reduce((total, value) => total + value ** 2, 0)
-  const shortcutSum = data.reduce((total, value) => total + value ** 2, 0) - sum ** 2 / data.length
-  assert.ok(Math.abs(mean - 31 / 15) < 1e-12)
-  assert.ok(Math.abs(deviations[0] + 16 / 15) < 1e-12)
-  assert.ok(Math.abs(deviations[1] - 2 / 15) < 1e-12)
-  assert.ok(Math.abs(deviations[2] - 14 / 15) < 1e-12)
-  assert.ok(Math.abs(directSum - 152 / 75) < 1e-12)
-  assert.ok(Math.abs(shortcutSum - 152 / 75) < 1e-12)
-  assert.ok(Math.abs(directSum / data.length - 152 / 225) < 1e-12)
-  assert.ok(Math.abs(directSum / (data.length - 1) - 76 / 75) < 1e-12)
-  assert.equal(Number(Math.sqrt(directSum / data.length).toFixed(3)), 0.822)
-  assert.equal(Number(Math.sqrt(directSum / (data.length - 1)).toFixed(3)), 1.007)
-  assert.equal(Math.max(...data) - Math.min(...data), 2)
+  assert.equal(validateLessonRegistry(lessonRegistry), true)
+  assert.deepEqual(descriptive.declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
+  assert.equal(descriptive.revision, 5)
+  assert.ok(courseText.includes('100 mm'))
+  assert.ok(courseText.includes('偏差'))
+  assert.ok(courseText.includes('偏差平方和'))
+  assert.ok(courseText.includes('不偏分散'))
+  assert.ok(courseText.includes('n − 1'))
+  assert.ok(courseText.includes('標準偏差'))
+  assert.deepEqual(allCourseBlocks.filter((block) => block.kind === 'exerciseSlot').map((block) => block.exerciseId),
+    ['mean', 'deviation', 'variance', 'standard-deviation'])
+  assert.equal(descriptive.figures.length, 5)
+  assert.ok(descriptive.figures.every((figure) => figure.rendererRef.startsWith('code:')))
+  assert.ok(descriptive.references.some((reference) => reference.url.includes('openstax.org')))
+  assert.match(descriptive.credit, /Solarized/u)
+
+  const sampleVariance = (values) => {
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length
+    return values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1)
+  }
+  const lineA = [98, 100, 102]
+  const lineB = [99, 100, 101]
+  assert.equal(lineA.reduce((sum, value) => sum + value, 0) / lineA.length, 100)
+  assert.equal(lineB.reduce((sum, value) => sum + value, 0) / lineB.length, 100)
+  assert.equal(sampleVariance(lineA), 4)
+  assert.equal(sampleVariance(lineB), 1)
+  assert.equal(Math.sqrt(sampleVariance(lineA)), 2)
+  assert.equal(Math.sqrt(sampleVariance(lineB)), 1)
 })
-
 test('paragraphs, equation token order, and the registered variance figure stay explicit', () => {
   const variance = lesson(lessonRegistryFixture, 'descriptive-statistics').sections.find((section) => section.sectionId === 'variance')
   const formula = variance.blocks.find((block) => block.kind === 'formula')
@@ -151,14 +117,14 @@ test('paragraphs, equation token order, and the registered variance figure stay 
 
   const registeredLesson = lesson(lessonRegistry, 'descriptive-statistics')
   const registeredVariance = registeredLesson.sections.find((section) => section.sectionId === 'variance')
-  const registeredFigure = registeredLesson.figures.find((figure) => figure.figureId === 'FIG-DESC-VAR-001')
-  assert.equal(registeredVariance.blocks.find((block) => block.kind === 'figureRef').figureId, registeredFigure.figureId)
-  assert.equal(registeredFigure.rendererRef, 'code:variance-deviation-bars')
+  const registeredFigure = registeredLesson.figures.find((figure) => figure.figureId === 'FIG-DS-VARIANCE')
+  assert.ok(registeredVariance.blocks.some((block) => block.kind === 'figureRef' && block.figureId === registeredFigure.figureId))
+  assert.equal(registeredFigure.rendererRef, 'code:interactive-variance-comparison')
   assert.deepEqual(registeredFigure.axes.map(({ axis, label, scale }) => ({ axis, label, scale })), [
-    { axis: 'x', label: '観測番号', scale: 'categorical' },
-    { axis: 'y', label: '測定値（mm）', scale: 'linear' },
+    { axis: 'x', label: '測定値（mm）', scale: 'linear' },
+    { axis: 'y', label: 'ラインと観測番号', scale: 'categorical' },
   ])
-  assert.match(registeredFigure.altText, /3つの測定点.*平均.*偏差線/)
+  assert.match(registeredFigure.altText, /ライン A と B.*平均/u)
 })
 
 test('figure contracts distinguish coordinate charts from axisless diagrams', () => {

@@ -11,6 +11,8 @@ export type AppRoute =
   | { kind: 'map' }
   | { kind: 'lesson' }
   | { kind: 'lesson-id'; lessonId: string; sectionId: string | null }
+  | { kind: 'course-lesson'; courseId: string; sectionId: string }
+  | { kind: 'course-practice'; courseId: string }
   | { kind: 'practice' }
   | { kind: 'practice-id'; instanceId: string }
   | { kind: 'feedback' }

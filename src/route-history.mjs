@@ -105,9 +105,13 @@ export function navigateRouteHistory(state, route, routeHash, intent = 'normal',
     }) : null
   }
 
-  if (intent === 'section' && !(state.route.kind === 'lesson-id' && route.kind === 'lesson-id'
-    && state.route.lessonId === route.lessonId)) throw new TypeError('Section navigation must stay in the lesson')
-  if (intent === 'review' && route.kind !== 'lesson-id') throw new TypeError('Review navigation must target a lesson')
+  const sameLesson = state.route.kind === 'course-lesson' && route.kind === 'course-lesson'
+    ? state.route.courseId === route.courseId
+    : state.route.kind === 'lesson-id' && route.kind === 'lesson-id' && state.route.lessonId === route.lessonId
+  if (intent === 'section' && !sameLesson) throw new TypeError('Section navigation must stay in the lesson')
+  if (intent === 'review' && route.kind !== 'lesson-id' && route.kind !== 'course-lesson') {
+    throw new TypeError('Review navigation must target a lesson')
+  }
 
   const returnStack = intent === 'review' ? [...state.returnStack, frameFor(state)]
     : intent === 'section' ? state.returnStack
