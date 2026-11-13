@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import type { CourseProgress } from './course-progress.mjs'
+import { sortCourseProgressByAccuracy } from './course-progress.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { routeToHash } from './resolve-screen.mjs'
 
@@ -7,7 +9,11 @@ function formatDate(value: string | null) {
 }
 
 export function CourseProgressView({ progress }: { progress: CourseProgress }) {
+  const [sortOrder, setSortOrder] = useState<'map' | 'low'>('map')
   const lessonById = new Map(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, lesson]))
+  const lessons = sortOrder === 'map' ? progress.lessons : sortCourseProgressByAccuracy(progress.lessons)
+  const categories = sortOrder === 'map' ? progress.categories : sortCourseProgressByAccuracy(progress.categories)
+  const orderLabel = sortOrder === 'map' ? '学習マップ順' : '正答率の低い順'
   return <section className="progress-view" aria-labelledby="course-progress-title">
     <div className="progress-guidance">
       <h2 id="course-progress-title">進捗の見方</h2>
@@ -15,7 +21,11 @@ export function CourseProgressView({ progress }: { progress: CourseProgress }) {
     </div>
     <section aria-labelledby="course-progress-lessons-title">
       <h2 id="course-progress-lessons-title">単元ごとの進捗</h2>
-      <div className="progress-card-list">{progress.lessons.map((item) => {
+      <div className="progress-sort-controls" role="group" aria-label="進捗の並び順">
+        <button type="button" aria-pressed={sortOrder === 'map'} onClick={() => setSortOrder('map')}>学習マップ順</button>
+        <button type="button" aria-pressed={sortOrder === 'low'} onClick={() => setSortOrder('low')}>正答率の低い順</button>
+      </div>
+      <div className="progress-card-list">{lessons.map((item) => {
         const lesson = lessonById.get(item.lessonId)
         if (!lesson) return null
         const courseLesson = lesson.availability === 'included' && lesson.lessonId === 'descriptive-statistics'
@@ -31,8 +41,8 @@ export function CourseProgressView({ progress }: { progress: CourseProgress }) {
               : '現在の演習なし'}</dd></div>
           </dl>
           {courseLesson && <section className="progress-subsection" aria-label="基本統計量の5分野別演習結果">
-            <h4>5分野別の演習結果（正答率の低い順）</h4>
-            <ul>{progress.categories.map((category) => <li key={category.categoryId}>
+            <h4>5分野別の演習結果（{orderLabel}）</h4>
+            <ul>{categories.map((category) => <li key={category.categoryId}>
               {category.title}：{category.correctRate === null
                 ? '記録なし（0回）'
                 : category.correctCount + '/' + category.attemptCount + '回 · 正答率 ' + Math.round(category.correctRate * 100) + '%'}

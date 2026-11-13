@@ -224,12 +224,14 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
       </section>
       <section className="manual-progress-controls" aria-labelledby={`manual-progress-title-${lesson.lessonId}`}>
         <h3 id={`manual-progress-title-${lesson.lessonId}`}>手動進捗</h3>
-        <p className="manual-progress-status" aria-live="polite">手動進捗：{manualStatus}</p>
-        <p className="manual-progress-notice">手動完了はこのブラウザーに保存され、演習記録とは別に集計されます。バックアップに含まれます。</p>
-        <div className="manual-progress-actions">
-          {manualProgress.status !== 'completed' && <button ref={markCompletedRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'complete' }, reopenRef)}>Mark completed</button>}
-          {manualProgress.status === 'completed' && <button ref={reopenRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'reopen' }, markCompletedRef)}>Reopen</button>}
-        </div>
+        {lesson.availability === 'included' ? <>
+          <p className="manual-progress-status" aria-live="polite">手動進捗：{manualStatus}</p>
+          <p className="manual-progress-notice">手動完了はこのブラウザーに保存され、演習記録とは別に集計されます。バックアップに含まれます。</p>
+          <div className="manual-progress-actions">
+            {manualProgress.status !== 'completed' && <button ref={markCompletedRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'complete' }, reopenRef)}>Mark completed</button>}
+            {manualProgress.status === 'completed' && <button ref={reopenRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'reopen' }, markCompletedRef)}>Reopen</button>}
+          </div>
+        </> : <p className="manual-progress-notice">教材未収録のため完了登録できません。</p>}
       </section>
       <ReferenceGroups lesson={lesson} registry={registry} />
       <nav className="lesson-detail-actions" aria-label={`${lesson.title}の関連画面`}>

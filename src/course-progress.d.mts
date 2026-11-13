@@ -20,6 +20,9 @@ export type CourseCategoryProgress = {
   correctRate: number | null
 }
 export type CourseProgress = { lessons: CourseLessonProgress[]; categories: CourseCategoryProgress[] }
+export type CourseProgressRate = { correctCount: number; attemptCount: number; correctRate: number | null }
+export function compareCourseProgressAccuracy(left: CourseProgressRate, right: CourseProgressRate): number
+export function sortCourseProgressByAccuracy<T extends CourseProgressRate>(items: readonly T[]): T[]
 export function deriveCourseProgress(
   learningState: LearningState | null,
   practiceResults: PracticeResults | null,

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { LessonReference } from './lesson-view'
+import { gradeDecimalAnswer } from './question-grading.mjs'
 import {
   createDescriptiveStatisticsExercisePreviewState,
   descriptiveStatisticsExerciseCategories,
@@ -18,10 +19,8 @@ const sectionLabels: Record<string, string> = {
   'standard-deviation': '4 標準偏差',
 }
 
-function parseAnswer(text: string) {
-  const value = text.normalize('NFKC').replace(/−/gu, '-').replace(/\s+/gu, '')
-  if (!value || !/^[+-]?\d+(\.\d+)?$/u.test(value)) return Number.NaN
-  return Number(value)
+function normalizeNumericInput(text: string) {
+  return text.normalize('NFKC').replace(/−/gu, '-')
 }
 
 function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
@@ -57,12 +56,12 @@ function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
       }
       correct = Number(selected) === question.answer
     } else {
-      const value = parseAnswer(answer)
-      if (Number.isNaN(value)) {
-        setFeedback({ kind: 'ng', text: '数字で入力してください（例：12、−2、+3、0.5）。' })
+      const result = gradeDecimalAnswer(normalizeNumericInput(answer), String(question.answer), 0)
+      if (result.status === 'invalid') {
+        setFeedback({ kind: 'ng', text: '入力形式を確認してください（例：12、−2、+3、0.5）。' })
         return
       }
-      correct = Math.abs(value - Number(question.answer)) < 1e-6
+      correct = result.isCorrect
     }
     if (gradedQuestionRef.current !== questionKey) {
       gradedQuestionRef.current = questionKey

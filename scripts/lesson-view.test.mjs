@@ -135,8 +135,10 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     })
     assert.match(plannedCard, /母平均の区間推定・検定/u)
     assert.match(plannedCard, /未収録/u)
+    assert.match(plannedCard, /教材未収録のため完了登録できません/u)
     assert.match(plannedCard, /方法条件付き必須/u)
     assert.match(plannedCard, /適用条件/u)
+    assert.doesNotMatch(plannedCard, />Mark completed<|>Reopen</u)
     assert.doesNotMatch(plannedCard, /href="#\/lesson\/mean-inference/u)
     assert.doesNotMatch(plannedCard, /href="#\/practice"/u)
 
@@ -154,7 +156,6 @@ test('registry-driven map, references, lesson blocks, and app routes render only
       lesson: descriptive,
       activeSectionId: 'variance',
       sectionHeadingRef: { current: null },
-      onFirstGrade: () => {},
     })
     assert.match(variance, /id="course-section-variance"/u)
     assert.equal((variance.match(/class="course-section"/gu) ?? []).length, 4)
@@ -163,6 +164,11 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.match(variance, /href="#\/lesson\/math-algebra-sigma\/sigma" data-nav-intent="review"/u)
     assert.match(variance, /n − 1/u)
     assert.match(variance, /class="course-references"/u)
+    const referencesStart = variance.indexOf('class="course-references"')
+    const referencesEnd = variance.indexOf('</details>', referencesStart)
+    const creditPosition = variance.indexOf('class="lesson-credit"')
+    assert.ok(referencesEnd >= referencesStart && creditPosition > referencesEnd,
+      'the credit stays visible after the collapsible reference details')
     assert.match(variance, /href="#\/course\/descriptive-statistics\/practice"/u)
 
     const mathBridge = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'math-powers-roots')

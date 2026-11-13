@@ -62,6 +62,17 @@ type PendingJudgement = {
   pendingResult?: PracticeResultSaveResult
 }
 
+type PendingLearningChange =
+  | { kind: 'layout'; positions: Positions }
+  | { kind: 'manual-progress'; lessonId: string; completedAt: string | null }
+
+type PendingLearningWrite = {
+  status: 'unknown' | 'retryable'
+  expectedRaw: string | null
+  candidateRaw: string
+  change: PendingLearningChange
+}
+
 function emptyLearningState(): LearningState {
   return {
     schemaVersion: 1,
@@ -212,6 +223,7 @@ function App() {
   const isComparisonPreview = isDescriptiveStatisticsPreview || isDescriptiveStatisticsExercisePreview
   const [storedData, setStoredData] = useState<StoredLocalData>(() => view.storedData)
   const [mapStateRead, setMapStateRead] = useState(() => readLearningState(lessonRegistry))
+  const [pendingLearningWrite, setPendingLearningWrite] = useState<PendingLearningWrite | null>(null)
   const initialMapState = isReadableLearningState(mapStateRead) ? mapStateRead.state : emptyLearningState()
   const [manualProgress, setManualProgress] = useState(() => manualProgressFromLearning(initialMapState))
   const [positionSyncRevision, setPositionSyncRevision] = useState(0)
@@ -239,9 +251,8 @@ function App() {
   const viewRef = useRef(view)
   const mapStateRef = useRef<LearningState>(initialMapState)
   const mapStateReadRef = useRef(mapStateRead)
+  const pendingLearningWriteRef = useRef<PendingLearningWrite | null>(pendingLearningWrite)
   const publishedPositionsRef = useRef(initialMapState.positions)
-  const expectedMapRawRef = useRef(isReadableLearningState(mapStateRead) ? mapStateRead.raw : null)
-  const mapStateConfirmedRef = useRef(isReadableLearningState(mapStateRead))
   const navigationIdRef = useRef(0)
   const lastHandledRef = useRef('')
   const busyRef = useRef(false)
@@ -306,8 +317,6 @@ function App() {
       publishedPositionsRef.current = next.state.positions
       if (syncPositions && positionsChanged) setPositionSyncRevision((revision) => revision + 1)
       mapStateRef.current = next.state
-      expectedMapRawRef.current = next.raw
-      mapStateConfirmedRef.current = true
       setMapStateConfirmed(true)
       setManualProgress(manualProgressFromLearning(next.state))
       setMapStateMessage('')
@@ -316,70 +325,128 @@ function App() {
     }
   }
 
+  const publishPendingLearningWrite = (next: PendingLearningWrite | null) => {
+    pendingLearningWriteRef.current = next
+    setPendingLearningWrite(next)
+  }
+
   const refreshMapState = () => publishMapStateRead(readLearningState(lessonRegistry))
 
-  const onMapLayoutSave = useCallback((positions: Positions): LayoutSaveResult => {
+  const saveLearningChange = (change: PendingLearningChange, base: Extract<LearningStateReadResult, { status: 'missing' | 'ok' }>): LayoutSaveResult => {
+    const candidate: LearningState = change.kind === 'layout'
+      ? { ...base.state, positions: { ...base.state.positions, ...change.positions } }
+      : { ...base.state, lessons: { ...base.state.lessons, [change.lessonId]: { completedAt: change.completedAt } } }
+    const result = saveLearningState(candidate, base.raw, lessonRegistry)
+    if (result.status === 'saved') {
+      publishMapStateRead(result.latest)
+      publishPendingLearningWrite(null)
+      setMapStateMessage('')
+      return { ok: true, positions: result.state.positions }
+    }
+
+    const latestRead = isReadableLearningState(result.latest) ? result.latest : null
+    if (latestRead && result.candidateRaw !== null && latestRead.raw === result.candidateRaw) {
+      publishMapStateRead(result.latest)
+      publishPendingLearningWrite(null)
+      setMapStateMessage('保存状態を確認し、対象の変更が保存済みであることを確認しました。')
+      return { ok: true, positions: latestRead.state.positions }
+    }
+    publishMapStateRead(result.latest)
+    if (result.candidateRaw !== null) {
+      publishPendingLearningWrite({
+        status: result.status === 'unknown' || !latestRead ? 'unknown' : 'retryable',
+        expectedRaw: latestRead ? latestRead.raw : result.expectedRaw,
+        candidateRaw: result.candidateRaw,
+        change,
+      })
+    }
+    const message = result.status === 'unknown' || !latestRead
+      ? '手動進捗・マップ配置の保存結果を確認できません。データ管理画面で保存状態を再確認してください。'
+      : result.status === 'conflict'
+        ? '保存データが別の変更で更新されました。対象の変更は保持しています。確認後に再試行できます。'
+        : result.error?.message ?? '手動進捗・マップ配置を保存できませんでした。対象の変更は保持しています。'
+    setMapStateMessage(message)
+    return { ok: false, positions: latestRead ? latestRead.state.positions : mapStateRef.current.positions }
+  }
+
+  const onMapLayoutSave = useCallback((positions: Positions, changedPositions: Positions): LayoutSaveResult => {
     const currentRead = mapStateReadRef.current
+    if (pendingLearningWriteRef.current) {
+      setMapStateMessage('保存結果が確認できていない変更があります。データ管理画面で確認または再試行してください。')
+      return { ok: false, positions: mapStateRef.current.positions }
+    }
     if (!isReadableLearningState(currentRead)) {
       setMapStateMessage('手動進捗の保存状態を確認できないため、配置の編集と保存を停止しています。データ管理画面で保存状態を確認してください。')
       return { ok: false, positions: mapStateRef.current.positions }
     }
-    const candidate: LearningState = {
-      ...mapStateRef.current,
-      positions: { ...mapStateRef.current.positions, ...positions },
-    }
-    const result = saveLearningState(candidate, expectedMapRawRef.current, lessonRegistry)
-    if (result.status === 'saved') {
-      mapStateRef.current = result.state
-      publishedPositionsRef.current = result.state.positions
-      expectedMapRawRef.current = result.raw
-      const unresolvedIds = isReadableLearningState(result.latest) ? result.latest.unresolvedIds : { lessons: [], positions: [] }
-      const read = { status: 'ok' as const, raw: result.raw, state: result.state, unresolvedIds }
-      mapStateReadRef.current = read
-      setMapStateRead(read)
-      setManualProgress(manualProgressFromLearning(result.state))
-      mapStateConfirmedRef.current = true
-      setMapStateConfirmed(true)
-      setMapStateMessage('')
-      return { ok: true, positions: result.state.positions }
-    }
-    publishMapStateRead(result.latest, false)
-    setMapStateMessage(result.error?.message ?? '配置を保存できませんでした。')
-    return { ok: false, positions: isReadableLearningState(result.latest) ? result.latest.state.positions : mapStateRef.current.positions }
+    return saveLearningChange({ kind: 'layout', positions: changedPositions }, {
+      ...currentRead,
+      state: { ...currentRead.state, positions: { ...currentRead.state.positions, ...positions } },
+    })
   }, [])
 
   const onManualProgressAction = useCallback((lessonId: string, command: ManualProgressCommand) => {
     const currentRead = mapStateReadRef.current
+    if (pendingLearningWriteRef.current) {
+      setMapStateMessage('保存結果が確認できていない変更があります。データ管理画面で確認または再試行してください。')
+      return
+    }
     if (!isReadableLearningState(currentRead)) {
       setMapStateMessage('手動進捗を確認できないため、編集と保存を停止しています。データ管理画面で保存状態を確認してください。')
       return
     }
     if (command.type !== 'complete' && command.type !== 'reopen') return
-    const prior = mapStateRef.current.lessons[lessonId]
+    const prior = currentRead.state.lessons[lessonId]
     if (!prior) return
     const completedAt = command.type === 'complete' ? new Date().toISOString() : null
     if (prior.completedAt === completedAt) return
-    const candidate: LearningState = {
-      ...mapStateRef.current,
-      lessons: { ...mapStateRef.current.lessons, [lessonId]: { completedAt } },
-    }
-    const result = saveLearningState(candidate, expectedMapRawRef.current, lessonRegistry)
-    if (result.status === 'saved') {
-      mapStateRef.current = result.state
-      expectedMapRawRef.current = result.raw
-      const unresolvedIds = isReadableLearningState(result.latest) ? result.latest.unresolvedIds : { lessons: [], positions: [] }
-      const read = { status: 'ok' as const, raw: result.raw, state: result.state, unresolvedIds }
-      mapStateReadRef.current = read
-      setMapStateRead(read)
-      setManualProgress(manualProgressFromLearning(result.state))
-      setMapStateConfirmed(true)
-      mapStateConfirmedRef.current = true
-      setMapStateMessage('')
-    } else {
-      publishMapStateRead(result.latest)
-      setMapStateMessage(result.error?.message ?? '手動進捗を保存できませんでした。')
-    }
+    saveLearningChange({ kind: 'manual-progress', lessonId, completedAt }, currentRead)
   }, [])
+
+  const recheckPendingLearningWrite = () => {
+    const pending = pendingLearningWriteRef.current
+    if (!pending || pending.status !== 'unknown') return
+    const latest = readLearningState(lessonRegistry)
+    if (!isReadableLearningState(latest)) {
+      publishMapStateRead(latest)
+      setMapStateMessage('手動進捗の読み取りがまだできません。候補を保持したまま、再確認を続けてください。')
+      return
+    }
+    publishMapStateRead(latest)
+    if (latest.raw === pending.candidateRaw) {
+      publishPendingLearningWrite(null)
+      setMapStateMessage('保存状態を再確認し、保留中の変更が保存済みであることを確認しました。')
+      return
+    }
+    publishPendingLearningWrite({ ...pending, status: 'retryable', expectedRaw: latest.raw })
+    setMapStateMessage('保存状態を再確認しました。変更は未保存のまま保持されています。必要なら再試行してください。')
+  }
+
+  const retryPendingLearningWrite = () => {
+    const pending = pendingLearningWriteRef.current
+    if (!pending || pending.status !== 'retryable') return
+    const latest = readLearningState(lessonRegistry)
+    if (!isReadableLearningState(latest)) {
+      publishMapStateRead(latest)
+      publishPendingLearningWrite({ ...pending, status: 'unknown' })
+      setMapStateMessage('手動進捗の読み取りができないため再試行を保留しました。候補を保持して再確認してください。')
+      return
+    }
+    if (latest.raw === pending.candidateRaw) {
+      publishMapStateRead(latest)
+      publishPendingLearningWrite(null)
+      setMapStateMessage('保存状態を確認し、保留中の変更が保存済みであることを確認しました。')
+      return
+    }
+    if (latest.raw !== pending.expectedRaw) {
+      publishMapStateRead(latest)
+      publishPendingLearningWrite({ ...pending, expectedRaw: latest.raw })
+      setMapStateMessage('保存状態が再試行前に更新されました。変更を保持しています。保存状態を確認してから再試行してください。')
+      return
+    }
+    publishMapStateRead(latest)
+    saveLearningChange(pending.change, latest)
+  }
 
   const publishPracticeResultsRead = (next: PracticeResultsReadResult) => {
     practiceResultsReadRef.current = next
@@ -456,14 +523,14 @@ function App() {
   }
 
   useEffect(() => {
-    if (pendingJudgements.length === 0) return
+    if (pendingJudgements.length === 0 && pendingLearningWrite === null) return
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault()
       event.returnValue = ''
     }
     window.addEventListener('beforeunload', warnBeforeUnload)
     return () => window.removeEventListener('beforeunload', warnBeforeUnload)
-  }, [pendingJudgements.length])
+  }, [pendingJudgements.length, pendingLearningWrite !== null])
 
   const screen = screenForRoute(view.route)
   const current = screens[screen]
@@ -488,13 +555,16 @@ function App() {
   const mapStateUnavailable = mapStateRead.status === 'invalid' || mapStateRead.status === 'unsupported' || mapStateRead.status === 'unreadable'
   const practiceResultsUnavailable = practiceResultsRead.status === 'invalid' || practiceResultsRead.status === 'unsupported' || practiceResultsRead.status === 'unreadable'
   const canExportCombined = isReadableLearningState(mapStateRead) && isReadablePracticeResults(practiceResultsRead)
+    && pendingLearningWrite === null
   const mapStateStatusLabel = mapStateRead.status === 'missing' ? '未作成（初期値）'
     : mapStateRead.status === 'ok' ? '保存済み'
       : mapStateRead.status === 'invalid' ? '破損または容量超過'
         : mapStateRead.status === 'unsupported' ? '未対応の保存形式'
           : '読み込み不能'
-  const manualProgressDisabled = mapStateUnavailable
-  const manualProgressNotice = mapStateUnavailable
+  const manualProgressDisabled = mapStateUnavailable || pendingLearningWrite !== null
+  const manualProgressNotice = pendingLearningWrite
+    ? '未確定の保存候補があります。データ管理画面で保存状態を確認または再試行するまで、編集を停止しています。'
+    : mapStateUnavailable
     ? mapStateConfirmed
       ? '手動進捗の保存状態を確認できません。画面には最後に確認した値を表示し、編集と保存を停止しています。'
       : '手動進捗の保存状態を確認できません。画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'
@@ -647,6 +717,10 @@ function App() {
 
   const handleExport = () => {
     if (busyRef.current) return
+    if (pendingLearningWriteRef.current) {
+      setDataMessage('手動進捗・マップ配置の保存状態を確認してから、バックアップを書き出してください。')
+      return
+    }
     busyRef.current = true
     setBusy(true)
     setDataMessage('')
@@ -802,6 +876,11 @@ function App() {
     const file = input.files?.[0]
     if (!file) return
     if (busyRef.current) {
+      input.value = ''
+      return
+    }
+    if (pendingLearningWriteRef.current) {
+      setDataMessage('手動進捗・マップ配置の保存状態を確認してから、バックアップを復元してください。')
       input.value = ''
       return
     }
@@ -995,6 +1074,12 @@ function App() {
         : '画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'}
     </p>}
     {!mapStateUnavailable && mapStateMessage && <p className="storage-alert" role="status" aria-live="polite">{mapStateMessage}</p>}
+    {pendingLearningWrite && <section className="practice-recovery" role={pendingLearningWrite.status === 'unknown' ? 'alert' : 'status'} aria-live="polite">
+      <p>{pendingLearningWrite.change.kind === 'layout' ? 'マップ配置' : '手動進捗'}の変更をメモリ上に保持しています。再読み込みすると失われます。保存状態が確認できるまで、他の手動進捗変更とバックアップ操作を停止しています。</p>
+      <button type="button" onClick={pendingLearningWrite.status === 'unknown' ? recheckPendingLearningWrite : retryPendingLearningWrite}>
+        {pendingLearningWrite.status === 'unknown' ? '手動進捗の保存状態を再確認' : '未保存の変更を再試行'}
+      </button>
+    </section>}
     {practiceResultsUnavailable && <p className="storage-alert" role="alert">{'error' in practiceResultsRead ? practiceResultsRead.error.message : '演習結果を読み取れません。'} <button type="button" onClick={recheckPracticeStorage}>保存状態を再確認</button></p>}
     {pendingJudgements.length > 0 && <section className="practice-recovery" role="status" aria-live="polite">
       <h2>未保存の判定</h2>
@@ -1075,7 +1160,6 @@ function App() {
       lesson={view.resolved.lesson}
       activeSectionId={view.route.sectionId}
       sectionHeadingRef={sectionHeadingRef}
-      onFirstGrade={handleFirstGrade}
     />
   }
 
@@ -1284,10 +1368,11 @@ function App() {
                   type="file"
                   accept="application/json,.json"
                   onChange={handleImport}
-                  disabled={busy || !!pendingBackupImport?.pending || pendingJudgements.some((item) => item.status === 'unknown')}
+                  disabled={busy || !!pendingBackupImport?.pending || !!pendingLearningWrite || pendingJudgements.some((item) => item.status === 'unknown')}
                 />
               </div>
-              {mapStateUnavailable && <button type="button" onClick={refreshMapState}>手動進捗の保存状態を再確認</button>}
+              {pendingLearningWrite && <p className="storage-alert" role="status">未確定の手動進捗・配置変更が1件あります。候補はこのページのメモリに保持しています。</p>}
+              {mapStateUnavailable && !pendingLearningWrite && <button type="button" onClick={refreshMapState}>手動進捗の保存状態を再確認</button>}
               <p className="data-limit">手動進捗・マップ配置は64 KiB、演習判定は最大25件・8 KiBです。</p>
               <p className="data-message" role="status" aria-live="polite">{dataMessage}</p>
             </section>

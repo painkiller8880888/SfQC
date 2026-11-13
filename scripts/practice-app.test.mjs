@@ -255,6 +255,21 @@ async function changeTextInput(window, input, value) {
   })
 }
 
+async function submitWrongIndependentJudgement(app, window) {
+  await app.remountAt('#/course/descriptive-statistics/practice')
+  const card = app.host.querySelector('.ds-practice-question[data-practice-category="0"]')
+  const question = generateDescriptiveStatisticsExercisePreviewQuestion(
+    0, Number(card.dataset.practiceType), Number(card.dataset.practiceSeed),
+  )
+  if (question.type === 'choice') {
+    const wrongIndex = question.answer === 0 ? 1 : 0
+    await click(card.querySelector(`input[type="radio"][value="${wrongIndex}"]`))
+  } else {
+    await changeTextInput(window, card.querySelector('input[type="text"]'), String(Number(question.answer) + 1))
+  }
+  await act(async () => card.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+}
+
 async function waitForHistory(window, method) {
   await act(async () => {
     window.history[method]()
@@ -764,9 +779,8 @@ test('integrated learning map highlights only direct common prerequisites and cl
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'mean-inference')
     assert.deepEqual(highlightedNodeIds(), ['descriptive-statistics', 'inference-basics', 'sampling-distributions'])
 
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
-    await settleEffects(window)
-    assert.match(app.host.querySelector('.manual-progress-status').textContent, /完了/u)
+    assert.equal(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'), undefined)
+    assert.match(app.host.querySelector('.lesson-detail-card .manual-progress-notice').textContent, /教材未収録のため完了登録できません/u)
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'mean-inference')
     assert.deepEqual(highlightedNodeIds(), ['descriptive-statistics', 'inference-basics', 'sampling-distributions'])
 
@@ -1418,7 +1432,7 @@ test('successful layout saves preserve consecutive moves on different nodes', as
   }
 })
 
-test('failed layout save restores the last confirmed position before the next keyboard move', async () => {
+test('failed layout save retains the target change for explicit retry', async () => {
   const app = await createHarness()
   const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
   const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
@@ -1449,10 +1463,7 @@ test('failed layout save restores the last confirmed position before the next ke
     assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), original)
     assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), null)
     assert.match(app.host.querySelector('.map-route-messages').textContent, /保存できませんでした/u)
-
-    node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    node.focus()
-    await pressKey(window, node, 'ArrowRight')
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
     assert.deepEqual(savedMap(window).positions[id], { x: originalPosition.x + 5, y: originalPosition.y })
   } finally {
     if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
@@ -1488,6 +1499,11 @@ test('layout conflict adopts external positions immediately and keeps them in th
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, firstId)
     assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, viewportBefore)
 
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
+    const afterFirstRetry = savedMap(window).positions
+    assert.equal(Object.keys(afterFirstRetry).length, 34)
+    await click(buttonFor(app.host, '配置編集'))
+
     const secondId = 'math-arithmetic'
     await click(app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`))
     selected = app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`)
@@ -1496,7 +1512,8 @@ test('layout conflict adopts external positions immediately and keeps them in th
     const finalPositions = savedMap(window).positions
     assert.equal(Object.keys(finalPositions).length, 34)
     for (const [id, position] of Object.entries(external.positions)) {
-      assert.deepEqual(finalPositions[id], id === secondId ? { ...position, x: position.x + 5 } : position)
+      assert.deepEqual(finalPositions[id], id === secondId ? { ...position, x: position.x + 5 }
+        : id === firstId ? afterFirstRetry[id] : position)
     }
   } finally {
     await app.close()
@@ -1529,11 +1546,141 @@ test('manual completion detects an external learning-state update and keeps its 
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, id)
     assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, viewportBefore)
 
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
-    await settleEffects(window)
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
     assert.deepEqual(savedMap(window).positions, external.positions)
     assert.ok(savedMap(window).lessons[id].completedAt)
   } finally {
+    await app.close()
+  }
+})
+
+test('unknown manual save keeps its candidate, blocks restore, and confirms it after repeated read failures', async () => {
+  let confirmations = 0
+  const app = await createHarness({ confirm: () => { confirmations += 1; return true } })
+  const { window } = app.dom
+  const previousGet = window.Storage.prototype.getItem
+  const previousSet = window.Storage.prototype.setItem
+  let writeCompleted = false
+  let unreadableReads = 2
+  let learningWriteCount = 0
+  window.Storage.prototype.setItem = function (key, value) {
+    if (key === LEARNING_STATE_KEY) {
+      learningWriteCount += 1
+      writeCompleted = true
+    }
+    return previousSet.call(this, key, value)
+  }
+  window.Storage.prototype.getItem = function (key) {
+    if (key === LEARNING_STATE_KEY && writeCompleted && unreadableReads > 0) {
+      unreadableReads -= 1
+      throw new Error('temporary learning-state read failure')
+    }
+    return previousGet.call(this, key)
+  }
+  try {
+    await click(linkFor(app.host, '学習マップ'))
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
+    assert.match(app.host.textContent, /手動進捗の変更をメモリ上に保持/u)
+    assert.match(app.host.textContent, /再読み込みすると失われます/u)
+    const unloadEvent = new window.Event('beforeunload', { cancelable: true })
+    await act(async () => window.dispatchEvent(unloadEvent))
+    assert.equal(unloadEvent.defaultPrevented, true, 'warn before the in-memory candidate can be lost')
+    assert.equal(learningWriteCount, 1)
+    const candidateRaw = previousGet.call(window.localStorage, LEARNING_STATE_KEY)
+    assert.ok(JSON.parse(candidateRaw).lessons['descriptive-statistics'].completedAt)
+
+    await click(linkFor(app.host, 'データ管理'))
+    const fileInput = app.host.querySelector('#backup-file')
+    assert.equal(fileInput.disabled, true)
+    const backup = serializeLearningBackup(
+      { schemaVersion: 1, lessons: {}, positions: {} }, { schemaVersion: 1, records: [] },
+    )
+    Object.defineProperty(fileInput, 'files', {
+      configurable: true,
+      value: [new window.File([backup], 'backup.json', { type: 'application/json' })],
+    })
+    await act(async () => fileInput.dispatchEvent(new window.Event('change', { bubbles: true })))
+    assert.match(app.host.querySelector('.data-message').textContent, /保存状態を確認してから、バックアップを復元/u)
+    assert.equal(confirmations, 0)
+    assert.equal(learningWriteCount, 1)
+
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '手動進捗の保存状態を再確認'))
+    assert.match(app.host.textContent, /再確認を続けてください/u)
+    assert.equal(learningWriteCount, 1)
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '手動進捗の保存状態を再確認'))
+    assert.equal(app.host.querySelector('.practice-recovery'), null)
+    assert.equal(learningWriteCount, 1, 'a matching candidate is confirmed without being applied twice')
+    assert.equal(previousGet.call(window.localStorage, LEARNING_STATE_KEY), candidateRaw)
+    assert.ok(savedMap(window).lessons['descriptive-statistics'].completedAt)
+  } finally {
+    window.Storage.prototype.getItem = previousGet
+    window.Storage.prototype.setItem = previousSet
+    await app.close()
+  }
+})
+
+test('unknown layout save rebases the retained node change after mismatch and can be retried', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const previousGet = window.Storage.prototype.getItem
+  const previousSet = window.Storage.prototype.setItem
+  const initial = readLearningState(lessonRegistry, () => window.localStorage).state
+  const external = { ...initial, positions: { 'external-layout': { x: 900, y: 800 } } }
+  const externalRaw = serializeLearningState(external)
+  let redirectWrite = true
+  let externalWasWritten = false
+  let hideFirstConfirmationRead = false
+  let learningWriteCount = 0
+  window.Storage.prototype.setItem = function (key, value) {
+    if (key === LEARNING_STATE_KEY) {
+      learningWriteCount += 1
+      if (redirectWrite) {
+        redirectWrite = false
+        externalWasWritten = true
+        return previousSet.call(this, key, externalRaw)
+      }
+    }
+    return previousSet.call(this, key, value)
+  }
+  window.Storage.prototype.getItem = function (key) {
+    if (key === LEARNING_STATE_KEY && externalWasWritten && hideFirstConfirmationRead) {
+      hideFirstConfirmationRead = false
+      throw new Error('temporary learning-state read failure')
+    }
+    return previousGet.call(this, key)
+  }
+  try {
+    await click(linkFor(app.host, '学習マップ'))
+    const id = 'descriptive-statistics'
+    const originalPosition = createMapPocGraph().nodes.find((candidate) => candidate.id === id).position
+    await click(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
+    await click(buttonFor(app.host, '配置編集'))
+    const node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    node.focus()
+    hideFirstConfirmationRead = true
+    await pressKey(window, node, 'ArrowRight')
+    assert.equal(learningWriteCount, 1)
+    assert.equal(previousGet.call(window.localStorage, LEARNING_STATE_KEY), externalRaw)
+    assert.match(app.host.textContent, /変更をメモリ上に保持/u)
+
+    await click(linkFor(app.host, 'データ管理'))
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '手動進捗の保存状態を再確認'))
+    assert.ok(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
+    assert.equal(previousGet.call(window.localStorage, LEARNING_STATE_KEY), externalRaw,
+      'recheck should not overwrite the newer external state')
+
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
+    assert.equal(learningWriteCount, 2)
+    const saved = readLearningState(lessonRegistry, () => window.localStorage)
+    assert.equal(saved.status, 'ok')
+    assert.deepEqual(saved.state.positions['external-layout'], { x: 900, y: 800 })
+    assert.deepEqual(saved.state.positions[id], { x: originalPosition.x + 5, y: originalPosition.y },
+      'retry applies the retained node delta once onto the latest map state')
+    assert.equal(app.host.querySelector('.practice-recovery'), null)
+  } finally {
+    window.Storage.prototype.getItem = previousGet
+    window.Storage.prototype.setItem = previousSet
     await app.close()
   }
 })
@@ -1692,7 +1839,7 @@ test('published basic statistics figures remain interactive without saving measu
 
 
 
-test('course cutover uses only the new keys, saves one valid judgment, and keeps manual completion separate', async () => {
+test('section checks stay local while independent judgments and manual completion remain separate', async () => {
   const app = await createHarness()
   const { window } = app.dom
   const legacyRaw = 'leave legacy storage untouched'
@@ -1732,16 +1879,22 @@ test('course cutover uses only the new keys, saves one valid judgment, and keeps
     assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, 'invalid input must not create a judgment')
 
     const expected = generateDescriptiveStatisticsPreviewExercise('mean', previewExerciseDefinitions.mean.initialIndex).answers[0]
-    await changeTextInput(window, input, String(expected))
+    await changeTextInput(window, input, '0' + String(expected))
     await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
-    const saved = JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY))
-    assert.equal(saved.records.length, 1)
-    assert.equal(saved.records[0].categoryId, 'mean-deviation')
-    assert.equal(saved.records[0].isCorrect, true)
-    const currentExercise = app.host.querySelector('.course-inline-exercise')
-    await act(async () => currentExercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
-    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1,
-      'regrading the same generated question must not save a second judgment')
+    assert.match(exercise.querySelector('[role="status"]').textContent, /入力形式/u)
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, 'invalid input must not create a judgment')
+    await changeTextInput(window, input, '10 1')
+    await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(exercise.querySelector('[role="status"]').textContent, /入力形式/u)
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, 'internal whitespace must not be deleted')
+
+    for (const [answer, feedback] of [['１０１', /正解/u], ['101.4', /正解/u], ['101.5', /違います/u]]) {
+      await changeTextInput(window, input, answer)
+      await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+      assert.match(exercise.querySelector('[role="status"]').textContent, feedback)
+      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null,
+        'section confirmation questions never enter independent practice history')
+    }
 
     await click(linkFor(app.host, '学習マップ'))
     await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
@@ -1782,12 +1935,7 @@ test('unknown judgment writes block backup restore until a recheck confirms the 
     return previousGet.call(this, key)
   }
   try {
-    await app.remountAt('#/course/descriptive-statistics/lesson/mean')
-    const exercise = app.host.querySelector('.course-inline-exercise')
-    const input = exercise.querySelector('input')
-    const answer = generateDescriptiveStatisticsPreviewExercise('mean', previewExerciseDefinitions.mean.initialIndex).answers[0]
-    await changeTextInput(window, input, String(answer))
-    await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    await submitWrongIndependentJudgement(app, window)
     assert.match(app.host.textContent, /保存結果未確認/u)
     assert.equal(JSON.parse(previousGet.call(window.localStorage, PRACTICE_RESULTS_KEY)).records.length, 1)
 
@@ -1822,12 +1970,7 @@ test('backup export warns about unsaved judgments and restore explicitly retains
     return previousSet.call(this, key, value)
   }
   try {
-    await app.remountAt('#/course/descriptive-statistics/lesson/mean')
-    const exercise = app.host.querySelector('.course-inline-exercise')
-    const input = exercise.querySelector('input')
-    const answer = generateDescriptiveStatisticsPreviewExercise('mean', previewExerciseDefinitions.mean.initialIndex).answers[0]
-    await changeTextInput(window, input, String(answer))
-    await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    await submitWrongIndependentJudgement(app, window)
     window.Storage.prototype.setItem = previousSet
 
     await click(linkFor(app.host, 'データ管理'))
@@ -1871,12 +2014,7 @@ test('backup restore can explicitly discard unsaved judgments after a second con
     return previousSet.call(this, key, value)
   }
   try {
-    await app.remountAt('#/course/descriptive-statistics/lesson/mean')
-    const exercise = app.host.querySelector('.course-inline-exercise')
-    const input = exercise.querySelector('input')
-    const answer = generateDescriptiveStatisticsPreviewExercise('mean', previewExerciseDefinitions.mean.initialIndex).answers[0]
-    await changeTextInput(window, input, String(answer))
-    await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    await submitWrongIndependentJudgement(app, window)
     window.Storage.prototype.setItem = previousSet
     await click(linkFor(app.host, 'データ管理'))
 
@@ -1970,6 +2108,79 @@ test('course practice presents five categories, records one valid judgment, and 
     assert.equal(categoryRows.slice(1).filter((row) => /記録なし（0回）/u.test(row.textContent)).length, 4)
     assert.match(app.host.querySelector('.progress-card').textContent, /未完了/u,
       'answering a question must not mark the lesson manually complete')
+  } finally {
+    await app.close()
+  }
+})
+
+test('independent numeric practice uses strict decimal grading and saves only the first valid judgment', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const originalRandom = Math.random
+  const randomValues = [0.1, 1 / 2 ** 32, 0.4, 21 / 2 ** 32]
+  Math.random = () => randomValues.shift() ?? 0.2
+  try {
+    await app.remountAt('#/course/descriptive-statistics/practice')
+    const card = app.host.querySelector('.ds-practice-question[data-practice-category="1"]')
+    assert.equal(card.dataset.practiceType, '1')
+    assert.equal(card.dataset.practiceSeed, '21')
+    const question = generateDescriptiveStatisticsExercisePreviewQuestion(1, 1, 21)
+    assert.equal(question.answer, '12')
+    const input = card.querySelector('input[type="text"]')
+    const submit = card.querySelector('form')
+
+    for (const invalid of ['012', '1 2']) {
+      await changeTextInput(window, input, invalid)
+      await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+      assert.match(card.querySelector('.ds-exercise-feedback').textContent, /入力形式/u)
+      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, `${invalid} is invalid and must not be saved`)
+    }
+
+    await changeTextInput(window, input, '１２')
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /正解/u)
+    const firstSaved = JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY))
+    assert.equal(firstSaved.records.length, 1)
+    assert.equal(firstSaved.records[0].isCorrect, true)
+
+    await changeTextInput(window, input, '12.4')
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /正解/u)
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1)
+
+    await changeTextInput(window, input, '12.5')
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1)
+  } finally {
+    Math.random = originalRandom
+    await app.close()
+  }
+})
+
+test('progress view toggles between map order and stable lowest-accuracy order', async () => {
+  const app = await createHarness()
+  try {
+    app.dom.window.localStorage.setItem(PRACTICE_RESULTS_KEY, JSON.stringify({ schemaVersion: 1, records: [
+      { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-11-13T00:00:00.000Z' },
+      { categoryId: 'data-transformation', isCorrect: true, attemptedAt: '2026-11-13T00:01:00.000Z' },
+    ] }))
+    await app.remountAt('#/progress')
+    const rows = () => [...app.host.querySelectorAll('.progress-subsection li')].map((row) => row.textContent)
+    const mapOrder = rows()
+    assert.match(mapOrder[0], /^平均と偏差/u)
+    assert.match(mapOrder[1], /^データの変換/u)
+    assert.equal(buttonFor(app.host, '学習マップ順').getAttribute('aria-pressed'), 'true')
+
+    await click(buttonFor(app.host, '正答率の低い順'))
+    assert.equal(buttonFor(app.host, '正答率の低い順').getAttribute('aria-pressed'), 'true')
+    const lowOrder = rows()
+    assert.match(lowOrder[0], /^平均と偏差：0\/1回 · 正答率 0%/u)
+    assert.match(lowOrder[1], /^データの変換：1\/1回 · 正答率 100%/u)
+    assert.deepEqual(lowOrder.slice(2).map((row) => row.split('：')[0]), ['不偏分散', '総合', '分散と標準偏差'])
+
+    await click(buttonFor(app.host, '学習マップ順'))
+    assert.deepEqual(rows(), mapOrder)
   } finally {
     await app.close()
   }

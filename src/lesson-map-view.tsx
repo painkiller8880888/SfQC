@@ -90,7 +90,7 @@ type LessonMapViewProps = {
   manualProgressDisabled?: boolean
   positions: Positions
   positionSyncRevision: number
-  onLayoutSave: (positions: Positions) => LayoutSaveResult
+  onLayoutSave: (positions: Positions, changedPositions: Positions) => LayoutSaveResult
   onManualProgressAction: (lessonId: string, action: ManualProgressCommand) => void
   onViewportChange: (viewport: Viewport) => void
   onSelectionChange: (lessonId: string | null) => void
@@ -160,7 +160,11 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     if (!allowPositionChanges) return
     const candidate = mapPositions(next)
     if (!shouldSaveMapLayout(changes, candidate, confirmedNodePositionsRef.current)) return
-    applyConfirmedPositions(onLayoutSave(candidate).positions)
+    const changedPositions = Object.fromEntries(Object.entries(candidate).filter(([id, position]) => {
+      const confirmed = confirmedNodePositionsRef.current[id] ?? dagrePositions[id]
+      return position.x !== confirmed.x || position.y !== confirmed.y
+    }))
+    applyConfirmedPositions(onLayoutSave(candidate, changedPositions).positions)
   }, [applyConfirmedPositions, commitNodes, manualProgressDisabled, onLayoutSave])
   const handleLayoutEditingToggle = () => {
     if (manualProgressDisabled) return
@@ -402,7 +406,11 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
   const resetLayout = () => {
     if (manualProgressDisabled || !window.confirm('手動で変更した配置を破棄し、自動配置に戻しますか？')) return
     const candidate = dagrePositions
-    const result = onLayoutSave(candidate)
+    const changedPositions = Object.fromEntries(Object.entries(candidate).filter(([id, position]) => {
+      const confirmed = confirmedNodePositionsRef.current[id] ?? position
+      return position.x !== confirmed.x || position.y !== confirmed.y
+    }))
+    const result = onLayoutSave(candidate, changedPositions)
     applyConfirmedPositions(result.positions)
     if (result.ok) window.requestAnimationFrame(() => void fitView({ padding: 0.14 }))
   }

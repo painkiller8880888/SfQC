@@ -4,13 +4,11 @@ import { parseLessonRef } from './lesson-contract.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { routeToHash } from './resolve-screen.mjs'
 import { FigureRef } from './figures/figure-ref'
+import { gradeDecimalAnswer } from './question-grading.mjs'
 import { generateDescriptiveStatisticsPreviewExercise, nextPreviewExerciseIndex, previewExerciseDefinitions } from './descriptive-statistics-preview-exercises.mjs'
 
-const inlineCategories: Record<string, string> = {
-  mean: 'mean-deviation',
-  deviation: 'mean-deviation',
-  variance: 'unbiased-variance',
-  'standard-deviation': 'variance-standard-deviation',
+function normalizeNumericInput(value: string) {
+  return value.normalize('NFKC').replace(/−/gu, '-')
 }
 
 function CourseReference({ targetRef, label, intent = 'review', registry }: {
@@ -42,30 +40,25 @@ function MathText({ text }: { text: string }) {
   return <>{parts}</>
 }
 
-function InlineExercise({ exerciseId, onFirstGrade }: {
+function InlineExercise({ exerciseId }: {
   exerciseId: string
-  onFirstGrade: (categoryId: string, isCorrect: boolean) => void
 }) {
   const id = useId()
   const detailsRef = useRef<HTMLDetailsElement>(null)
   const [index, setIndex] = useState(() => previewExerciseDefinitions[exerciseId as keyof typeof previewExerciseDefinitions]?.initialIndex ?? 0)
   const [answers, setAnswers] = useState<string[]>([])
   const [feedback, setFeedback] = useState('')
-  const [graded, setGraded] = useState(false)
   const exercise = generateDescriptiveStatisticsPreviewExercise(exerciseId as keyof typeof previewExerciseDefinitions, index)
   const grade = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const parsed = exercise.fields.map((_, fieldIndex) => {
-      const text = (answers[fieldIndex] ?? '').normalize('NFKC').replace(/−/gu, '-')
-      return text && /^[+-]?\d+(\.\d+)?$/u.test(text) ? Number(text) : Number.NaN
-    })
-    if (parsed.some((value) => !Number.isFinite(value))) {
-      setFeedback('すべての答えを数字で入力してください。')
+    const results = exercise.fields.map((_, fieldIndex) => gradeDecimalAnswer(
+      normalizeNumericInput(answers[fieldIndex] ?? ''), String(exercise.answers[fieldIndex]), 0,
+    ))
+    if (results.some((result) => result.status === 'invalid')) {
+      setFeedback('入力形式を確認してください（例：12、−2、0.5）。')
       return
     }
-    const correct = parsed.length === exercise.answers.length && parsed.every((value, fieldIndex) => Math.abs(value - exercise.answers[fieldIndex]) < 1e-6)
-    if (!graded) onFirstGrade(inlineCategories[exerciseId] ?? 'comprehensive', correct)
-    setGraded(true)
+    const correct = results.length === exercise.answers.length && results.every((result) => result.status === 'graded' && result.isCorrect)
     setFeedback(correct ? '正解です。解説を開いて計算を確認できます。' : '違います。値−平均、または二乗和の式を確認してください。')
     if (correct && detailsRef.current) detailsRef.current.open = true
   }
@@ -73,7 +66,6 @@ function InlineExercise({ exerciseId, onFirstGrade }: {
     setIndex((current) => nextPreviewExerciseIndex(exerciseId as keyof typeof previewExerciseDefinitions, current))
     setAnswers([])
     setFeedback('')
-    setGraded(false)
     if (detailsRef.current) detailsRef.current.open = false
   }
 
@@ -98,11 +90,10 @@ function InlineExercise({ exerciseId, onFirstGrade }: {
   </section>
 }
 
-function BodyBlock({ block, lesson, registry, onFirstGrade }: {
+function BodyBlock({ block, lesson, registry }: {
   block: LessonBodyBlock
   lesson: IncludedLessonDefinition
   registry: LessonRegistry
-  onFirstGrade: (categoryId: string, isCorrect: boolean) => void
 }) {
   if (block.kind === 'paragraph') return <p className="lesson-paragraph">{block.parts.map((part, index) => part.kind === 'text'
     ? <span key={index}><MathText text={part.text} /></span>
@@ -117,23 +108,22 @@ function BodyBlock({ block, lesson, registry, onFirstGrade }: {
   if (block.kind === 'table') return <div className="course-table-wrap"><table><caption>{block.caption}</caption><thead><tr>{block.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => cellIndex === 0
     ? <th scope="row" key={cellIndex}>{cell}</th> : <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
   if (block.kind === 'details') return <details className="course-details"><summary>{block.summary}</summary>
-    <div>{block.blocks.map((child, index) => <BodyBlock key={index} block={child} lesson={lesson} registry={registry} onFirstGrade={onFirstGrade} />)}</div>
+    <div>{block.blocks.map((child, index) => <BodyBlock key={index} block={child} lesson={lesson} registry={registry} />)}</div>
   </details>
-  return <InlineExercise exerciseId={block.exerciseId} onFirstGrade={onFirstGrade} />
+  return <InlineExercise exerciseId={block.exerciseId} />
 }
 
-export function DescriptiveStatisticsCourse({ lesson, activeSectionId, sectionHeadingRef, registry = lessonRegistry, onFirstGrade }: {
+export function DescriptiveStatisticsCourse({ lesson, activeSectionId, sectionHeadingRef, registry = lessonRegistry }: {
   lesson: IncludedLessonDefinition
   activeSectionId: string
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
   registry?: LessonRegistry
-  onFirstGrade: (categoryId: string, isCorrect: boolean) => void
 }) {
   return <section className="lesson-panel descriptive-statistics-course" aria-labelledby="course-title">
     <p className="lesson-context"><a href="#/map">学習マップ</a> / {lesson.title}</p>
     <h2 id="course-title" tabIndex={-1}>{lesson.title}</h2>
     <p>{lesson.learningObjectives.join(' ')}</p>
-    {lesson.overview?.map((block, index) => <BodyBlock key={index} block={block} lesson={lesson} registry={registry} onFirstGrade={onFirstGrade} />)}
+    {lesson.overview?.map((block, index) => <BodyBlock key={index} block={block} lesson={lesson} registry={registry} />)}
     <nav className="course-section-nav" aria-label={`${lesson.title}の目次`}>
       <h3>この単元の節</h3>
       <ol>{lesson.sections.map((section) => <li key={section.sectionId}>
@@ -143,14 +133,14 @@ export function DescriptiveStatisticsCourse({ lesson, activeSectionId, sectionHe
     </nav>
     <div className="course-sections">{lesson.sections.map((section) => <section className="course-section" key={section.sectionId} id={`section-${section.sectionId}`}>
       <h2 id={`course-section-${section.sectionId}`} tabIndex={-1} ref={section.sectionId === activeSectionId ? sectionHeadingRef : undefined}>{section.title}</h2>
-      {section.blocks.map((block, index) => <BodyBlock key={index} block={block} lesson={lesson} registry={registry} onFirstGrade={onFirstGrade} />)}
+      {section.blocks.map((block, index) => <BodyBlock key={index} block={block} lesson={lesson} registry={registry} />)}
     </section>)}</div>
     <details className="course-references"><summary>参考資料・クレジット</summary>
       <ul>{lesson.references?.map((reference) => <li key={reference.url + reference.title}>
         <a href={reference.url} target="_blank" rel="noreferrer">{reference.title}</a><p>{reference.details}</p>
       </li>)}</ul>
-      {lesson.credit && <p>{lesson.credit}</p>}
     </details>
+    {lesson.credit && <p className="lesson-credit">{lesson.credit}</p>}
     <p className="lesson-actions"><a href={routeToHash({ kind: 'course-practice', courseId: lesson.lessonId })}>5分野の演習へ</a></p>
   </section>
 }
