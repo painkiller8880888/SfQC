@@ -20,7 +20,15 @@ export type QuestionGradingResult =
   | { readonly status: 'graded'; readonly isCorrect: false; readonly feedback: QuestionGradingFeedback }
   | { readonly status: 'invalid'; readonly reason: 'invalid-instance' | 'invalid-answer-format' }
 
+export type DecimalAnswerGradingResult =
+  | { readonly status: 'graded'; readonly isCorrect: boolean }
+  | { readonly status: 'invalid'; readonly reason: 'invalid-answer-format' }
+  | { readonly status: 'invalid'; readonly reason: 'invalid-expected-value' }
+  | { readonly status: 'invalid'; readonly reason: 'invalid-rounding-digits' }
+
 export declare function gradeQuestionAnswer(
   instance: ReadonlyQuestionInstance,
   answer: unknown,
 ): QuestionGradingResult
+
+export declare function gradeDecimalAnswer(answer: unknown, expected: unknown, roundingDigits: unknown): DecimalAnswerGradingResult

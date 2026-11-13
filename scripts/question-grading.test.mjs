@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { createQuestionInstance } from '../src/question-contract.mjs'
 import { generateQuestionContent } from '../src/question-generator.mjs'
-import { gradeQuestionAnswer } from '../src/question-grading.mjs'
+import { gradeDecimalAnswer, gradeQuestionAnswer } from '../src/question-grading.mjs'
 import { getQuestionDefinition, questionRegistry } from '../src/question-registry.mjs'
 
 function productionInstances() {
@@ -151,6 +151,28 @@ test('numeric input accepts signed decimals and outside whitespace, and rejects 
   for (const answer of ['', ' \t\n', '01.0', '.5', '1.', '1,0', '1e0', '1 + 0', '1 個', '+', 1, null]) {
     assert.deepEqual(gradeQuestionAnswer(instance, answer), { status: 'invalid', reason: 'invalid-answer-format' }, String(answer))
   }
+})
+
+test('decimal grading validates settings and values in order and compares rounded values exactly', () => {
+  assert.deepEqual(gradeDecimalAnswer('1.234', '1.23', 2), { status: 'graded', isCorrect: true })
+  assert.deepEqual(gradeDecimalAnswer('1.235', '1.23', 2), { status: 'graded', isCorrect: false })
+  assert.deepEqual(gradeDecimalAnswer('1.5', '2', 0), { status: 'graded', isCorrect: true })
+  assert.deepEqual(gradeDecimalAnswer('-1.5', '-2', 0), { status: 'graded', isCorrect: true })
+  assert.deepEqual(gradeDecimalAnswer('1.4', '1.5', 0), { status: 'graded', isCorrect: false })
+  assert.deepEqual(gradeDecimalAnswer(1, '1', 2), { status: 'invalid', reason: 'invalid-answer-format' })
+  for (const answer of ['1e0', '1 個', '01', '', '.5', '1.']) {
+    assert.deepEqual(gradeDecimalAnswer(answer, '1', 2), { status: 'invalid', reason: 'invalid-answer-format' })
+  }
+  assert.deepEqual(gradeDecimalAnswer('bad', '1e0', -1), { status: 'invalid', reason: 'invalid-rounding-digits' })
+  assert.deepEqual(gradeDecimalAnswer('bad', '1e0', 2), { status: 'invalid', reason: 'invalid-expected-value' })
+  for (const digits of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, '2', -0]) {
+    assert.deepEqual(gradeDecimalAnswer('1', '1', digits), { status: 'invalid', reason: 'invalid-rounding-digits' })
+  }
+})
+
+test('decimal grading accepts excessive precision and very large rounding settings', { timeout: 1000 }, () => {
+  assert.deepEqual(gradeDecimalAnswer('1.' + '0'.repeat(100_000) + '1', '1', 2), { status: 'graded', isCorrect: true })
+  assert.deepEqual(gradeDecimalAnswer('1.2', '1.3', Number.MAX_SAFE_INTEGER), { status: 'graded', isCorrect: false })
 })
 
 test('long fractional zeros are handled before BigInt conversion', () => {
