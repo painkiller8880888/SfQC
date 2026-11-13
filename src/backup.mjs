@@ -537,7 +537,7 @@ export function recheckLearningBackupImport(pending, registry = lessonRegistry, 
   }
   const raw = currentRaw(latest)
   const classification = Object.fromEntries(learningStorageKeys.map(({ name }) => [name,
-    pending.beforeRaw[name] === pending.candidateRaw[name] ? 'unchanged'
+    pending.beforeRaw[name] === pending.candidateRaw[name] && raw[name] === pending.beforeRaw[name] ? 'unchanged'
       : raw[name] === pending.beforeRaw[name] ? 'before'
         : raw[name] === pending.candidateRaw[name] ? 'candidate' : 'other']))
   const unchangedOrBefore = Object.values(classification).every((state) => state === 'unchanged' || state === 'before')

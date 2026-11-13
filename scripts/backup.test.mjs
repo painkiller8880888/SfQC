@@ -433,6 +433,36 @@ test('new backup import remains unknown after final read failure and recheck nev
   assert.equal(rollbackFixture.values.get(PRACTICE_RESULTS_KEY), beforePractice)
 })
 
+test('new backup recheck preserves a competing change to an unchanged learning key', async () => {
+  const beforeState = serializeLearningState(emptyLearningState())
+  const beforePractice = serializePracticeResults(emptyPracticeResults())
+  const candidatePractice = { schemaVersion: 1, records: [
+    { categoryId: 'unbiased-variance', isCorrect: true, attemptedAt: '2026-11-12T12:34:56.789Z' },
+  ] }
+  const candidatePracticeRaw = serializePracticeResults(candidatePractice)
+  const fixture = learningStorage({ [LEARNING_STATE_KEY]: beforeState, [PRACTICE_RESULTS_KEY]: beforePractice })
+  fixture.config.failGet = (key, count) => key === PRACTICE_RESULTS_KEY && count === 3
+  const unknown = await importLearningBackup(file(learningBackup(emptyLearningState(), candidatePractice)),
+    () => true, { getStorage: () => fixture.storage })
+  assert.equal(unknown.status, 'unknown')
+  assert.deepEqual(unknown.pending.attemptedKeys, ['practiceResults'])
+  assert.equal(unknown.pending.candidateRaw.practiceResults, candidatePracticeRaw)
+
+  fixture.config.failGet = () => false
+  const otherTabState = emptyLearningState()
+  otherTabState.lessons[lessonRegistry.lessons[0].lessonId].completedAt = '2026-11-13T00:00:00.000Z'
+  const otherTabRaw = serializeLearningState(otherTabState)
+  fixture.values.set(LEARNING_STATE_KEY, otherTabRaw)
+
+  const rechecked = recheckLearningBackupImport(unknown.pending, lessonRegistry, () => fixture.storage)
+  assert.equal(rechecked.status, 'recovery-required')
+  assert.equal(fixture.values.get(LEARNING_STATE_KEY), otherTabRaw)
+  assert.equal(fixture.values.get(PRACTICE_RESULTS_KEY), beforePractice)
+  assert.equal(fixture.writes.some(([key]) => key === LEARNING_STATE_KEY), false)
+  assert.equal(fixture.writes.filter(([key]) => key === PRACTICE_RESULTS_KEY).length, 2)
+  assert.ok(rechecked.recoveryRaw)
+})
+
 test('new backup rejects malformed outer envelopes, oversized nested states, and too many imported records', () => {
   assert.throws(() => serializeLearningBackup({ ...emptyLearningState(), extra: true }, emptyPracticeResults()))
   const largeState = emptyLearningState()
