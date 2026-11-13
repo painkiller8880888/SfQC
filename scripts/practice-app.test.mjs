@@ -5,10 +5,7 @@ import { runInNewContext } from 'node:vm'
 import { act, createElement, StrictMode } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
-import { LOCAL_DATA_KEY } from '../src/local-data.mjs'
 import { serializeLearningBackup } from '../src/backup.mjs'
-import { routeToHash } from '../src/resolve-screen.mjs'
-import { MAP_STATE_KEY } from '../src/map-state.mjs'
 import { createMapPocGraph } from '../src/map-poc-graph.mjs'
 import { lessonDomainColors, lessonDomains } from '../src/lesson-contract.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
@@ -22,6 +19,8 @@ import { PRACTICE_RESULTS_KEY } from '../src/practice-results.mjs'
 
 const THEME_STORAGE_KEY = 'sfqc:theme-preference'
 const THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)'
+const LOCAL_DATA_KEY = 'sfqc:local-data'
+const MAP_STATE_KEY = 'sfqc:map-state:v1'
 
 const globalKeys = [
   'window', 'document', 'navigator', 'Element', 'HTMLElement', 'Node', 'Event', 'MouseEvent',
@@ -84,9 +83,9 @@ function installMatchMedia(window, initialTheme = 'light', available = true, lis
   }
 }
 
-async function createHarness({ strict = false, confirm = () => true, measureFlowNodes = false, systemTheme = 'light', supportsMatchMedia = true, supportsMatchMediaListeners = true, mode = 'development', productionPreview = false } = {}) {
+async function createHarness({ strict = false, confirm = () => true, measureFlowNodes = false, systemTheme = 'light', supportsMatchMedia = true, supportsMatchMediaListeners = true } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
-    url: 'https://sfqc.test/SfQC/#/practice',
+    url: 'https://sfqc.test/SfQC/#/course/descriptive-statistics/practice',
     pretendToBeVisual: true,
   })
   const previousGlobals = new Map(globalKeys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
@@ -120,6 +119,15 @@ async function createHarness({ strict = false, confirm = () => true, measureFlow
   }
   dom.window.scrollTo = () => {}
   dom.window.scrollBy = () => {}
+  dom.window.HTMLElement.prototype.scrollIntoView = () => {}
+  if (measureFlowNodes) Object.defineProperty(dom.window, 'DOMMatrixReadOnly', {
+    configurable: true,
+    value: class {
+      constructor(transform) {
+        this.m22 = Number(/scale\(\s*([-+.\deE]+)/u.exec(transform ?? '')?.[1] ?? 1)
+      }
+    },
+  })
   dom.window.confirm = confirm
   dom.window.document.head.insertAdjacentHTML('beforeend', '<style>.react-flow__pane { z-index: 1 }</style>')
   for (const [key, dimension] of [['offsetWidth', 1024], ['offsetHeight', 640]]) {
@@ -133,8 +141,6 @@ async function createHarness({ strict = false, confirm = () => true, measureFlow
   }
   const server = await createServer({
     configFile: 'vite.config.ts',
-    mode,
-    ...(productionPreview ? { define: { 'import.meta.env.DEV': 'false' } } : {}),
     server: { middlewareMode: true, hmr: false },
     appType: 'custom',
   })
@@ -197,38 +203,6 @@ function buttonFor(host, text) {
 
 function linkFor(host, text) {
   return [...host.querySelectorAll('a')].find((anchor) => anchor.textContent.includes(text))
-}
-
-function assertProgressReviewEvidence(host, attemptId, instanceId) {
-  const progress = host.querySelector('.progress-view')
-  assert.ok(progress, 'expected the progress view to render')
-
-  const candidate = progress.querySelector('[aria-label="基本統計量の誤答候補"]')
-  assert.ok(candidate, 'expected the saved variance mistake to appear as a review candidate')
-  assert.match(candidate.textContent, /この節を指定した誤答：1回/u)
-  assert.match(candidate.textContent, /復習先への総訪問：1回/u)
-  assert.match(candidate.textContent, /代表誤答からの訪問：1回/u)
-  assert.equal(linkFor(candidate, '基本統計量：範囲と分散')?.getAttribute('href'),
-    '#/lesson/descriptive-statistics/variance')
-  assert.equal(linkFor(candidate, '誤答と復習先を見る')?.getAttribute('href'),
-    routeToHash({ kind: 'feedback-id', attemptId }))
-  assert.equal(linkFor(candidate, '同じ出題へ戻る')?.getAttribute('href'),
-    routeToHash({ kind: 'practice-id', instanceId }))
-
-  const visits = progress.querySelector('[aria-label="基本統計量への復習訪問"]')
-  assert.ok(visits, 'expected the recorded variance visit to appear')
-  assert.match(visits.textContent, /総訪問：1回/u)
-  assert.equal(linkFor(visits, '基本統計量：範囲と分散')?.getAttribute('href'),
-    '#/lesson/descriptive-statistics/variance')
-}
-
-function linkForRoute(host, route) {
-  return [...host.querySelectorAll('a')].find((anchor) => anchor.getAttribute('href') === routeToHash(route))
-}
-
-function questionOption(host, questionId) {
-  return [...host.querySelectorAll('.practice-question-list > li')]
-    .find((item) => item.textContent.includes(questionId))
 }
 
 async function click(element) {
@@ -320,6 +294,34 @@ function renderedPosition(node) {
 function savedMap(window) {
   return readLearningState(lessonRegistry, () => window.localStorage).state
 }
+
+test('initial app load repairs a retired v1 history state from the current URL', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    const routeHash = '#/course/descriptive-statistics/lesson/variance'
+    const route = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance' }
+    const legacyState = {
+      version: 1, routeHash, route, entryId: 'legacy-entry', draft: 'old answer', scrollY: 400,
+      resumeAttemptId: 'old-attempt', returnStack: [],
+    }
+    await app.unmount()
+    window.history.replaceState(legacyState, '', window.location.pathname + routeHash)
+    await app.remount()
+    await settleEffects(window)
+
+    assert.equal(window.location.hash, routeHash)
+    assert.equal(window.history.state.version, 2)
+    assert.deepEqual(Object.keys(window.history.state).sort(), [
+      'entryId', 'returnStack', 'route', 'routeHash', 'scrollY', 'version',
+    ])
+    assert.equal(window.history.state.scrollY, 0)
+    assert.equal(app.host.querySelectorAll('.course-section').length, 4)
+    assert.match(app.host.textContent, /URLの復帰情報は利用できないため/u)
+  } finally {
+    await app.close()
+  }
+})
 
 test('pre-render theme bootstrap honors saved choices and falls back to the system theme', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8')
@@ -1911,33 +1913,6 @@ test('section checks stay local while independent judgments and manual completio
     window.Storage.prototype.getItem = previousGet
     window.Storage.prototype.setItem = previousSet
     window.Storage.prototype.removeItem = previousRemove
-    await app.close()
-  }
-})
-
-test('comparison preview grades generated answer strings without deleting internal whitespace', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    window.history.replaceState(null, '', `${window.location.pathname}?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics`)
-    await app.remount()
-    const exercise = app.host.querySelector('.descriptive-statistics-preview-exercise[data-preview-exercise="mean"]')
-    assert.ok(exercise)
-    const input = exercise.querySelector('input')
-    const grade = exercise.querySelector('.ds-button-primary')
-    for (const invalid of ['0101', '10 1']) {
-      await changeTextInput(window, input, invalid)
-      await click(grade)
-      assert.match(exercise.querySelector('.ds-exercise-feedback').textContent, /入力形式/u)
-      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null)
-    }
-    for (const [answer, expectedFeedback] of [['１０１', /正解/u], ['101.4', /正解/u], ['101.5', /合っていない/u]]) {
-      await changeTextInput(window, input, answer)
-      await click(grade)
-      assert.match(exercise.querySelector('.ds-exercise-feedback').textContent, expectedFeedback)
-      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null)
-    }
-  } finally {
     await app.close()
   }
 })

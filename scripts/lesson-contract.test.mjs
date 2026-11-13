@@ -25,7 +25,6 @@ test('fixture and the six included lessons satisfy the contract and keep other l
   assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').availability, 'included')
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 5)
-  assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').questionIds, ['q-desc-var-sc-001', 'q-desc-var-num-001', 'q-desc-mean-sc-001', 'q-desc-sd-sc-001', 'q-desc-var-gen-num-001'])
   const expectedSections = new Map([
     ['data-types', ['types']],
     ['math-arithmetic', ['operations']],
@@ -281,7 +280,7 @@ test('shared and conditional prerequisites form one acyclic graph; optional revi
   assert.equal(validateLessonRegistry(optionalCycle), true)
 })
 
-test('conditions keep method scope and question IDs are shape-checked without registry resolution', () => {
+test('conditions keep method scope', () => {
   const conditional = copy(lessonRegistryFixture)
   lesson(conditional, 'descriptive-statistics').conditionalPrerequisites = [{
     conditionId: 'descriptive-mean-method',
@@ -306,17 +305,6 @@ test('conditions keep method scope and question IDs are shape-checked without re
   }]
   assert.equal(validateLessonRegistry(wrongMethod), false)
 
-  const unresolvedQuestion = copy(lessonRegistryFixture)
-  lesson(unresolvedQuestion, 'descriptive-statistics').questionIds = ['q-not-yet-registered']
-  assert.equal(validateLessonRegistry(unresolvedQuestion), true)
-
-  const malformedQuestionId = copy(lessonRegistryFixture)
-  lesson(malformedQuestionId, 'descriptive-statistics').questionIds = ['Invalid_ID']
-  assert.equal(validateLessonRegistry(malformedQuestionId), false)
-
-  const duplicateQuestionIds = copy(lessonRegistryFixture)
-  lesson(duplicateQuestionIds, 'descriptive-statistics').questionIds = ['q-question-1', 'q-question-1']
-  assert.equal(validateLessonRegistry(duplicateQuestionIds), false)
 })
 
 test('unknown keys, undefined values, malformed IDs, and invalid revisions are rejected', () => {
@@ -327,6 +315,10 @@ test('unknown keys, undefined values, malformed IDs, and invalid revisions are r
   const undefinedValue = copy(lessonRegistryFixture)
   lesson(undefinedValue, 'descriptive-statistics').extra = undefined
   assert.equal(validateLessonRegistry(undefinedValue), false)
+
+  const retiredQuestionIds = copy(lessonRegistryFixture)
+  lesson(retiredQuestionIds, 'descriptive-statistics').questionIds = []
+  assert.equal(validateLessonRegistry(retiredQuestionIds), false)
 
   const malformedId = copy(lessonRegistryFixture)
   lesson(malformedId, 'descriptive-statistics').revision = 1.5

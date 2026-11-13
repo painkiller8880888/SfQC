@@ -227,7 +227,7 @@ function isSource(value, officialSourceItemIds) {
 function isLessonBase(value) {
   const keys = [
     'lessonId', 'title', 'domain', 'learningObjectives', 'declaredSectionIds', 'commonPrerequisites',
-    'conditionalPrerequisites', 'optionalReviews', 'questionIds', 'sourceItemIds', 'sourceRefs', 'revision',
+    'conditionalPrerequisites', 'optionalReviews', 'sourceItemIds', 'sourceRefs', 'revision',
   ]
   return typeof value.lessonId === 'string' && idPattern.test(value.lessonId)
     && isText(value.title)
@@ -237,7 +237,6 @@ function isLessonBase(value) {
     && isUniqueTextArray(value.commonPrerequisites, lessonRefPattern)
     && isArray(value.conditionalPrerequisites)
     && isArray(value.optionalReviews)
-    && isUniqueTextArray(value.questionIds, idPattern)
     && isUniqueTextArray(value.sourceItemIds, sourceItemIdPattern)
     && isUniqueTextArray(value.sourceRefs, idPattern)
     && isPositiveSafeInteger(value.revision)
@@ -249,7 +248,7 @@ function isLesson(value) {
   if (value.availability === 'planned') {
     return hasOnlyKeys(value, [
       'availability', 'lessonId', 'title', 'domain', 'learningObjectives', 'declaredSectionIds',
-      'commonPrerequisites', 'conditionalPrerequisites', 'optionalReviews', 'questionIds',
+      'commonPrerequisites', 'conditionalPrerequisites', 'optionalReviews',
       'sourceItemIds', 'sourceRefs', 'revision',
     ])
   }
@@ -257,7 +256,7 @@ function isLesson(value) {
     const optionalKeys = ['overview', 'references', 'credit']
     return hasOnlyKeys(value, [
       'availability', 'lessonId', 'title', 'domain', 'learningObjectives', 'declaredSectionIds',
-      'commonPrerequisites', 'conditionalPrerequisites', 'optionalReviews', 'questionIds',
+      'commonPrerequisites', 'conditionalPrerequisites', 'optionalReviews',
       'sourceItemIds', 'sourceRefs', 'revision', 'sections', 'figures', ...optionalKeys,
     ])
       && hasKeys(value, ['sections', 'figures'])

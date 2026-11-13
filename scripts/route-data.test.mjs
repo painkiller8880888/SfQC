@@ -1,115 +1,39 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fixedInstance } from './question-contract.fixture.mjs'
-import { gradeQuestionAnswer } from '../src/question-grading.mjs'
-import { resolveRouteData, validateRouteHistoryReferences } from '../src/route-data.mjs'
-import { createRouteHistoryState, navigateRouteHistory } from '../src/route-history.mjs'
-import { routeToHash } from '../src/resolve-screen.mjs'
+import { resolveRouteData } from '../src/route-data.mjs'
 
-const emptyData = {
-  schemaVersion: 2,
-  questionInstances: [],
-  answerAttempts: [],
-  reviewEvents: [],
-}
-const read = (data = emptyData) => ({ status: 'ok', raw: JSON.stringify(data), data })
-
-test('known lessons, sections, snapshots and attempts resolve from their source registries', () => {
-  assert.equal(resolveRouteData({ kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }, read()).status, 'lesson')
-  assert.equal(resolveRouteData({ kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: null }, read()).status, 'lesson')
-
-  const answer = fixedInstance.questionDefinitionSnapshot.content.correctAnswer
-  const attempt = {
-    attemptId: 'saved-attempt',
-    instanceId: fixedInstance.instanceId,
-    answer,
-    gradingResult: gradeQuestionAnswer(fixedInstance, answer),
-    attemptedAt: '2026-10-26T00:00:00.000Z',
+test('included lesson and section routes resolve from the lesson registry', () => {
+  const lesson = resolveRouteData({ kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' })
+  assert.equal(lesson.status, 'lesson')
+  if (lesson.status === 'lesson') {
+    assert.equal(lesson.lesson.lessonId, 'math-algebra-sigma')
+    assert.equal(lesson.section?.sectionId, 'sigma')
   }
-  const data = { ...emptyData, questionInstances: [fixedInstance], answerAttempts: [attempt] }
-  assert.equal(resolveRouteData({ kind: 'practice-id', instanceId: fixedInstance.instanceId }, read(data)).status, 'practice')
-  const feedback = resolveRouteData({ kind: 'feedback-id', attemptId: attempt.attemptId }, read(data))
-  assert.equal(feedback.status, 'feedback')
-  if (feedback.status === 'feedback') {
-    assert.equal(feedback.instance.instanceId, fixedInstance.instanceId)
-    assert.equal(feedback.attempt.answer, answer)
-  }
+  const overview = resolveRouteData({ kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: null })
+  assert.equal(overview.status, 'lesson')
+  if (overview.status === 'lesson') assert.equal(overview.section, null)
 })
 
-test('course routes resolve continuous lesson sections and the independent practice page', () => {
-  const lesson = resolveRouteData({
-    kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance',
-  }, read())
+test('course routes resolve the new lesson and independent practice pages', () => {
+  const lesson = resolveRouteData({ kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance' })
   assert.equal(lesson.status, 'lesson')
   if (lesson.status === 'lesson') {
     assert.equal(lesson.lesson.lessonId, 'descriptive-statistics')
-    assert.equal(lesson.section.sectionId, 'variance')
+    assert.equal(lesson.section?.sectionId, 'variance')
   }
-  assert.equal(resolveRouteData({ kind: 'course-practice', courseId: 'descriptive-statistics' }, read()).status, 'course-practice')
-  assert.deepEqual(resolveRouteData({
-    kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'missing',
-  }, read()), { status: 'unknown-id', target: 'section' })
-})
-
-test('unknown IDs in valid data stay distinct from damaged local data', () => {
-  assert.deepEqual(resolveRouteData({ kind: 'feedback-id', attemptId: 'missing' }, read()), {
-    status: 'unknown-id', target: 'attempt',
-  })
-  const error = new Error('保存データが破損しています。')
-  assert.deepEqual(resolveRouteData({ kind: 'practice-id', instanceId: 'missing' }, {
-    status: 'invalid', raw: '{}', error,
-  }), { status: 'data-error', error })
-})
-
-test('migration failure keeps history readable to progress but blocks saved ID routes', () => {
-  const attempt = {
-    attemptId: 'migration-attempt',
-    instanceId: fixedInstance.instanceId,
-    answer: fixedInstance.questionDefinitionSnapshot.content.correctAnswer,
-    gradingResult: gradeQuestionAnswer(fixedInstance, fixedInstance.questionDefinitionSnapshot.content.correctAnswer),
-    attemptedAt: '2026-10-26T00:00:00.000Z',
-  }
-  const valid = read({ ...emptyData, questionInstances: [fixedInstance], answerAttempts: [attempt] })
-  const error = new Error('保存データの移行に失敗しました。')
-  const migrationFailed = { status: 'migration-failed', raw: valid.raw, data: valid.data, error }
-  assert.deepEqual(resolveRouteData({ kind: 'feedback-id', attemptId: attempt.attemptId }, migrationFailed), {
-    status: 'data-error', error,
-  })
-  assert.deepEqual(resolveRouteData({ kind: 'practice-id', instanceId: fixedInstance.instanceId }, migrationFailed), {
-    status: 'data-error', error,
+  assert.equal(resolveRouteData({ kind: 'course-practice', courseId: 'descriptive-statistics' }).status, 'course-practice')
+  assert.deepEqual(resolveRouteData({ kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'missing' }), {
+    status: 'unknown-id', target: 'section',
   })
 })
 
-test('attempts without their referenced snapshot report a data error', () => {
-  const attempt = {
-    attemptId: 'orphan', instanceId: 'missing-snapshot', answer: '1',
-    gradingResult: { status: 'graded', isCorrect: false, feedback: null },
-    attemptedAt: '2026-10-26T00:00:00.000Z',
-  }
-  assert.equal(resolveRouteData({ kind: 'feedback-id', attemptId: 'orphan' }, read({
-    ...emptyData, answerAttempts: [attempt],
-  })).status, 'data-error')
-})
-
-test('resume references must point to an attempt for the same practice snapshot', () => {
-  const answer = fixedInstance.questionDefinitionSnapshot.content.correctAnswer
-  const attempt = {
-    attemptId: 'resume-attempt', instanceId: fixedInstance.instanceId, answer,
-    gradingResult: gradeQuestionAnswer(fixedInstance, answer), attemptedAt: '2026-10-26T00:00:00.000Z',
-  }
-  const saved = read({ ...emptyData, questionInstances: [fixedInstance], answerAttempts: [attempt] })
-  const practice = { kind: 'practice-id', instanceId: fixedInstance.instanceId }
-  const resume = createRouteHistoryState(practice, routeToHash(practice), {
-    entryId: 'resume-entry', resumeAttemptId: attempt.attemptId, draft: answer,
+test('retired lesson routes and unknown IDs cannot resolve to saved snapshot data', () => {
+  assert.deepEqual(resolveRouteData({ kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: null }), {
+    status: 'unknown-id', target: 'lesson',
   })
-  const review = { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' }
-  const fromReview = navigateRouteHistory(resume, review, routeToHash(review), 'review', { entryId: 'review-entry' })
-  assert.equal(validateRouteHistoryReferences(fromReview, saved), true)
-  assert.equal(validateRouteHistoryReferences(fromReview, read()), false)
-
-  const mismatched = createRouteHistoryState({ kind: 'practice-id', instanceId: 'other-instance' }, '#/practice/other-instance', {
-    entryId: 'bad-resume', resumeAttemptId: attempt.attemptId,
+  assert.deepEqual(resolveRouteData({ kind: 'lesson-id', lessonId: 'missing-lesson', sectionId: null }), {
+    status: 'unknown-id', target: 'lesson',
   })
-  assert.equal(validateRouteHistoryReferences(mismatched, saved), false)
-  assert.equal(validateRouteHistoryReferences(mismatched, { status: 'invalid', raw: '{}', error: new Error('bad') }), false)
+  assert.equal(resolveRouteData({ kind: 'course-practice', courseId: 'mean-inference' }).status, 'unavailable-lesson')
+  assert.deepEqual(resolveRouteData({ kind: 'map' }), { status: 'screen' })
 })

@@ -1,7 +1,3 @@
-import { validateQuestionInstance } from './question-contract.mjs'
-
-/** @typedef {import('./question-contract.mjs').ReadonlyQuestionInstance} ReadonlyQuestionInstance */
-/** @typedef {import('./question-grading.d.mts').QuestionGradingResult} QuestionGradingResult */
 /** @typedef {{ coefficient: bigint; scale: number }} Decimal */
 
 const inputDecimalPattern = /^[+-]?(?:0|[1-9]\d*)(?:\.\d+)?$/u
@@ -65,33 +61,6 @@ function compareDecimal(left, right) {
   return leftCoefficient < rightCoefficient ? -1 : leftCoefficient > rightCoefficient ? 1 : 0
 }
 
-/** @param {Decimal} left @param {Decimal} right @returns {Decimal} */
-function subtractDecimal(left, right) {
-  const scale = Math.max(left.scale, right.scale)
-  return normalizeDecimal({
-    coefficient: coefficientAtScale(left, scale) - coefficientAtScale(right, scale),
-    scale,
-  })
-}
-
-/** @param {Decimal} value @returns {Decimal} */
-function absoluteDecimal(value) {
-  return value.coefficient < 0n ? { coefficient: -value.coefficient, scale: value.scale } : value
-}
-
-/** @param {Decimal} left @param {Decimal} right @returns {Decimal} */
-function multiplyDecimal(left, right) {
-  return normalizeDecimal({
-    coefficient: left.coefficient * right.coefficient,
-    scale: left.scale + right.scale,
-  })
-}
-
-/** @returns {QuestionGradingResult} */
-function correctResult() {
-  return { status: 'graded', isCorrect: true, feedback: null }
-}
-
 /** @param {unknown} answer @param {unknown} expected @param {unknown} roundingDigits @returns {import('./question-grading.d.mts').DecimalAnswerGradingResult} */
 export function gradeDecimalAnswer(answer, expected, roundingDigits) {
   if (typeof roundingDigits !== 'number' || !Number.isSafeInteger(roundingDigits)
@@ -105,88 +74,5 @@ export function gradeDecimalAnswer(answer, expected, roundingDigits) {
   return {
     status: 'graded',
     isCorrect: compareDecimal(roundDecimal(answerValue, roundingDigits), roundDecimal(expectedValue, roundingDigits)) === 0,
-  }
-}
-
-/** @param {ReadonlyQuestionInstance} instance @param {unknown} answer @returns {QuestionGradingResult} */
-export function gradeQuestionAnswer(instance, answer) {
-  if (!validateQuestionInstance(instance)) return { status: 'invalid', reason: 'invalid-instance' }
-
-  const snapshot = instance.questionDefinitionSnapshot
-  const content = snapshot.content
-  if (content.format === 'single-choice') {
-    if (typeof answer !== 'string' || !content.choices.some((choice) => choice.id === answer)) {
-      return { status: 'invalid', reason: 'invalid-answer-format' }
-    }
-    if (answer === content.correctAnswer) return correctResult()
-
-    const rule = content.feedbackRules.find((item) => item.choiceId === answer)
-    return rule
-      ? {
-          status: 'graded',
-          isCorrect: false,
-          feedback: {
-            source: 'rule',
-            explanation: rule.explanation,
-            lessonRef: rule.lessonRef,
-            matchedRule: { kind: 'single-choice', choiceId: rule.choiceId },
-          },
-        }
-      : {
-          status: 'graded',
-          isCorrect: false,
-          feedback: { source: 'default', explanation: content.defaultFeedback, lessonRef: snapshot.lessonRefs[0] },
-        }
-  }
-
-  if (content.format !== 'numeric' || typeof answer !== 'string') {
-    return { status: 'invalid', reason: 'invalid-answer-format' }
-  }
-
-  const inputValue = parseDecimal(answer)
-  const expectedValue = parseDecimal(content.correctAnswer)
-  if (inputValue === null) return { status: 'invalid', reason: 'invalid-answer-format' }
-  if (expectedValue === null) return { status: 'invalid', reason: 'invalid-instance' }
-
-  const digits = content.grading.roundingDigits
-  const roundedInput = roundDecimal(inputValue, digits)
-  const roundedExpected = roundDecimal(expectedValue, digits)
-  const difference = absoluteDecimal(subtractDecimal(roundedInput, roundedExpected))
-  const absoluteTolerance = content.grading.absoluteTolerance === undefined
-    ? null
-    : parseDecimal(content.grading.absoluteTolerance)
-  const relativeTolerance = content.grading.relativeTolerance === undefined
-    ? null
-    : parseDecimal(content.grading.relativeTolerance)
-  const withinAbsoluteTolerance = absoluteTolerance !== null
-    && compareDecimal(difference, absoluteTolerance) <= 0
-  const withinRelativeTolerance = roundedExpected.coefficient !== 0n
-    && relativeTolerance !== null
-    && compareDecimal(difference, multiplyDecimal(absoluteDecimal(roundedExpected), relativeTolerance)) <= 0
-
-  if (withinAbsoluteTolerance || withinRelativeTolerance) return correctResult()
-
-  const matchingRules = content.feedbackRules.filter((rule) => {
-    const ruleAnswer = parseDecimal(rule.answer)
-    return ruleAnswer !== null && compareDecimal(roundDecimal(ruleAnswer, digits), roundedInput) === 0
-  })
-  if (matchingRules.length === 1) {
-    const rule = matchingRules[0]
-    return {
-      status: 'graded',
-      isCorrect: false,
-      feedback: {
-        source: 'rule',
-        explanation: rule.explanation,
-        lessonRef: rule.lessonRef,
-        matchedRule: { kind: 'numeric', answer: rule.answer },
-      },
-    }
-  }
-
-  return {
-    status: 'graded',
-    isCorrect: false,
-    feedback: { source: 'default', explanation: content.defaultFeedback, lessonRef: snapshot.lessonRefs[0] },
   }
 }
