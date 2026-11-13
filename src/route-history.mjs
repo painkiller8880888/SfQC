@@ -1,6 +1,6 @@
 import { resolveRoute, sameRoute } from './resolve-screen.mjs'
 
-export const ROUTE_HISTORY_VERSION = 1
+export const ROUTE_HISTORY_VERSION = 2
 
 function isRecord(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
@@ -16,10 +16,6 @@ function routeMatchesHash(route, hash) {
   return typeof hash === 'string' && sameRoute(resolveRoute(hash), route)
 }
 
-function isReference(value) {
-  return value === null || (typeof value === 'string' && value.length > 0)
-}
-
 function isFrameArray(value) {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return false
   const keys = Reflect.ownKeys(value)
@@ -31,26 +27,19 @@ function isFrameArray(value) {
 }
 
 function isFrame(value) {
-  return hasOnlyKeys(value, ['routeHash', 'route', 'draft', 'scrollY', 'resumeAttemptId'])
-    && Reflect.ownKeys(value).length === 5
+  return hasOnlyKeys(value, ['routeHash', 'route', 'scrollY'])
+    && Reflect.ownKeys(value).length === 3
     && routeMatchesHash(value.route, value.routeHash)
-    && typeof value.draft === 'string'
     && Number.isFinite(value.scrollY) && value.scrollY >= 0
-    && isReference(value.resumeAttemptId)
-    && (value.resumeAttemptId === null || value.route.kind === 'practice-id')
 }
 
 export function validateRouteHistoryState(value, expectedHash) {
-  if (!hasOnlyKeys(value, [
-    'version', 'routeHash', 'route', 'entryId', 'draft', 'scrollY', 'resumeAttemptId', 'returnStack',
-  ]) || Reflect.ownKeys(value).length !== 8) return null
+  if (!hasOnlyKeys(value, ['version', 'routeHash', 'route', 'entryId', 'scrollY', 'returnStack'])
+    || Reflect.ownKeys(value).length !== 6) return null
   if (value.version !== ROUTE_HISTORY_VERSION || value.routeHash !== expectedHash
     || !routeMatchesHash(value.route, value.routeHash)
     || typeof value.entryId !== 'string' || value.entryId.length === 0
-    || typeof value.draft !== 'string'
     || !Number.isFinite(value.scrollY) || value.scrollY < 0
-    || !isReference(value.resumeAttemptId)
-    || (value.resumeAttemptId !== null && value.route.kind !== 'practice-id')
     || !isFrameArray(value.returnStack)) return null
   return value
 }
@@ -67,9 +56,7 @@ export function createRouteHistoryState(route, routeHash, options = {}) {
     routeHash,
     route,
     entryId: options.entryId ?? newEntryId(),
-    draft: options.draft ?? '',
     scrollY: options.scrollY ?? 0,
-    resumeAttemptId: options.resumeAttemptId ?? null,
     returnStack: options.returnStack ?? [],
   }
   if (!validateRouteHistoryState(state, routeHash)) throw new TypeError('Invalid route history state')
@@ -77,13 +64,7 @@ export function createRouteHistoryState(route, routeHash, options = {}) {
 }
 
 function frameFor(state) {
-  return {
-    routeHash: state.routeHash,
-    route: state.route,
-    draft: state.draft,
-    scrollY: state.scrollY,
-    resumeAttemptId: state.resumeAttemptId,
-  }
+  return { routeHash: state.routeHash, route: state.route, scrollY: state.scrollY }
 }
 
 export function navigateRouteHistory(state, route, routeHash, intent = 'normal', options = {}) {
@@ -98,9 +79,7 @@ export function navigateRouteHistory(state, route, routeHash, intent = 'normal',
     }
     return frame ? createRouteHistoryState(frame.route, frame.routeHash, {
       entryId: options.entryId,
-      draft: frame.draft,
       scrollY: frame.scrollY,
-      resumeAttemptId: frame.resumeAttemptId,
       returnStack: state.returnStack.slice(0, -1),
     }) : null
   }
@@ -112,30 +91,17 @@ export function navigateRouteHistory(state, route, routeHash, intent = 'normal',
   if (intent === 'review' && route.kind !== 'lesson-id' && route.kind !== 'course-lesson') {
     throw new TypeError('Review navigation must target a lesson')
   }
+  if (!['normal', 'review', 'section'].includes(intent)) throw new TypeError('Invalid navigation intent')
 
   const returnStack = intent === 'review' ? [...state.returnStack, frameFor(state)]
     : intent === 'section' ? state.returnStack
       : []
-  if (intent === 'resume') {
-    if (route.kind !== 'practice-id' || typeof options.attemptId !== 'string' || options.attemptId.length === 0
-      || typeof options.answer !== 'string') throw new TypeError('Invalid practice resume')
-    return createRouteHistoryState(route, routeHash, {
-      entryId: options.entryId,
-      draft: options.answer,
-      resumeAttemptId: options.attemptId,
-      returnStack,
-    })
-  }
-  if (!['normal', 'review', 'section'].includes(intent)) throw new TypeError('Invalid navigation intent')
-  return createRouteHistoryState(route, routeHash, {
-    entryId: options.entryId,
-    returnStack,
-  })
+  return createRouteHistoryState(route, routeHash, { entryId: options.entryId, returnStack })
 }
 
 export function updateRouteHistoryState(state, patch) {
   if (!validateRouteHistoryState(state, state.routeHash)
-    || !hasOnlyKeys(patch, ['draft', 'scrollY'])) throw new TypeError('Invalid route history update')
+    || !hasOnlyKeys(patch, ['scrollY'])) throw new TypeError('Invalid route history update')
   const updated = { ...state, ...patch }
   if (!validateRouteHistoryState(updated, state.routeHash)) throw new TypeError('Invalid route history update')
   return updated

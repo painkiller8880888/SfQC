@@ -30,7 +30,7 @@ assert.match(allJavaScript, /map-graph-view/, 'production JavaScript should incl
 assert.match(allJavaScript, /course-section/, 'production JavaScript should include the published basic statistics course')
 assert.match(allJavaScript, /course-practice|ds-practice-question/u, 'production JavaScript should include the five-category practice')
 assert.doesNotMatch(allJavaScript, /map-author-editor|分野編集/u, 'production JavaScript must not include the development-only domain editor')
-assert.doesNotMatch(allJavaScript, /sfqc-preview=descriptive-statistics|descriptive-statistics-preview-content|descriptive-statistics-exercise-preview|別の数値で試す|この考え方を理解できた|比較用モックを開く|一時的な比較用モック|操作中の測定値、平均、各偏差/u,
+assert.doesNotMatch(allJavaScript, /sfqc-preview=descriptive-statistics|descriptive-statistics-preview-content|別の数値で試す|この考え方を理解できた|比較用モックを開く|一時的な比較用モック|操作中の測定値、平均、各偏差/u,
   'production JavaScript must not include the development-only comparison preview')
 assert.match(stylesheet, /react-flow/, 'production CSS should include React Flow styles')
 assert.ok(stylesheets.length > 0, 'production assets should include at least one stylesheet')
@@ -39,6 +39,9 @@ assert.match(allStyles, /\.ds-practice-question/u, 'production CSS should includ
 assert.match(allStyles, /\.interactive-variance-comparison/u, 'production CSS should include interactive course figures')
 assert.doesNotMatch(allStyles, /\.screen-wide-preview|\.descriptive-statistics-preview(?:-content|-exercise|-references)?(?:[\s>{.:,])/u,
   'production CSS must not include development-only comparison preview styles')
+
+await assert.rejects(access(new URL('../dist/preview/', import.meta.url)), { code: 'ENOENT' },
+  'the retired comparison preview build must not be published')
 
 for (const url of assets) {
   await access(new URL(`../dist/${url.slice('/SfQC/'.length)}`, import.meta.url))

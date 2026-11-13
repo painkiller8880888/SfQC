@@ -1,5 +1,5 @@
 const lessonIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
-const screenKinds = ['map', 'lesson', 'practice', 'feedback', 'progress', 'data']
+const screenKinds = ['map', 'lesson', 'progress', 'data']
 
 function hasKeys(route, keys) {
   const prototype = route && typeof route === 'object' ? Object.getPrototypeOf(route) : undefined
@@ -19,11 +19,8 @@ function isRoute(route) {
     && lessonIdPattern.test(route.courseId)
   if (route.kind === 'lesson-id') return hasKeys(route, ['kind', 'lessonId', 'sectionId'])
     && lessonIdPattern.test(route.lessonId)
+    && route.lessonId !== 'descriptive-statistics'
     && (route.sectionId === null || (typeof route.sectionId === 'string' && lessonIdPattern.test(route.sectionId)))
-  if (route.kind === 'practice-id') return hasKeys(route, ['kind', 'instanceId'])
-    && typeof route.instanceId === 'string' && route.instanceId.length > 0
-  if (route.kind === 'feedback-id') return hasKeys(route, ['kind', 'attemptId'])
-    && typeof route.attemptId === 'string' && route.attemptId.length > 0
   return false
 }
 
@@ -33,7 +30,7 @@ export function resolveRoute(hash) {
 
   const segments = hash.slice(2).split('/')
   if (segments.length === 1) {
-    return ['map', 'lesson', 'practice', 'feedback', 'progress', 'data'].includes(segments[0])
+    return screenKinds.includes(segments[0])
       ? { kind: segments[0] }
       : { kind: 'not-found' }
   }
@@ -53,18 +50,11 @@ export function resolveRoute(hash) {
     if (segments[0] === 'lesson' && (segments.length === 2 || segments.length === 3)) {
       const lessonId = decodeURIComponent(segments[1])
       const sectionId = segments.length === 3 ? decodeURIComponent(segments[2]) : null
-      if (!lessonIdPattern.test(lessonId) || (sectionId !== null && !lessonIdPattern.test(sectionId))) {
+      if (!lessonIdPattern.test(lessonId) || lessonId === 'descriptive-statistics'
+        || (sectionId !== null && !lessonIdPattern.test(sectionId))) {
         return { kind: 'not-found' }
       }
       return { kind: 'lesson-id', lessonId, sectionId }
-    }
-    if (segments[0] === 'practice' && segments.length === 2) {
-      const instanceId = decodeURIComponent(segments[1])
-      return instanceId ? { kind: 'practice-id', instanceId } : { kind: 'not-found' }
-    }
-    if (segments[0] === 'feedback' && segments.length === 2) {
-      const attemptId = decodeURIComponent(segments[1])
-      return attemptId ? { kind: 'feedback-id', attemptId } : { kind: 'not-found' }
     }
   } catch {
     return { kind: 'not-found' }
@@ -83,8 +73,7 @@ export function routeToHash(route) {
     if (route.kind === 'lesson-id') {
       return `#/lesson/${encodeURIComponent(route.lessonId)}${route.sectionId === null ? '' : `/${encodeURIComponent(route.sectionId)}`}`
     }
-    if (route.kind === 'practice-id') return `#/practice/${encodeURIComponent(route.instanceId)}`
-    return `#/feedback/${encodeURIComponent(route.attemptId)}`
+    throw new TypeError('Invalid route')
   } catch {
     throw new TypeError('Invalid route')
   }
@@ -95,9 +84,7 @@ export function sameRoute(left, right) {
   if (left.kind === 'course-lesson') return left.courseId === right.courseId && left.sectionId === right.sectionId
   if (left.kind === 'course-practice') return left.courseId === right.courseId
   if (left.kind === 'lesson-id') return left.lessonId === right.lessonId && left.sectionId === right.sectionId
-  if (left.kind === 'practice-id') return left.instanceId === right.instanceId
-  if (left.kind === 'feedback-id') return left.attemptId === right.attemptId
-  return ['map', 'lesson', 'practice', 'feedback', 'progress', 'data', 'not-found'].includes(left.kind)
+  return [...screenKinds, 'not-found'].includes(left.kind)
 }
 
 export function screenForRoute(route) {
