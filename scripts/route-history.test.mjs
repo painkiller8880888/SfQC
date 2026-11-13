@@ -61,6 +61,24 @@ test('section changes keep review history, normal navigation clears it, and resu
   }), TypeError)
 })
 
+test('course section navigation keeps the course route and review return stack', () => {
+  const feedback = { kind: 'feedback-id', attemptId: 'attempt-course' }
+  const mean = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'mean' }
+  const variance = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance' }
+  const review = navigateRouteHistory(
+    createRouteHistoryState(feedback, routeToHash(feedback), { entryId: 'feedback-course' }),
+    mean, routeToHash(mean), 'review', { entryId: 'course-review' },
+  )
+  const changedSection = navigateRouteHistory(review, variance, routeToHash(variance), 'section', { entryId: 'course-variance' })
+  assert.equal(changedSection.route.sectionId, 'variance')
+  assert.equal(changedSection.returnStack.length, 1)
+  const frame = changedSection.returnStack.at(-1)
+  assert.equal(frame.routeHash, routeToHash(feedback))
+  const returned = navigateRouteHistory(changedSection, feedback, routeToHash(feedback), 'return', { entryId: 'return-feedback' })
+  assert.equal(returned.returnStack.length, 0)
+  assert.equal(returned.routeHash, routeToHash(feedback))
+})
+
 test('history state validates route, entry, draft, position and flat frames', () => {
   const route = lesson('math-algebra-sigma', 'sigma')
   const state = createRouteHistoryState(route, routeToHash(route), { entryId: 'valid' })

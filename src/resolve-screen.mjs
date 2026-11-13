@@ -12,6 +12,11 @@ function hasKeys(route, keys) {
 function isRoute(route) {
   if (!route || typeof route !== 'object') return false
   if (screenKinds.includes(route.kind) || route.kind === 'not-found') return hasKeys(route, ['kind'])
+  if (route.kind === 'course-lesson') return hasKeys(route, ['kind', 'courseId', 'sectionId'])
+    && typeof route.courseId === 'string' && lessonIdPattern.test(route.courseId)
+    && typeof route.sectionId === 'string' && lessonIdPattern.test(route.sectionId)
+  if (route.kind === 'course-practice') return hasKeys(route, ['kind', 'courseId'])
+    && lessonIdPattern.test(route.courseId)
   if (route.kind === 'lesson-id') return hasKeys(route, ['kind', 'lessonId', 'sectionId'])
     && lessonIdPattern.test(route.lessonId)
     && (route.sectionId === null || (typeof route.sectionId === 'string' && lessonIdPattern.test(route.sectionId)))
@@ -35,6 +40,16 @@ export function resolveRoute(hash) {
 
   if (segments.some((segment) => segment.length === 0)) return { kind: 'not-found' }
   try {
+    if (segments[0] === 'course' && segments.length === 4 && segments[2] === 'lesson') {
+      const courseId = decodeURIComponent(segments[1])
+      const sectionId = decodeURIComponent(segments[3])
+      if (!lessonIdPattern.test(courseId) || !lessonIdPattern.test(sectionId)) return { kind: 'not-found' }
+      return { kind: 'course-lesson', courseId, sectionId }
+    }
+    if (segments[0] === 'course' && segments.length === 3 && segments[2] === 'practice') {
+      const courseId = decodeURIComponent(segments[1])
+      return lessonIdPattern.test(courseId) ? { kind: 'course-practice', courseId } : { kind: 'not-found' }
+    }
     if (segments[0] === 'lesson' && (segments.length === 2 || segments.length === 3)) {
       const lessonId = decodeURIComponent(segments[1])
       const sectionId = segments.length === 3 ? decodeURIComponent(segments[2]) : null
@@ -61,6 +76,10 @@ export function routeToHash(route) {
   if (!isRoute(route) || route.kind === 'not-found') throw new TypeError('Invalid route')
   try {
     if (screenKinds.includes(route.kind)) return `#/${route.kind}`
+    if (route.kind === 'course-lesson') {
+      return `#/course/${encodeURIComponent(route.courseId)}/lesson/${encodeURIComponent(route.sectionId)}`
+    }
+    if (route.kind === 'course-practice') return `#/course/${encodeURIComponent(route.courseId)}/practice`
     if (route.kind === 'lesson-id') {
       return `#/lesson/${encodeURIComponent(route.lessonId)}${route.sectionId === null ? '' : `/${encodeURIComponent(route.sectionId)}`}`
     }
@@ -73,6 +92,8 @@ export function routeToHash(route) {
 
 export function sameRoute(left, right) {
   if (!isRoute(left) || !isRoute(right) || left.kind !== right.kind) return false
+  if (left.kind === 'course-lesson') return left.courseId === right.courseId && left.sectionId === right.sectionId
+  if (left.kind === 'course-practice') return left.courseId === right.courseId
   if (left.kind === 'lesson-id') return left.lessonId === right.lessonId && left.sectionId === right.sectionId
   if (left.kind === 'practice-id') return left.instanceId === right.instanceId
   if (left.kind === 'feedback-id') return left.attemptId === right.attemptId
@@ -80,6 +101,8 @@ export function sameRoute(left, right) {
 }
 
 export function screenForRoute(route) {
+  if (route?.kind === 'course-lesson') return 'lesson'
+  if (route?.kind === 'course-practice') return 'practice'
   return route?.kind?.replace(/-id$/u, '') ?? 'not-found'
 }
 

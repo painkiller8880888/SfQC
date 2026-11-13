@@ -36,6 +36,21 @@ test('known lessons, sections, snapshots and attempts resolve from their source 
   }
 })
 
+test('course routes resolve continuous lesson sections and the independent practice page', () => {
+  const lesson = resolveRouteData({
+    kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance',
+  }, read())
+  assert.equal(lesson.status, 'lesson')
+  if (lesson.status === 'lesson') {
+    assert.equal(lesson.lesson.lessonId, 'descriptive-statistics')
+    assert.equal(lesson.section.sectionId, 'variance')
+  }
+  assert.equal(resolveRouteData({ kind: 'course-practice', courseId: 'descriptive-statistics' }, read()).status, 'course-practice')
+  assert.deepEqual(resolveRouteData({
+    kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'missing',
+  }, read()), { status: 'unknown-id', target: 'section' })
+})
+
 test('unknown IDs in valid data stay distinct from damaged local data', () => {
   assert.deepEqual(resolveRouteData({ kind: 'feedback-id', attemptId: 'missing' }, read()), {
     status: 'unknown-id', target: 'attempt',

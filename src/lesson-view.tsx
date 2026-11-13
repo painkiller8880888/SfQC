@@ -6,6 +6,7 @@ import { routeToHash, type AppRoute } from './resolve-screen.mjs'
 import type { NavigationIntent } from './route-history.mjs'
 import { FigureRef } from './figures/figure-ref'
 import type { ProgressData } from './progress-data.mjs'
+import type { CourseProgress } from './course-progress.mjs'
 import type { ManualLessonProgress, ManualProgressCommand } from './manual-progress.mjs'
 
 export function resolveLessonRef(reference: string, registry: LessonRegistry = lessonRegistry): AppRoute | null {
@@ -13,7 +14,9 @@ export function resolveLessonRef(reference: string, registry: LessonRegistry = l
   const lesson = parsed && registry.lessons.find((item) => item.lessonId === parsed.lessonId)
   if (!parsed || lesson?.availability !== 'included') return null
   if (parsed.sectionId && !lesson.sections.some((section) => section.sectionId === parsed.sectionId)) return null
-  return { kind: 'lesson-id', lessonId: parsed.lessonId, sectionId: parsed.sectionId }
+  return parsed.lessonId === 'descriptive-statistics'
+    ? { kind: 'course-lesson', courseId: parsed.lessonId, sectionId: parsed.sectionId ?? lesson.sections[0].sectionId }
+    : { kind: 'lesson-id', lessonId: parsed.lessonId, sectionId: parsed.sectionId }
 }
 
 export function lessonRefLabel(reference: string, registry: LessonRegistry = lessonRegistry) {
@@ -139,27 +142,36 @@ function LessonBlock({ block, lesson, registry }: {
   if (block.kind === 'lessonRef') return <p className="lesson-body-reference">
     <LessonReference {...block} registry={registry} />
   </p>
-  return <FigureRef lesson={lesson} figureId={block.figureId} />
+  if (block.kind === 'figureRef') return <FigureRef lesson={lesson} figureId={block.figureId} />
+  if (block.kind === 'heading') return <h3>{block.text}</h3>
+  if (block.kind === 'table') return <div className="course-table-wrap"><table><caption>{block.caption}</caption><thead><tr>{block.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => cellIndex === 0 ? <th scope="row" key={cellIndex}>{cell}</th> : <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
+  if (block.kind === 'details') return <details><summary>{block.summary}</summary>{block.blocks.map((child, index) => <LessonBlock key={index} block={child} lesson={lesson} registry={registry} />)}</details>
+  return <p className="lesson-body-reference">確認問題は、学習マップから基本統計量のコースを開いてください。</p>
 }
 
 function LessonCard({ lesson, registry, progress }: {
   lesson: LessonDefinition
   registry: LessonRegistry
-  progress: ProgressData | null
+  progress: CourseProgress | null
 }) {
   const observation = progress?.lessons.find((item) => item.lessonId === lesson.lessonId)
   const progressText = observation && <p className="lesson-observation">
-    状態：{observation.state} · 回答試行：{observation.attemptCount}回 · 誤答からの復習候補：{observation.reviewCandidates.length ? 'あり' : 'なし'}
+    手動進捗：{observation.completedAt ? '完了' : '未完了'} · 回答試行：{observation.attemptCount}回{observation.correctRate === null ? '' : ` · 正答率 ${Math.round(observation.correctRate * 100)}%`}
   </p>
+  const mainRoute: AppRoute = lesson.availability === 'included' && lesson.lessonId === 'descriptive-statistics'
+    ? { kind: 'course-lesson', courseId: lesson.lessonId, sectionId: lesson.sections[0].sectionId }
+    : { kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: null }
   if (lesson.availability === 'included') return <article className="lesson-card">
-    <h3><InternalLink route={{ kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: null }}>{lesson.title}</InternalLink></h3>
+    <h3><InternalLink route={mainRoute}>{lesson.title}</InternalLink></h3>
     <p className="lesson-status">収録済み：{lesson.sections.length} / {lesson.declaredSectionIds.length} 節</p>
     {progressText}
     <p>学習目標：{lesson.learningObjectives.join(' ')}</p>
     <nav className="section-list" aria-label={`${lesson.title}の解説節`}>
       <h4>収録した解説</h4>
       <ul>{lesson.sections.map((section) => <li key={section.sectionId}>
-        <InternalLink route={{ kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: section.sectionId }}>
+        <InternalLink route={lesson.lessonId === 'descriptive-statistics'
+          ? { kind: 'course-lesson', courseId: lesson.lessonId, sectionId: section.sectionId }
+          : { kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: section.sectionId }}>
           {section.title}
         </InternalLink>
       </li>)}</ul>
@@ -186,16 +198,14 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
   headingRef?: RefObject<HTMLHeadingElement | null>
   onClose: () => void
 }) {
-  const hasPractice = lesson.availability === 'included'
-    && availablePracticeQuestions().some((question) => lesson.questionIds.includes(question.questionId))
+  const hasPractice = lesson.availability === 'included' && lesson.lessonId === 'descriptive-statistics'
   const markCompletedRef = useRef<HTMLButtonElement>(null)
   const reopenRef = useRef<HTMLButtonElement>(null)
   const applyProgressAction = (action: ManualProgressCommand, nextActionRef: RefObject<HTMLButtonElement | null>) => {
     onManualProgressAction(action)
     window.requestAnimationFrame(() => nextActionRef.current?.focus({ preventScroll: true }))
   }
-  const manualStatus = manualProgress.status === 'not-started' ? '未開始'
-    : manualProgress.status === 'started' ? '学習中' : '完了'
+  const manualStatus = manualProgress.status === 'completed' ? '完了' : '未完了'
 
   return <aside className="lesson-detail-card" aria-labelledby={`lesson-detail-title-${lesson.lessonId}`}>
     <header className="lesson-detail-header">
@@ -210,35 +220,26 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
     <div className="lesson-detail-content">
       <section aria-labelledby={`lesson-detail-objectives-${lesson.lessonId}`}>
         <h3 id={`lesson-detail-objectives-${lesson.lessonId}`}>学習目標</h3>
-        <ul className="lesson-objectives">{lesson.learningObjectives.map((objective, index) => <li key={objective}>
-          <label className="lesson-objective-check">
-            <input
-              type="checkbox"
-              checked={manualProgress.checks[index] ?? false}
-              disabled={manualProgressDisabled}
-              onChange={(event) => onManualProgressAction({ type: 'check', index, checked: event.currentTarget.checked })}
-            />
-            <span>{objective}</span>
-          </label>
-        </li>)}</ul>
+        <ul className="lesson-objectives">{lesson.learningObjectives.map((objective) => <li key={objective}>{objective}</li>)}</ul>
       </section>
       <section className="manual-progress-controls" aria-labelledby={`manual-progress-title-${lesson.lessonId}`}>
         <h3 id={`manual-progress-title-${lesson.lessonId}`}>手動進捗</h3>
-        <p className="manual-progress-status" aria-live="polite">手動進捗：{manualStatus}</p>
-        <p className="manual-progress-notice">手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。</p>
-        <div className="manual-progress-actions">
-          {manualProgress.status === 'not-started' && <button type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'start' }, markCompletedRef)}>Start</button>}
-          {manualProgress.status !== 'completed' && <button ref={markCompletedRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'complete' }, reopenRef)}>Mark completed</button>}
-          {manualProgress.status === 'completed' && <button ref={reopenRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'reopen' }, markCompletedRef)}>Reopen</button>}
-        </div>
+        {lesson.availability === 'included' ? <>
+          <p className="manual-progress-status" aria-live="polite">手動進捗：{manualStatus}</p>
+          <p className="manual-progress-notice">手動完了はこのブラウザーに保存され、演習記録とは別に集計されます。バックアップに含まれます。</p>
+          <div className="manual-progress-actions">
+            {manualProgress.status !== 'completed' && <button ref={markCompletedRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'complete' }, reopenRef)}>Mark completed</button>}
+            {manualProgress.status === 'completed' && <button ref={reopenRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'reopen' }, markCompletedRef)}>Reopen</button>}
+          </div>
+        </> : <p className="manual-progress-notice">教材未収録のため完了登録できません。</p>}
       </section>
       <ReferenceGroups lesson={lesson} registry={registry} />
       <nav className="lesson-detail-actions" aria-label={`${lesson.title}の関連画面`}>
-        {lesson.availability === 'included' && <InternalLink
-          route={{ kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: null }}
-        >解説を読む</InternalLink>}
-        {hasPractice && <InternalLink route={{ kind: 'practice' }}>演習問題一覧を開く（全単元共通）</InternalLink>}
-        <InternalLink route={{ kind: 'progress' }}>全単元の演習記録・集計を見る</InternalLink>
+        {lesson.availability === 'included' && <InternalLink route={lesson.lessonId === 'descriptive-statistics'
+          ? { kind: 'course-lesson', courseId: lesson.lessonId, sectionId: lesson.sections[0].sectionId }
+          : { kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: null }}>解説を読む</InternalLink>}
+        {hasPractice && <InternalLink route={{ kind: 'course-practice', courseId: lesson.lessonId }}>演習問題一覧を開く</InternalLink>}
+        <InternalLink route={{ kind: 'progress' }}>進捗を見る</InternalLink>
       </nav>
     </div>
   </aside>
@@ -246,7 +247,7 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
 
 export function LessonMap({ registry = lessonRegistry, progress }: {
   registry?: LessonRegistry
-  progress: ProgressData | null
+  progress: CourseProgress | null
 }) {
   const included = registry.lessons.filter((lesson) => lesson.availability === 'included')
   const planned = registry.lessons.filter((lesson) => lesson.availability === 'planned')

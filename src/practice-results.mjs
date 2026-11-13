@@ -132,8 +132,11 @@ function result(status, expectedRaw, candidateRaw, latest, record, error) {
 export function appendPracticeResult(input, expectedRaw, getStorageFactory = () => window.localStorage) {
   let validInput = false
   try {
-    validInput = hasExactKeys(input, ['categoryId', 'isCorrect']) && PRACTICE_CATEGORY_IDS.includes(input.categoryId)
-      && typeof input.isCorrect === 'boolean'
+    validInput = isRecord(input)
+      && Reflect.ownKeys(input).includes('categoryId') && Reflect.ownKeys(input).includes('isCorrect')
+      && Reflect.ownKeys(input).every((key) => ['categoryId', 'isCorrect', 'attemptedAt'].includes(key))
+      && PRACTICE_CATEGORY_IDS.includes(input.categoryId) && typeof input.isCorrect === 'boolean'
+      && (!Object.hasOwn(input, 'attemptedAt') || isTimestamp(input.attemptedAt))
   } catch { /* Treat hostile objects like any other malformed input. */ }
   if (!validInput) {
     const latest = readPracticeResults(getStorageFactory)
@@ -149,7 +152,11 @@ export function appendPracticeResult(input, expectedRaw, getStorageFactory = () 
   try { baseline = expectedRaw === null ? initialResults() : parsePracticeResults(expectedRaw) } catch (error) {
     return result('not-written', expectedRaw, null, readPracticeResults(getStorageFactory), null, error)
   }
-  const record = { categoryId: input.categoryId, isCorrect: input.isCorrect, attemptedAt: new Date().toISOString() }
+  const record = {
+    categoryId: input.categoryId,
+    isCorrect: input.isCorrect,
+    attemptedAt: input.attemptedAt ?? new Date().toISOString(),
+  }
   const candidateResults = {
     schemaVersion: 1,
     records: [...baseline.records, record].slice(-PRACTICE_RESULTS_MAX_RECORDS),

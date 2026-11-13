@@ -21,7 +21,7 @@ import { lessonDomainColors, lessonDomains, type LessonDomain } from './lesson-c
 import { lessonRegistry } from './lesson-registry.mjs'
 import type { ManualProgressCommand, ManualProgressState } from './manual-progress.mjs'
 import type { MapState } from './map-state.mjs'
-import type { ProgressData } from './progress-data.mjs'
+import type { CourseProgress } from './course-progress.mjs'
 import { LessonDetailCard } from './lesson-view'
 
 export type Positions = MapState['positions']
@@ -47,7 +47,7 @@ export function shouldSaveMapLayout(changes: NodeChange<MapPocNode>[], candidate
     && !samePositions(confirmed, candidate)
 }
 
-export function getMapProgressSummary(progress: ProgressData | null, lessonId: string) {
+export function getMapProgressSummary(progress: CourseProgress | null, lessonId: string) {
   const observation = progress?.lessons.find((item) => item.lessonId === lessonId)
   if (!observation) return {
     label: '集計未確認',
@@ -55,8 +55,8 @@ export function getMapProgressSummary(progress: ProgressData | null, lessonId: s
   }
   const counts = `${observation.correctCount}/${observation.attemptCount}回`
   if (observation.correctRate === null) return {
-    label: '—（試行0回）',
-    ariaLabel: `正答率未記録、正答数/試行数 ${counts}`,
+    label: observation.hasPractice ? '未記録（試行0回）' : '演習なし',
+    ariaLabel: observation.hasPractice ? `正答率未記録、正答数/試行数 ${counts}` : 'この単元には現在、保存対象の演習がありません',
   }
   const percentage = Math.round(observation.correctRate * 100)
   return {
@@ -85,12 +85,12 @@ type LessonMapViewProps = {
   theme: 'light' | 'dark'
   viewport: Viewport | null
   selectedLessonId: string | null
-  progress: ProgressData | null
+  progress: CourseProgress | null
   manualProgress: ManualProgressState
   manualProgressDisabled?: boolean
   positions: Positions
   positionSyncRevision: number
-  onLayoutSave: (positions: Positions) => LayoutSaveResult
+  onLayoutSave: (positions: Positions, changedPositions: Positions) => LayoutSaveResult
   onManualProgressAction: (lessonId: string, action: ManualProgressCommand) => void
   onViewportChange: (viewport: Viewport) => void
   onSelectionChange: (lessonId: string | null) => void
@@ -160,7 +160,11 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
     if (!allowPositionChanges) return
     const candidate = mapPositions(next)
     if (!shouldSaveMapLayout(changes, candidate, confirmedNodePositionsRef.current)) return
-    applyConfirmedPositions(onLayoutSave(candidate).positions)
+    const changedPositions = Object.fromEntries(Object.entries(candidate).filter(([id, position]) => {
+      const confirmed = confirmedNodePositionsRef.current[id] ?? dagrePositions[id]
+      return position.x !== confirmed.x || position.y !== confirmed.y
+    }))
+    applyConfirmedPositions(onLayoutSave(candidate, changedPositions).positions)
   }, [applyConfirmedPositions, commitNodes, manualProgressDisabled, onLayoutSave])
   const handleLayoutEditingToggle = () => {
     if (manualProgressDisabled) return
@@ -402,7 +406,11 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
   const resetLayout = () => {
     if (manualProgressDisabled || !window.confirm('手動で変更した配置を破棄し、自動配置に戻しますか？')) return
     const candidate = dagrePositions
-    const result = onLayoutSave(candidate)
+    const changedPositions = Object.fromEntries(Object.entries(candidate).filter(([id, position]) => {
+      const confirmed = confirmedNodePositionsRef.current[id] ?? position
+      return position.x !== confirmed.x || position.y !== confirmed.y
+    }))
+    const result = onLayoutSave(candidate, changedPositions)
     applyConfirmedPositions(result.positions)
     if (result.ok) window.requestAnimationFrame(() => void fitView({ padding: 0.14 }))
   }

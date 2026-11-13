@@ -7,6 +7,7 @@ import {
 } from './descriptive-statistics-preview-exercises.mjs'
 import type { PreviewExerciseId } from './descriptive-statistics-preview-exercises.mjs'
 import { InteractiveVarianceComparison, VarianceSimulation } from './figures/interactive-variance-comparison'
+import { gradeDecimalAnswer } from './question-grading.mjs'
 import previewStyles from './descriptive-statistics-preview.css?inline'
 import interactiveStyles from './figures/interactive-variance-comparison.css?inline'
 
@@ -19,10 +20,8 @@ const exerciseTitles: Record<PreviewExerciseId, string> = {
   'standard-deviation': '標準偏差',
 }
 
-function parseAnswer(text: string) {
-  const value = text.normalize('NFKC').replace(/−/gu, '-').replace(/\s+/gu, '')
-  if (!value || !/^[+-]?\d+(\.\d+)?$/u.test(value)) return Number.NaN
-  return Number(value)
+function normalizeNumericInput(text: string) {
+  return text.normalize('NFKC').replace(/−/gu, '-')
 }
 
 function scrollToPreviewSection(event: MouseEvent<HTMLAnchorElement>) {
@@ -67,13 +66,15 @@ function PreviewExerciseCard({ id }: { id: PreviewExerciseId }) {
     })}</div>
     <div className="ds-exercise-actions">
       <button type="button" className="ds-button ds-button-primary" onClick={() => {
-        const parsed = exercise.fields.map((_, fieldIndex) => parseAnswer(values[fieldIndex] ?? ''))
-        if (parsed.some((value) => Number.isNaN(value))) {
-          setFeedback({ kind: 'ng', text: '数字で入力してください（例：12、−2、+3）。' })
+        const results = exercise.fields.map((_, fieldIndex) => gradeDecimalAnswer(
+          normalizeNumericInput(values[fieldIndex] ?? ''), exercise.answers[fieldIndex], 0,
+        ))
+        if (results.some((result) => result.status === 'invalid')) {
+          setFeedback({ kind: 'ng', text: '入力形式を確認してください（例：12、−2、+3）。' })
           return
         }
-        const incorrectFields = parsed.flatMap((value, fieldIndex) => Math.abs(value - exercise.answers[fieldIndex]) > 1e-6
-          ? [exercise.fields[fieldIndex].label] : [])
+        const incorrectFields = results.flatMap((result, fieldIndex) =>
+          result.status === 'graded' && !result.isCorrect ? [exercise.fields[fieldIndex].label] : [])
         setFeedback(incorrectFields.length
           ? { kind: 'ng', text: `合っていないのは「${incorrectFields.join('」「')}」です。「考え方を見る」で途中の計算を確かめられます。` }
           : { kind: 'ok', text: '正解です。' })

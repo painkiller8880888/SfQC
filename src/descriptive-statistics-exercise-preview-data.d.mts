@@ -9,11 +9,11 @@ type QuestionBase = {
 }
 
 export type DescriptiveStatisticsExercisePreviewQuestion = QuestionBase & (
-  | { type: 'numeric'; unit: string; answer: number }
+  | { type: 'numeric'; unit: string; answer: string }
   | { type: 'choice'; choices: string[]; answer: number }
 )
 
-export const descriptiveStatisticsExerciseCategories: readonly { title: string }[]
+export const descriptiveStatisticsExerciseCategories: readonly { id: 'mean-deviation' | 'data-transformation' | 'unbiased-variance' | 'comprehensive' | 'variance-standard-deviation'; title: string }[]
 
 export function createDescriptiveStatisticsExercisePreviewState(
   categoryIndex: number,

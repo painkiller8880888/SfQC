@@ -26,5 +26,5 @@ export type PracticeResultSaveResult = {
 export function parsePracticeResults(text: string): PracticeResults
 export function serializePracticeResults(value: unknown): string
 export function readPracticeResults(getStorage?: () => PracticeResultsStorage): PracticeResultsReadResult
-export function appendPracticeResult(input: { categoryId: typeof PRACTICE_CATEGORY_IDS[number]; isCorrect: boolean }, expectedRaw: string | null, getStorage?: () => PracticeResultsStorage): PracticeResultSaveResult
+export function appendPracticeResult(input: { categoryId: typeof PRACTICE_CATEGORY_IDS[number]; isCorrect: boolean; attemptedAt?: string }, expectedRaw: string | null, getStorage?: () => PracticeResultsStorage): PracticeResultSaveResult
 export function recheckPracticeResult(pending: PracticeResultSaveResult, getStorage?: () => PracticeResultsStorage): PracticeResultSaveResult

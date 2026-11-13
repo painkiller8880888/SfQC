@@ -5,11 +5,10 @@ import { runInNewContext } from 'node:vm'
 import { act, createElement, StrictMode } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
-import { exportLocalData, importLocalData, LOCAL_DATA_KEY, readLocalData, serializeLocalData } from '../src/local-data.mjs'
-import { exportBackup, serializeBackup } from '../src/backup.mjs'
-import { createRouteHistoryState, navigateRouteHistory } from '../src/route-history.mjs'
+import { LOCAL_DATA_KEY } from '../src/local-data.mjs'
+import { serializeLearningBackup } from '../src/backup.mjs'
 import { routeToHash } from '../src/resolve-screen.mjs'
-import { createInitialMapState, MAP_STATE_KEY, readMapState, saveMapState, serializeMapState } from '../src/map-state.mjs'
+import { MAP_STATE_KEY } from '../src/map-state.mjs'
 import { createMapPocGraph } from '../src/map-poc-graph.mjs'
 import { lessonDomainColors, lessonDomains } from '../src/lesson-contract.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
@@ -18,8 +17,8 @@ import {
   previewExerciseDefinitions,
 } from '../src/descriptive-statistics-preview-exercises.mjs'
 import { generateDescriptiveStatisticsExercisePreviewQuestion } from '../src/descriptive-statistics-exercise-preview-data.mjs'
-import { gradeQuestionAnswer } from '../src/question-grading.mjs'
-import { fixedInstance } from './question-contract.fixture.mjs'
+import { LEARNING_STATE_KEY, readLearningState, serializeLearningState } from '../src/learning-state.mjs'
+import { PRACTICE_RESULTS_KEY } from '../src/practice-results.mjs'
 
 const THEME_STORAGE_KEY = 'sfqc:theme-preference'
 const THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)'
@@ -256,6 +255,21 @@ async function changeTextInput(window, input, value) {
   })
 }
 
+async function submitWrongIndependentJudgement(app, window) {
+  await app.remountAt('#/course/descriptive-statistics/practice')
+  const card = app.host.querySelector('.ds-practice-question[data-practice-category="0"]')
+  const question = generateDescriptiveStatisticsExercisePreviewQuestion(
+    0, Number(card.dataset.practiceType), Number(card.dataset.practiceSeed),
+  )
+  if (question.type === 'choice') {
+    const wrongIndex = question.answer === 0 ? 1 : 0
+    await click(card.querySelector(`input[type="radio"][value="${wrongIndex}"]`))
+  } else {
+    await changeTextInput(window, card.querySelector('input[type="text"]'), String(Number(question.answer) + 1))
+  }
+  await act(async () => card.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+}
+
 async function waitForHistory(window, method) {
   await act(async () => {
     window.history[method]()
@@ -304,7 +318,7 @@ function renderedPosition(node) {
 }
 
 function savedMap(window) {
-  return readMapState(lessonRegistry, () => window.localStorage).state
+  return readLearningState(lessonRegistry, () => window.localStorage).state
 }
 
 test('pre-render theme bootstrap honors saved choices and falls back to the system theme', async () => {
@@ -517,527 +531,12 @@ test('theme stays usable when storage writes fail or matchMedia is unavailable',
   }
 })
 
-test('fixed practice saves drafts per history entry, preserves attempts, and retries a saved result navigation', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    assert.equal(app.host.querySelector('a[href="#/feedback"]'), null)
 
-    const originalPushState = window.history.pushState.bind(window.history)
-    let failNextPracticeNavigation = true
-    let failNextFeedbackNavigation = false
-    window.history.pushState = (state, title, url) => {
-      const hash = new URL(url, window.location.href).hash
-      if (failNextPracticeNavigation && hash.startsWith('#/practice/')) {
-        failNextPracticeNavigation = false
-        throw new window.DOMException('history unavailable', 'SecurityError')
-      }
-      if (failNextFeedbackNavigation && hash.startsWith('#/feedback/')) {
-        failNextFeedbackNavigation = false
-        throw new window.DOMException('history unavailable', 'SecurityError')
-      }
-      originalPushState(state, title, url)
-    }
 
-    const choiceOption = questionOption(app.host, 'q-desc-var-sc-001')
-    await click(buttonFor(choiceOption, 'この問題を始める'))
-    let data = readLocalData().data
-    assert.equal(data.questionInstances.length, 1)
-    assert.equal(window.location.hash, '#/practice')
-    assert.match(app.host.textContent, /出題snapshotは保存済み/u)
-    await click(buttonFor(app.host, '保存済みの画面を開く'))
 
-    const instance = readLocalData().data.questionInstances[0]
-    const snapshotBefore = JSON.stringify(instance)
-    const route = { kind: 'practice-id', instanceId: instance.instanceId }
-    const routeHash = routeToHash(route)
-    assert.equal(window.location.hash, routeHash)
-    assert.equal(readLocalData().data.questionInstances.length, 1)
-    assert.equal(app.host.querySelector('a[href="#/feedback"]'), null)
 
-    await click(buttonFor(app.host, '回答を送信する'))
-    assert.match(app.host.textContent, /選択肢を1つ選んでください/u)
-    assert.equal(readLocalData().data.answerAttempts.length, 0)
-    const radioB = [...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'B')
-    await click(radioB)
-    assert.equal(app.host.querySelector('.practice-error'), null)
-    const firstEntry = window.history.state
-    assert.equal(firstEntry.draft, 'B')
 
-    const secondEntry = navigateRouteHistory(firstEntry, route, routeHash, 'normal', { entryId: 'second-practice-entry' })
-    originalPushState(secondEntry, '', window.location.pathname + routeHash)
-    await act(async () => window.dispatchEvent(new window.PopStateEvent('popstate')))
-    assert.equal(window.history.state.entryId, 'second-practice-entry')
-    assert.equal([...app.host.querySelectorAll('input[type="radio"]')].some((input) => input.checked), false)
 
-    const radioA = [...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'A')
-    await click(radioA)
-    assert.equal(window.history.state.draft, 'A')
-    await waitForHistory(window, 'back')
-    assert.equal(window.history.state.entryId, firstEntry.entryId)
-    assert.equal([...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'B').checked, true)
-    await waitForHistory(window, 'forward')
-    assert.equal(window.history.state.entryId, 'second-practice-entry')
-    assert.equal([...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'A').checked, true)
-
-    failNextFeedbackNavigation = true
-    const form = app.host.querySelector('form')
-    await act(async () => {
-      form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
-      form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
-    })
-    data = readLocalData().data
-    assert.equal(data.answerAttempts.length, 1)
-    const firstAttempt = data.answerAttempts[0]
-    assert.equal(firstAttempt.instanceId, instance.instanceId)
-    assert.equal(firstAttempt.answer, 'A')
-    assert.equal(window.location.hash, routeHash)
-    assert.match(app.host.textContent, /回答は保存済みですが/u)
-    await click(buttonFor(app.host, '保存済みの画面を開く'))
-    assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: firstAttempt.attemptId }))
-    assert.equal(readLocalData().data.answerAttempts.length, 1)
-    assert.match(app.host.textContent, /mmは偏差の単位です。分散では偏差を二乗します。/u)
-
-    await click(linkFor(app.host, '同じ出題を再開する'))
-    assert.equal(window.location.hash, routeHash)
-    assert.equal([...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'A').checked, true)
-    const retryAnswer = [...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'B')
-    await click(retryAnswer)
-    await click(buttonFor(app.host, '回答を送信する'))
-
-    const attempts = readLocalData().data.answerAttempts
-    assert.equal(attempts.length, 2)
-    assert.notEqual(attempts[0].attemptId, attempts[1].attemptId)
-    assert.equal(attempts[0].answer, 'A')
-    assert.equal(attempts[1].answer, 'B')
-    assert.ok(attempts.every((attempt) => attempt.instanceId === instance.instanceId))
-    assert.equal(JSON.stringify(readLocalData().data.questionInstances[0]), snapshotBefore)
-
-    await app.remountAt(routeHash)
-    assert.match(app.host.textContent, /分散s²の単位/u)
-    assert.equal(readLocalData().data.answerAttempts.length, 2)
-    assert.equal(readLocalData().data.questionInstances.length, 1)
-  } finally {
-    await app.close()
-  }
-})
-
-test('generated practice creates a separate seed and records the numeric input exactly', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    const generatedId = 'q-desc-var-gen-num-001'
-    const option = questionOption(app.host, generatedId)
-    await click(buttonFor(option, 'この問題を始める'))
-    const first = readLocalData().data.questionInstances[0]
-    assert.equal(first.kind, 'generated')
-
-    await click(buttonFor(app.host, '別の類題を解く'))
-    const similar = readLocalData().data.questionInstances[1]
-    assert.equal(similar.kind, 'generated')
-    assert.notEqual(similar.instanceId, first.instanceId)
-    assert.notEqual(similar.seed, first.seed)
-    assert.equal(JSON.stringify(readLocalData().data.questionInstances[0]), JSON.stringify(first))
-
-    const input = app.host.querySelector('input[type="text"]')
-    assert.ok(input)
-    assert.match(app.host.textContent, /単位：mm²/u)
-    await changeTextInput(window, input, '')
-    await click(buttonFor(app.host, '回答を送信する'))
-    assert.match(app.host.textContent, /数値を入力してください/u)
-    assert.equal(readLocalData().data.answerAttempts.length, 0)
-
-    const exactAnswer = similar.questionDefinitionSnapshot.content.correctAnswer
-    await changeTextInput(window, app.host.querySelector('input[type="text"]'), ' ' + exactAnswer + ' ')
-    assert.equal(window.history.state.draft, ' ' + exactAnswer + ' ')
-    assert.equal(app.host.querySelector('.practice-error'), null)
-    await click(buttonFor(app.host, '回答を送信する'))
-    const attempt = readLocalData().data.answerAttempts[0]
-    assert.equal(attempt.instanceId, similar.instanceId)
-    assert.equal(attempt.answer, ' ' + exactAnswer + ' ')
-    assert.equal(attempt.gradingResult.isCorrect, true)
-    assert.equal(readLocalData().data.questionInstances.length, 2)
-  } finally {
-    await app.close()
-  }
-})
-
-test('practice recovery clears after leaving its history entry and submitting again after browser back', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    const originalPushState = window.history.pushState.bind(window.history)
-    let failNextFeedbackNavigation = true
-    window.history.pushState = (state, title, url) => {
-      const hash = new URL(url, window.location.href).hash
-      if (failNextFeedbackNavigation && hash.startsWith('#/feedback/')) {
-        failNextFeedbackNavigation = false
-        throw new window.DOMException('history unavailable', 'SecurityError')
-      }
-      originalPushState(state, title, url)
-    }
-
-    const option = questionOption(app.host, 'q-desc-var-sc-001')
-    await click(buttonFor(option, 'この問題を始める'))
-    const instance = readLocalData().data.questionInstances[0]
-    const practiceHash = routeToHash({ kind: 'practice-id', instanceId: instance.instanceId })
-    assert.equal(window.location.hash, practiceHash)
-
-    const radioA = [...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'A')
-    await click(radioA)
-    await click(buttonFor(app.host, '回答を送信する'))
-    assert.equal(readLocalData().data.answerAttempts.length, 1)
-    assert.match(app.host.textContent, /回答は保存済みですが/u)
-    assert.equal(window.location.hash, practiceHash)
-
-    await click(app.host.querySelector('.site-brand'))
-    assert.equal(window.location.hash, '#/map')
-    await waitForHistory(window, 'back')
-    assert.equal(window.location.hash, practiceHash)
-    assert.equal(app.host.querySelector('.practice-recovery'), null)
-
-    const submit = buttonFor(app.host, '回答を送信する')
-    assert.ok(submit)
-    assert.equal(submit.disabled, false)
-    const radioB = [...app.host.querySelectorAll('input[type="radio"]')].find((input) => input.value === 'B')
-    await click(radioB)
-    await click(submit)
-
-    const attempts = readLocalData().data.answerAttempts
-    assert.equal(attempts.length, 2)
-    assert.equal(attempts[1].answer, 'B')
-    assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: attempts[1].attemptId }))
-    assert.equal(app.host.querySelector('.practice-recovery'), null)
-  } finally {
-    await app.close()
-  }
-})
-
-test('wrong feedback logs review links, keeps their origin through nested lessons, and resumes the same attempt', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    const instanceLink = questionOption(app.host, 'q-desc-var-num-001')
-    await click(buttonFor(instanceLink, 'この問題を始める'))
-    const instance = readLocalData().data.questionInstances[0]
-    const snapshot = JSON.stringify(instance)
-    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
-    await click(buttonFor(app.host, '回答を送信する'))
-    const attemptA = readLocalData().data.answerAttempts[0]
-    assert.equal(attemptA.answer, '1.030')
-    assert.equal(attemptA.gradingResult.isCorrect, false)
-    assert.match(app.host.textContent, /何を記述または推定するのかを確認し、分母と丸めの位置を見直します。/u)
-
-    await click(linkFor(app.host, '同じ出題を再開する'))
-    assert.equal(app.host.querySelector('input[type="text"]').value, '1.030')
-    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.040')
-    await click(buttonFor(app.host, '回答を送信する'))
-    const attemptB = readLocalData().data.answerAttempts[1]
-    assert.equal(attemptB.answer, '1.040')
-    assert.notEqual(attemptA.attemptId, attemptB.attemptId)
-
-    await waitForHistory(window, 'back')
-    await waitForHistory(window, 'back')
-    assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: attemptA.attemptId }))
-    assert.match(app.host.textContent, /あなたの回答：1\.030/u)
-
-    const order = []
-    const storage = window.Storage.prototype
-    const writeStorage = storage.setItem
-    let firstEventWrite = true
-    Object.defineProperty(storage, 'setItem', {
-      configurable: true,
-      value(key, value) {
-        order.push('setItem')
-        if (firstEventWrite) {
-          firstEventWrite = false
-          assert.ok(app.host.querySelector('#feedback-title'), 'route stays on feedback until the event is saved')
-        }
-        return writeStorage.call(this, key, value)
-      },
-    })
-    const replaceState = window.history.replaceState.bind(window.history)
-    window.history.replaceState = (...args) => {
-      order.push('replaceState')
-      return replaceState(...args)
-    }
-    const pushState = window.history.pushState.bind(window.history)
-    window.history.pushState = (...args) => {
-      order.push('pushState')
-      return pushState(...args)
-    }
-    const scrolledHeadings = []
-    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value() { scrolledHeadings.push(this.id) },
-    })
-
-    const variance = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
-    await click(linkForRoute(app.host, variance))
-    await settleEffects(window)
-    assert.deepEqual(order.slice(0, 3), ['replaceState', 'pushState', 'setItem'])
-    assert.equal(window.location.hash, routeToHash(variance))
-    assert.equal(window.document.activeElement.id, 'route-lesson-title')
-    assert.deepEqual(scrolledHeadings, ['route-lesson-title'])
-    let data = readLocalData().data
-    assert.equal(data.reviewEvents.length, 1)
-    assert.equal(data.reviewEvents[0].targetRef, 'descriptive-statistics#variance')
-    assert.equal(data.reviewEvents[0].sourceAttemptId, attemptA.attemptId)
-
-    const mean = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'mean' }
-    await click(linkForRoute(app.host, mean))
-    assert.equal(readLocalData().data.reviewEvents.length, 1)
-    await click(linkForRoute(app.host, variance))
-    await waitForHistory(window, 'back')
-    await waitForHistory(window, 'forward')
-    assert.equal(readLocalData().data.reviewEvents.length, 1)
-
-    const sigma = { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' }
-    const powers = { kind: 'lesson-id', lessonId: 'math-powers-roots', sectionId: null }
-    const arithmetic = { kind: 'lesson-id', lessonId: 'math-arithmetic', sectionId: null }
-    await click(linkForRoute(app.host, sigma))
-    await click(linkFor(app.host, '1段戻る'))
-    await click(linkForRoute(app.host, sigma))
-    await click(linkForRoute(app.host, powers))
-    await click(linkForRoute(app.host, arithmetic))
-    data = readLocalData().data
-    assert.deepEqual(data.reviewEvents.map((event) => event.targetRef), [
-      'descriptive-statistics#variance',
-      'math-algebra-sigma#sigma',
-      'math-algebra-sigma#sigma',
-      'math-powers-roots',
-      'math-arithmetic',
-    ])
-    assert.ok(data.reviewEvents.every((event) => event.sourceAttemptId === attemptA.attemptId))
-
-    await waitForHistory(window, 'back')
-    await waitForHistory(window, 'forward')
-    assert.equal(readLocalData().data.reviewEvents.length, 5)
-    const scrollToCalls = []
-    window.scrollTo = (x, y) => scrollToCalls.push([x, y])
-    window.history.replaceState({ ...window.history.state, scrollY: 321 }, '', window.location.href)
-    await app.remount()
-    await settleEffects(window)
-    assert.match(app.host.textContent, /四則計算と単位/u)
-    assert.deepEqual(scrollToCalls, [[0, 321]])
-    assert.equal(readLocalData().data.reviewEvents.length, 5)
-
-    for (const route of [powers, sigma, variance, { kind: 'feedback-id', attemptId: attemptA.attemptId }]) {
-      await click(linkFor(app.host, '1段戻る'))
-      assert.equal(window.location.hash, routeToHash(route))
-      assert.equal(readLocalData().data.reviewEvents.length, 5)
-    }
-    assert.match(app.host.textContent, /あなたの回答：1\.030/u)
-    await click(linkFor(app.host, '同じ出題を再開する'))
-    const resumedInput = app.host.querySelector('input[type="text"]')
-    assert.equal(resumedInput.value, '1.030')
-    await changeTextInput(window, resumedInput, '1.050')
-    await click(buttonFor(app.host, '回答を送信する'))
-
-    let attempts = readLocalData().data.answerAttempts
-    assert.equal(attempts.length, 3)
-    assert.deepEqual(attempts.slice(0, 2), [attemptA, attemptB])
-    assert.equal(attempts[2].answer, '1.050')
-    assert.ok(attempts.every((attempt) => attempt.instanceId === instance.instanceId))
-    assert.equal(JSON.stringify(readLocalData().data.questionInstances[0]), snapshot)
-
-    const feedbackB = { kind: 'feedback-id', attemptId: attemptB.attemptId }
-    const feedbackBHash = routeToHash(feedbackB)
-    window.history.pushState(
-      createRouteHistoryState(feedbackB, feedbackBHash, { entryId: 'old-feedback-b' }),
-      '',
-      window.location.pathname + feedbackBHash,
-    )
-    await act(async () => window.dispatchEvent(new window.PopStateEvent('popstate')))
-    assert.match(app.host.textContent, /あなたの回答：1\.040/u)
-    await click(linkForRoute(app.host, variance))
-    attempts = readLocalData().data.answerAttempts
-    assert.equal(readLocalData().data.reviewEvents.at(-1).sourceAttemptId, attemptB.attemptId)
-    assert.deepEqual(attempts.slice(0, 2), [attemptA, attemptB])
-    assert.equal(JSON.stringify(readLocalData().data.questionInstances[0]), snapshot)
-  } finally {
-    await app.close()
-  }
-})
-
-test('P2 learning journey keeps the same question through review, progress, and JSON restore', async () => {
-  let app = await createHarness()
-  try {
-    const { window } = app.dom
-    const variance = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
-    await click(linkFor(app.host, '学習マップ'))
-    await click(buttonFor(app.host, '教材一覧'))
-    await click(linkForRoute(app.host, variance))
-    assert.ok(app.host.querySelector('.variance-figure svg[role="img"]'))
-    assert.match(app.host.querySelector('.variance-figure').textContent, /偏差平方和/u)
-
-    await click(linkFor(app.host, '利用できる演習問題を選ぶ'))
-    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
-    const instance = readLocalData().data.questionInstances[0]
-    const snapshot = JSON.stringify(instance)
-    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
-    await click(buttonFor(app.host, '回答を送信する'))
-    const incorrect = readLocalData().data.answerAttempts[0]
-    assert.equal(incorrect.answer, '1.030')
-    assert.equal(incorrect.gradingResult.isCorrect, false)
-
-    const sigma = { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' }
-    const powers = { kind: 'lesson-id', lessonId: 'math-powers-roots', sectionId: null }
-    const arithmetic = { kind: 'lesson-id', lessonId: 'math-arithmetic', sectionId: null }
-    await click(linkForRoute(app.host, variance))
-    await click(linkForRoute(app.host, sigma))
-    await click(linkForRoute(app.host, powers))
-    await click(linkForRoute(app.host, arithmetic))
-    assert.deepEqual(readLocalData().data.reviewEvents.map((event) => event.targetRef), [
-      'descriptive-statistics#variance', 'math-algebra-sigma#sigma', 'math-powers-roots', 'math-arithmetic',
-    ])
-    assert.ok(readLocalData().data.reviewEvents.every((event) => event.sourceAttemptId === incorrect.attemptId))
-
-    for (const route of [powers, sigma, variance, { kind: 'feedback-id', attemptId: incorrect.attemptId }]) {
-      await click(linkFor(app.host, '1段戻る'))
-      assert.equal(window.location.hash, routeToHash(route))
-    }
-    await click(linkFor(app.host, '同じ出題を再開する'))
-    assert.equal(window.location.hash, routeToHash({ kind: 'practice-id', instanceId: instance.instanceId }))
-    const input = app.host.querySelector('input[type="text"]')
-    assert.equal(input.value, '1.030')
-    await changeTextInput(window, input, '1.013')
-    await click(buttonFor(app.host, '回答を送信する'))
-    const data = readLocalData().data
-    const correct = data.answerAttempts[1]
-    assert.equal(correct.answer, '1.013')
-    assert.equal(correct.gradingResult.isCorrect, true)
-    assert.notEqual(correct.attemptId, incorrect.attemptId)
-    assert.ok(data.answerAttempts.every((attempt) => attempt.instanceId === instance.instanceId))
-    assert.equal(JSON.stringify(data.questionInstances[0]), snapshot)
-    assert.match(app.host.textContent, /正解です。/u)
-
-    await click(linkFor(app.host, '進捗'))
-    assert.match(app.host.querySelector('.progress-view').textContent, /回答試行：2回（正答 1回・誤答 1回）/u)
-    assert.match(app.host.querySelector('.progress-view').textContent, /正答割合：1 \/ 2回（50\.0%）/u)
-    assertProgressReviewEvidence(app.host, incorrect.attemptId, instance.instanceId)
-    const exported = exportLocalData(() => window.localStorage)
-    const expected = JSON.parse(exported)
-
-    const originalApp = app
-    app = null
-    await originalApp.close()
-    app = await createHarness()
-    assert.equal(readLocalData().status, 'missing')
-    const imported = await importLocalData(
-      { size: Buffer.byteLength(exported), text: async () => exported },
-      () => assert.fail('a missing destination must not ask to replace data'),
-      () => app.dom.window.localStorage,
-    )
-    assert.equal(imported.status, 'imported')
-    assert.deepEqual(imported.data, expected)
-    await app.remountAt('#/progress')
-    const progressText = app.host.querySelector('.progress-view').textContent
-    assert.match(progressText, /回答試行：2回（正答 1回・誤答 1回）/u)
-    assert.match(progressText, /正答割合：1 \/ 2回（50\.0%）/u)
-    assertProgressReviewEvidence(app.host, incorrect.attemptId, instance.instanceId)
-    assert.deepEqual(JSON.parse(exportLocalData(() => app.dom.window.localStorage)), expected)
-    await app.remount()
-    assert.equal(app.dom.window.location.hash, '#/progress')
-    assert.match(app.host.querySelector('.progress-view').textContent, /回答試行：2回（正答 1回・誤答 1回）/u)
-    assertProgressReviewEvidence(app.host, incorrect.attemptId, instance.instanceId)
-    assert.deepEqual(JSON.parse(exportLocalData(() => app.dom.window.localStorage)), expected)
-  } finally {
-    await app?.close()
-  }
-})
-
-test('review event storage failure keeps the lesson navigation, announces the failure, and still focuses and scrolls', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
-    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
-    await click(buttonFor(app.host, '回答を送信する'))
-    const attempt = readLocalData().data.answerAttempts[0]
-    const target = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
-    const savedRaw = window.localStorage.getItem('sfqc:local-data')
-
-    const pushState = window.history.pushState.bind(window.history)
-    window.history.pushState = (state, title, url) => {
-      if (new URL(url, window.location.href).hash === routeToHash(target)) {
-        throw new window.DOMException('history unavailable', 'SecurityError')
-      }
-      pushState(state, title, url)
-    }
-    await click(linkForRoute(app.host, target))
-    assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: attempt.attemptId }))
-    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedRaw)
-    assert.equal(readLocalData().data.reviewEvents.length, 0)
-
-    window.history.pushState = pushState
-    Object.defineProperty(window.Storage.prototype, 'setItem', {
-      configurable: true,
-      value() { throw new window.DOMException('quota exceeded', 'QuotaExceededError') },
-    })
-    let scrollCount = 0
-    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value() { scrollCount += 1 },
-    })
-    await click(linkForRoute(app.host, target))
-    await settleEffects(window)
-
-    assert.equal(window.location.hash, routeToHash(target))
-    assert.match(app.host.textContent, /復習先には移動しましたが、誤答からの復習訪問を保存できませんでした/u)
-    assert.equal(app.host.querySelector('[role="status"]').textContent,
-      '復習先には移動しましたが、誤答からの復習訪問を保存できませんでした。保存データを確認してください。')
-    assert.equal(readLocalData().data.reviewEvents.length, 0)
-    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedRaw)
-    assert.equal(window.document.activeElement.id, 'route-lesson-title')
-    assert.equal(scrollCount, 1)
-  } finally {
-    await app.close()
-  }
-})
-
-test('map and progress show derived observations, and progress links use normal navigation without logging a visit', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
-    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
-    await click(buttonFor(app.host, '回答を送信する'))
-    const attempt = readLocalData().data.answerAttempts[0]
-    assert.equal(attempt.gradingResult.isCorrect, false)
-    assert.equal(attempt.gradingResult.feedback.lessonRef, 'descriptive-statistics#variance')
-
-    await click(linkFor(app.host, '学習マップ'))
-    await click(buttonFor(app.host, '教材一覧'))
-    const descriptiveCard = [...app.host.querySelectorAll('.lesson-card')]
-      .find((card) => card.querySelector('h3').textContent.includes('基本統計量'))
-    assert.match(descriptiveCard.textContent, /状態：回答記録あり/u)
-    assert.match(descriptiveCard.textContent, /回答試行：1回/u)
-    assert.match(descriptiveCard.textContent, /復習候補：あり/u)
-    assert.doesNotMatch(descriptiveCard.textContent, /正答割合|最終回答|訪問：/u)
-
-    await click(linkFor(app.host, '進捗'))
-    assert.equal(window.location.hash, '#/progress')
-    const feedbackLink = linkFor(app.host, '誤答と復習先を見る')
-    assert.equal(feedbackLink.dataset.navIntent, 'normal')
-    await click(feedbackLink)
-    assert.equal(window.location.hash, routeToHash({ kind: 'feedback-id', attemptId: attempt.attemptId }))
-    assert.deepEqual(window.history.state.returnStack, [])
-    assert.equal(readLocalData().data.reviewEvents.length, 0)
-
-    await click(linkFor(app.host, '進捗'))
-    const practiceLink = linkFor(app.host, '同じ出題へ戻る')
-    assert.equal(practiceLink.dataset.navIntent, 'normal')
-    await click(practiceLink)
-    assert.equal(window.location.hash, routeToHash({ kind: 'practice-id', instanceId: attempt.instanceId }))
-    assert.deepEqual(window.history.state.returnStack, [])
-    assert.equal(window.history.state.resumeAttemptId, null)
-    assert.equal(app.host.querySelector('input[type="text"]').value, '')
-    assert.equal(readLocalData().data.reviewEvents.length, 0)
-  } finally {
-    await app.close()
-  }
-})
 
 test('integrated learning map switches views and restores graph selection and viewport across navigation', async () => {
   const app = await createHarness()
@@ -1112,449 +611,37 @@ test('integrated learning map details use available lesson references and existi
     assert.match(detail.textContent, /学習目標/u)
     assert.match(detail.textContent, /共通必須前提/u)
     assert.match(detail.textContent, /任意復習/u)
-    assert.equal(linkFor(detail, '解説を読む')?.getAttribute('href'), '#/lesson/descriptive-statistics')
-    assert.equal(linkFor(detail, '演習問題一覧を開く（全単元共通）')?.getAttribute('href'), '#/practice')
-    assert.equal(linkFor(detail, '全単元の演習記録・集計を見る')?.getAttribute('href'), '#/progress')
+    assert.equal(linkFor(detail, '解説を読む')?.getAttribute('href'), '#/course/descriptive-statistics/lesson/mean')
+    assert.equal(linkFor(detail, '演習問題一覧を開く')?.getAttribute('href'), '#/course/descriptive-statistics/practice')
+    assert.equal(linkFor(detail, '進捗を見る')?.getAttribute('href'), '#/progress')
 
-    await click(linkFor(detail, '演習問題一覧を開く（全単元共通）'))
-    assert.equal(app.dom.window.location.hash, '#/practice')
+    await click(linkFor(detail, '演習問題一覧を開く'))
+    assert.equal(app.dom.window.location.hash, '#/course/descriptive-statistics/practice')
+    assert.equal(app.host.querySelectorAll('.ds-practice-question').length, 5)
     await click(linkFor(app.host, '学習マップ'))
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
     assert.ok(app.host.querySelector('.lesson-detail-card'))
 
     await click(linkFor(app.host.querySelector('.lesson-detail-card'), '解説を読む'))
-    assert.equal(app.dom.window.location.hash, '#/lesson/descriptive-statistics')
-    assert.match(app.host.querySelector('.lesson-panel').textContent, /学習目標/u)
+    assert.equal(app.dom.window.location.hash, '#/course/descriptive-statistics/lesson/mean')
+    assert.match(app.host.querySelector('.lesson-panel').textContent, /量的データの平均/u)
     await click(linkFor(app.host, '学習マップ'))
     assert.ok(app.host.querySelector('.lesson-detail-card'))
 
-    await click(linkFor(app.host.querySelector('.lesson-detail-card'), '全単元の演習記録・集計を見る'))
+    await click(linkFor(app.host.querySelector('.lesson-detail-card'), '進捗を見る'))
     assert.equal(app.dom.window.location.hash, '#/progress')
   } finally {
     await app.close()
   }
 })
 
-test('map accuracy uses every answer attempt and never changes manual completion', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(linkFor(app.host, '学習マップ'))
 
-    const nodeFor = (id) => app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
-    for (const lesson of lessonRegistry.lessons) {
-      const node = nodeFor(lesson.lessonId)
-      assert.match(node.querySelector('.map-node-progress').textContent, /—（試行0回）/u)
-      assert.match(node.getAttribute('aria-label'), /正答率未記録.*0\/0回.*手動進捗：未開始/u)
-      assert.equal(node.querySelector('.map-node-availability')?.textContent ?? '',
-        lesson.availability === 'planned' ? '未収録' : '')
-    }
 
-    await click(nodeFor('descriptive-statistics'))
-    await click(linkFor(app.host.querySelector('.lesson-detail-card'), '演習問題一覧を開く（全単元共通）'))
-    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
-    const instanceId = readLocalData().data.questionInstances[0].instanceId
-    const practiceHash = routeToHash({ kind: 'practice-id', instanceId })
-    const answer = async (value, expectedRate, expectedCounts, expectedManualStatus, completedCount) => {
-      await app.remountAt(practiceHash)
-      await changeTextInput(window, app.host.querySelector('input[type="text"]'), value)
-      await click(buttonFor(app.host, '回答を送信する'))
-      const attempts = readLocalData().data.answerAttempts
-      assert.equal(attempts.at(-1).instanceId, instanceId)
 
-      await app.remountAt('#/map')
-      const node = nodeFor('descriptive-statistics')
-      assert.equal(node.querySelector('.map-node-progress').textContent, `${expectedRate}（${expectedCounts}回）`)
-      assert.match(node.getAttribute('aria-label'), new RegExp(`正答率${expectedRate}.*${expectedCounts}回.*手動進捗：${expectedManualStatus}`, 'u'))
-      assert.ok(app.host.querySelector('.map-toolbar').textContent.includes(`手動完了 ${completedCount} / 34`))
-      assert.equal(node.querySelector('.map-node-completed').textContent, expectedManualStatus === '完了' ? '✓' : '')
-    }
 
-    await answer('1.013', '100%', '1/1', '未開始', 0)
-    const practiceRaw = window.localStorage.getItem('sfqc:local-data')
-    await click(nodeFor('descriptive-statistics'))
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
-    await settleEffects(window)
-    assert.equal(window.localStorage.getItem('sfqc:local-data'), practiceRaw)
-    assert.match(nodeFor('descriptive-statistics').getAttribute('aria-label'), /手動進捗：完了/u)
 
-    await answer('1.030', '50%', '1/2', '完了', 1)
-    await answer('1.013', '67%', '2/3', '完了', 1)
-    await click(nodeFor('descriptive-statistics'))
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Reopen'))
-    await settleEffects(window)
-    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-progress').textContent, '67%（2/3回）')
-    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-completed').textContent, '')
-    assert.match(nodeFor('descriptive-statistics').getAttribute('aria-label'), /手動進捗：学習中/u)
-    assert.match(app.host.querySelector('.map-toolbar').textContent, /手動完了 0 \/ 34/u)
-  } finally {
-    await app.close()
-  }
-})
 
-test('map progress distinguishes unavailable aggregation from zero attempts', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    const { getMapProgressSummary } = await app.loadModule('/src/lesson-map-view.tsx')
-    assert.deepEqual(getMapProgressSummary(null, 'descriptive-statistics'), {
-      label: '集計未確認',
-      ariaLabel: '演習集計未確認、正答数と試行数は不明',
-    })
-    assert.deepEqual(getMapProgressSummary({ lessons: [], unavailableReferences: [] }, 'descriptive-statistics'), {
-      label: '集計未確認',
-      ariaLabel: '演習集計未確認、正答数と試行数は不明',
-    })
-    assert.deepEqual(getMapProgressSummary({ lessons: [{
-      lessonId: 'descriptive-statistics', correctRate: null, correctCount: 0, attemptCount: 0,
-    }], unavailableReferences: [] }, 'descriptive-statistics'), {
-      label: '—（試行0回）',
-      ariaLabel: '正答率未記録、正答数/試行数 0/0回',
-    })
 
-    window.localStorage.setItem('sfqc:local-data', '{ invalid json')
-    await app.remountAt('#/map')
-    const node = app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]')
-    assert.equal(node.querySelector('.map-node-progress').textContent, '集計未確認')
-    assert.match(node.getAttribute('aria-label'), /演習集計未確認/u)
-    assert.doesNotMatch(node.getAttribute('aria-label'), /0\/0回/u)
-    assert.match(node.getAttribute('aria-label'), /手動進捗：未開始/u)
-  } finally {
-    await app.close()
-  }
-})
-
-test('manual map progress stays separate from practice data, supports explicit controls, and persists on reload', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
-    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
-    await click(buttonFor(app.host, '回答を送信する'))
-    assert.equal(readLocalData().data.answerAttempts[0].gradingResult.isCorrect, false)
-    let savedPracticeData = window.localStorage.getItem('sfqc:local-data')
-    assert.ok(savedPracticeData)
-    await click(linkFor(app.host, '学習マップ'))
-
-    assert.match(app.host.textContent, /手動完了 0 \/ 34/u)
-    assert.match(app.host.querySelector('.map-toolbar').textContent, /手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。/u)
-    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
-    let detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：未開始/u)
-    assert.match(detail.textContent, /手動進捗とチェックはこのブラウザーに保存され、演習記録とは別です。統合バックアップに含まれます。/u)
-
-    await click(buttonFor(detail, 'Start'))
-    await settleEffects(window)
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
-    assert.equal(buttonFor(detail, 'Start'), undefined)
-    assert.equal(window.document.activeElement, buttonFor(detail, 'Mark completed'))
-
-    for (const checkbox of detail.querySelectorAll('input[type="checkbox"]')) await click(checkbox)
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.ok([...detail.querySelectorAll('input[type="checkbox"]')].every((checkbox) => checkbox.checked))
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
-    assert.match(app.host.textContent, /手動完了 0 \/ 34/u)
-
-    await click(buttonFor(detail, 'Mark completed'))
-    await settleEffects(window)
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：完了/u)
-    assert.match(app.host.textContent, /手動完了 1 \/ 34/u)
-    assert.equal(window.document.activeElement, buttonFor(detail, 'Reopen'))
-    await click(detail.querySelector('input[type="checkbox"]'))
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：完了/u)
-    assert.match(app.host.textContent, /手動完了 1 \/ 34/u)
-
-    await click(buttonFor(detail, 'Reopen'))
-    await settleEffects(window)
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
-    assert.equal(detail.querySelector('input[type="checkbox"]').checked, false)
-    assert.match(app.host.textContent, /手動完了 0 \/ 34/u)
-    assert.equal(window.document.activeElement, buttonFor(detail, 'Mark completed'))
-
-    await click(app.host.querySelector('.react-flow__node[data-id="math-arithmetic"]'))
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：未開始/u)
-    assert.ok([...detail.querySelectorAll('input[type="checkbox"]')].every((checkbox) => !checkbox.checked))
-    await click(buttonFor(detail, 'Mark completed'))
-    await settleEffects(window)
-    assert.match(app.host.textContent, /手動完了 1 \/ 34/u)
-
-    await click(buttonFor(app.host, 'Reopen'))
-    await settleEffects(window)
-    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
-    assert.equal(detail.querySelector('input[type="checkbox"]').checked, false)
-
-    await click(linkFor(detail, '解説を読む'))
-    await click(linkFor(app.host, '学習マップ'))
-    assert.match(app.host.querySelector('.lesson-detail-card .manual-progress-status').textContent, /手動進捗：学習中/u)
-    await click(buttonFor(app.host, '教材一覧'))
-    await click(buttonFor(app.host, 'マップ表示'))
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
-    await click(detail.querySelector('input[type="checkbox"]'))
-    detail = app.host.querySelector('.lesson-detail-card')
-    const checkedObjectives = [...detail.querySelectorAll('input[type="checkbox"]')].map((checkbox) => checkbox.checked)
-    assert.ok(checkedObjectives[0])
-    assert.equal(buttonFor(detail, 'Start'), undefined)
-    assert.ok(buttonFor(detail, 'Mark completed'))
-    assert.equal(buttonFor(detail, 'Reopen'), undefined)
-    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
-    assert.ok(window.localStorage.getItem(MAP_STATE_KEY))
-
-    await click(linkFor(detail, '演習問題一覧を開く（全単元共通）'))
-    assert.equal(window.location.hash, '#/practice')
-    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
-    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.013')
-    await click(buttonFor(app.host, '回答を送信する'))
-    assert.equal(readLocalData().data.answerAttempts.length, 2)
-    assert.equal(readLocalData().data.answerAttempts.at(-1).gradingResult.isCorrect, true)
-    assert.notEqual(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
-    savedPracticeData = window.localStorage.getItem('sfqc:local-data')
-
-    await click(linkFor(app.host, '学習マップ'))
-    assert.equal(window.location.hash, '#/map')
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：学習中/u)
-    assert.deepEqual([...detail.querySelectorAll('input[type="checkbox"]')].map((checkbox) => checkbox.checked), checkedObjectives)
-    assert.equal(buttonFor(detail, 'Start'), undefined)
-    assert.ok(buttonFor(detail, 'Mark completed'))
-    assert.equal(buttonFor(detail, 'Reopen'), undefined)
-
-    await click(buttonFor(detail, 'Mark completed'))
-    await settleEffects(window)
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：完了/u)
-    assert.deepEqual([...detail.querySelectorAll('input[type="checkbox"]')].map((checkbox) => checkbox.checked), checkedObjectives)
-    assert.equal(buttonFor(detail, 'Start'), undefined)
-    assert.equal(buttonFor(detail, 'Mark completed'), undefined)
-    assert.ok(buttonFor(detail, 'Reopen'))
-    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
-
-    await click(linkFor(detail, '演習問題一覧を開く（全単元共通）'))
-    await click(buttonFor(questionOption(app.host, 'q-desc-var-num-001'), 'この問題を始める'))
-    await changeTextInput(window, app.host.querySelector('input[type="text"]'), '1.030')
-    await click(buttonFor(app.host, '回答を送信する'))
-    assert.equal(readLocalData().data.answerAttempts.length, 3)
-    assert.equal(readLocalData().data.answerAttempts.at(-1).gradingResult.isCorrect, false)
-    assert.notEqual(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
-    savedPracticeData = window.localStorage.getItem('sfqc:local-data')
-
-    await click(linkFor(app.host, '学習マップ'))
-    assert.equal(window.location.hash, '#/map')
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：完了/u)
-    assert.deepEqual([...detail.querySelectorAll('input[type="checkbox"]')].map((checkbox) => checkbox.checked), checkedObjectives)
-    assert.equal(buttonFor(detail, 'Start'), undefined)
-    assert.equal(buttonFor(detail, 'Mark completed'), undefined)
-    assert.ok(buttonFor(detail, 'Reopen'))
-    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
-
-    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
-    await app.remountAt('#/map')
-    assert.match(app.host.textContent, /手動完了 1 \/ 34/u)
-    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.match(detail.querySelector('.manual-progress-status').textContent, /手動進捗：完了/u)
-    assert.deepEqual([...detail.querySelectorAll('input[type="checkbox"]')].map((checkbox) => checkbox.checked), checkedObjectives)
-    assert.equal(window.localStorage.getItem('sfqc:local-data'), savedPracticeData)
-  } finally {
-    await app.close()
-  }
-})
-
-test('StrictMode manual progress writes once per user action and failed writes do not update the UI', async () => {
-  const app = await createHarness({ strict: true })
-  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
-  const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
-  try {
-    const { window } = app.dom
-    const storage = window.localStorage
-    const original = storagePrototype.setItem
-    let writes = 0
-    let rejectWrites = false
-    Object.defineProperty(storagePrototype, 'setItem', {
-      configurable: true,
-      writable: true,
-      value: function (key, value) {
-        if (key === MAP_STATE_KEY) {
-          writes++
-          if (rejectWrites) throw new Error('quota')
-        }
-        return original.call(this, key, value)
-      },
-    })
-    assert.equal(storage.getItem(MAP_STATE_KEY), null)
-    assert.equal(writes, 0)
-    await click(linkFor(app.host, '学習マップ'))
-    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
-    let detail = app.host.querySelector('.lesson-detail-card')
-    await click(buttonFor(detail, 'Start'))
-    await settleEffects(window)
-    assert.equal(writes, 1)
-    assert.match(app.host.querySelector('.manual-progress-status').textContent, /学習中/u)
-
-    rejectWrites = true
-    detail = app.host.querySelector('.lesson-detail-card')
-    await click(detail.querySelector('input[type="checkbox"]'))
-    await settleEffects(window)
-    assert.equal(writes, 2)
-    assert.equal(app.host.querySelector('.lesson-detail-card input[type="checkbox"]').checked, false)
-    assert.match(app.host.querySelector('.map-route-messages').textContent, /保存できませんでした/u)
-  } finally {
-    if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
-    await app.close()
-  }
-})
-
-test('manual progress stops editing when the post-write map-state readback is unavailable', async () => {
-  const app = await createHarness()
-  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
-  const originalGetDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'getItem')
-  const originalSetDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
-  const originalGet = storagePrototype.getItem
-  const originalSet = storagePrototype.setItem
-  let writes = 0
-  let failNextMapRead = false
-  try {
-    const { window } = app.dom
-    Object.defineProperty(storagePrototype, 'getItem', {
-      configurable: true,
-      writable: true,
-      value: function (key) {
-        if (key === MAP_STATE_KEY && failNextMapRead) {
-          failNextMapRead = false
-          throw new Error('blocked')
-        }
-        return originalGet.call(this, key)
-      },
-    })
-    Object.defineProperty(storagePrototype, 'setItem', {
-      configurable: true,
-      writable: true,
-      value: function (key, value) {
-        if (key === MAP_STATE_KEY) {
-          writes++
-          originalSet.call(this, key, value)
-          failNextMapRead = true
-          return
-        }
-        return originalSet.call(this, key, value)
-      },
-    })
-    await click(linkFor(app.host, '学習マップ'))
-    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
-    let detail = app.host.querySelector('.lesson-detail-card')
-    await click(buttonFor(detail, 'Start'))
-    await settleEffects(window)
-    detail = app.host.querySelector('.lesson-detail-card')
-    assert.equal(writes, 1)
-    assert.equal(buttonFor(detail, 'Start')?.disabled, true)
-    assert.ok([...detail.querySelectorAll('input[type="checkbox"]')].every((input) => input.disabled))
-    assert.match(app.host.querySelector('.map-route-messages').textContent, /読み取れません/u)
-
-    await click(buttonFor(detail, 'Start'))
-    assert.equal(writes, 1)
-    assert.equal(readMapState(lessonRegistry, () => window.localStorage).status, 'ok')
-  } finally {
-    if (originalGetDescriptor) Object.defineProperty(storagePrototype, 'getItem', originalGetDescriptor)
-    if (originalSetDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalSetDescriptor)
-    await app.close()
-  }
-})
-
-test('manual progress clears the migration save reminder after a successful action', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    const state = createInitialMapState(lessonRegistry)
-    const lessonId = 'descriptive-statistics'
-    state.lessons[lessonId] = {
-      ...state.lessons[lessonId], lessonRevision: state.lessons[lessonId].lessonRevision + 1,
-      checks: state.lessons[lessonId].checks.map(() => true),
-    }
-    window.localStorage.setItem(MAP_STATE_KEY, JSON.stringify(state))
-    await app.remountAt('#/map')
-    assert.match(app.host.querySelector('.map-route-messages').textContent, /次の手動操作時に保存されます/u)
-
-    await click(app.host.querySelector(`.react-flow__node[data-id="${lessonId}"]`))
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Start'))
-    await settleEffects(window)
-    assert.doesNotMatch(app.host.querySelector('.map-route-messages').textContent, /次の手動操作時に保存されます/u)
-    assert.equal(readMapState(lessonRegistry, () => window.localStorage).status, 'ok')
-  } finally {
-    await app.close()
-  }
-})
-
-test('manual progress rejects an old tab write after another tab changes map state', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(linkFor(app.host, '学習マップ'))
-    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
-    const external = createInitialMapState(lessonRegistry)
-    const id = 'descriptive-statistics'
-    external.lessons[id] = { ...external.lessons[id], status: 'completed', completedAt: '2026-10-30T02:00:00.000Z' }
-    saveMapState(external, null, lessonRegistry, () => window.localStorage)
-    const raw = window.localStorage.getItem(MAP_STATE_KEY)
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
-    await settleEffects(window)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), raw)
-    assert.match(app.host.querySelector('.lesson-detail-card .manual-progress-status').textContent, /完了/u)
-    assert.match(app.host.querySelector('.map-route-messages').textContent, /別の画面で手動進捗が変更/u)
-  } finally {
-    await app.close()
-  }
-})
-
-test('data manager imports integrated backups and keeps map progress when importing a legacy file', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    const prompts = []
-    window.confirm = (message) => { prompts.push(message); return true }
-    await click(linkFor(app.host, 'データ管理'))
-    assert.ok(buttonFor(app.host, '全データを書き出し'))
-    assert.ok(buttonFor(app.host, '演習記録のみを書き出し（schema v2）'))
-
-    const map = createInitialMapState(lessonRegistry)
-    map.lessons['descriptive-statistics'] = {
-      ...map.lessons['descriptive-statistics'], status: 'completed', completedAt: '2026-10-30T03:00:00.000Z',
-    }
-    const integrated = serializeBackup(JSON.parse(exportLocalData(() => window.localStorage)), map)
-    const input = app.host.querySelector('#backup-file')
-    const loadFile = async (contents) => {
-      Object.defineProperty(input, 'files', {
-        configurable: true,
-        value: [new window.File([contents], 'backup.json', { type: 'application/json' })],
-      })
-      await act(async () => input.dispatchEvent(new window.Event('change', { bubbles: true })))
-      await settleEffects(window)
-    }
-    await loadFile(integrated)
-    assert.equal(prompts.length, 1)
-    assert.match(prompts[0], /未保存/u)
-    assert.match(prompts[0], /手動完了 1単元/u)
-    assert.match(app.host.querySelector('.data-message').textContent, /演習記録と手動進捗・配置を復元/u)
-    const savedMapRaw = window.localStorage.getItem(MAP_STATE_KEY)
-    assert.ok(savedMapRaw)
-
-    await loadFile(exportLocalData(() => window.localStorage))
-    assert.equal(prompts.length, 2)
-    assert.match(prompts[1], /手動進捗と配置は維持/u)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), savedMapRaw)
-    assert.match(app.host.querySelector('.data-message').textContent, /演習記録のみを復元/u)
-  } finally {
-    await app.close()
-  }
-})
 
 test('integrated learning map resets detail scrolling when the selected lesson changes', async () => {
   const app = await createHarness()
@@ -1692,9 +779,8 @@ test('integrated learning map highlights only direct common prerequisites and cl
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'mean-inference')
     assert.deepEqual(highlightedNodeIds(), ['descriptive-statistics', 'inference-basics', 'sampling-distributions'])
 
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
-    await settleEffects(window)
-    assert.match(app.host.querySelector('.manual-progress-status').textContent, /完了/u)
+    assert.equal(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'), undefined)
+    assert.match(app.host.querySelector('.lesson-detail-card .manual-progress-notice').textContent, /教材未収録のため完了登録できません/u)
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'mean-inference')
     assert.deepEqual(highlightedNodeIds(), ['descriptive-statistics', 'inference-basics', 'sampling-distributions'])
 
@@ -1921,7 +1007,7 @@ test('integrated learning map keyboard focus and Escape work throughout the map'
     assert.match(app.host.querySelector('.lesson-detail-card').textContent, /未収録/u)
     assert.match(app.host.querySelector('.lesson-detail-card').textContent, /方法条件付き必須/u)
     assert.doesNotMatch(app.host.querySelector('.lesson-detail-card').innerHTML, /href="#\/lesson\/mean-inference/u)
-    assert.equal(linkFor(app.host.querySelector('.lesson-detail-card'), '演習問題一覧を開く（全単元共通）'), undefined)
+    assert.equal(linkFor(app.host.querySelector('.lesson-detail-card'), '演習問題一覧を開く'), undefined)
 
     await pressKey(window, node, ' ')
     assert.equal(window.document.activeElement, app.host.querySelector('.lesson-detail-header h2'))
@@ -1952,7 +1038,7 @@ test('integrated learning map keyboard focus and Escape work throughout the map'
     }
 
     await escapeFrom(() => app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
-    await escapeFrom(() => linkFor(app.host.querySelector('.lesson-detail-card'), '全単元の演習記録・集計を見る'))
+    await escapeFrom(() => linkFor(app.host.querySelector('.lesson-detail-card'), '進捗を見る'))
     await escapeFrom(() => buttonFor(app.host, 'Re-layout'))
     await escapeFrom(() => buttonFor(app.host, 'マップ表示'))
 
@@ -2168,10 +1254,10 @@ test('React Flow mouse drags that return to confirmed positions do not save layo
     const nodeId = 'math-arithmetic'
     const confirmedPosition = { x: positions[nodeId].x + 40, y: positions[nodeId].y + 20 }
     positions[nodeId] = confirmedPosition
-    const state = createInitialMapState(lessonRegistry)
+    const state = readLearningState(lessonRegistry, () => window.localStorage).state
     state.positions = positions
-    saveMapState(state, null, lessonRegistry, () => window.localStorage)
-    const rawBaseline = window.localStorage.getItem(MAP_STATE_KEY)
+    window.localStorage.setItem(LEARNING_STATE_KEY, serializeLearningState(state))
+    const rawBaseline = window.localStorage.getItem(LEARNING_STATE_KEY)
 
     await app.remountAt('#/map')
     await settleEffects(window)
@@ -2181,7 +1267,7 @@ test('React Flow mouse drags that return to confirmed positions do not save layo
       configurable: true,
       writable: true,
       value: function (key, value) {
-        if (key === MAP_STATE_KEY) mapWriteCount += 1
+        if (key === LEARNING_STATE_KEY) mapWriteCount += 1
         return originalSet.call(this, key, value)
       },
     })
@@ -2211,20 +1297,20 @@ test('React Flow mouse drags that return to confirmed positions do not save layo
     assert.ok(outwardNode.classList.contains('dragging'))
     const outwardPosition = renderedPosition(outwardNode)
     assert.notDeepEqual(outwardPosition, confirmedPosition, 'the React Flow drag must move the node outward')
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawBaseline)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawBaseline)
     assert.equal(mapWriteCount, 0)
 
     await dispatchReactFlowMouseEvent(window, window, 'mousemove', dragOrigin[0], dragOrigin[1], 1)
     await settleEffects(window)
     assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawBaseline)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawBaseline)
     assert.equal(mapWriteCount, 0)
 
     await dispatchReactFlowMouseEvent(window, window, 'mouseup', dragOrigin[0], dragOrigin[1], 0)
     await settleEffects(window)
     assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
     assert.deepEqual(savedMap(window).positions, positions)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawBaseline)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawBaseline)
     assert.equal(mapWriteCount, 0)
 
     const zeroNode = app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
@@ -2233,7 +1319,7 @@ test('React Flow mouse drags that return to confirmed positions do not save layo
     await dispatchReactFlowMouseEvent(window, window, 'mouseup', startX, startY, 0)
     await settleEffects(window)
     assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawBaseline)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawBaseline)
     assert.equal(mapWriteCount, 0)
   } finally {
     if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
@@ -2255,7 +1341,7 @@ test('layout editing gates keyboard movement, saves all positions, confirms Re-l
 
     await pressKey(window, node, 'ArrowRight')
     assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), before)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), null)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), null)
 
     const editButton = buttonFor(app.host, '配置編集')
     assert.equal(editButton.getAttribute('aria-pressed'), 'false')
@@ -2269,17 +1355,17 @@ test('layout editing gates keyboard movement, saves all positions, confirms Re-l
     let map = savedMap(window)
     assert.equal(Object.keys(map.positions).length, 34)
     assert.deepEqual(map.positions[id], { x: originalPosition.x + 10, y: originalPosition.y })
-    const rawAfterMoves = window.localStorage.getItem(MAP_STATE_KEY)
+    const rawAfterMoves = window.localStorage.getItem(LEARNING_STATE_KEY)
     await click(buttonFor(app.host, '全体表示'))
     await settleEffects(window)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawAfterMoves)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawAfterMoves)
 
     window.confirm = () => false
     const beforeCancelPosition = renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
     const beforeCancelViewport = app.host.querySelector('.react-flow__viewport').style.transform
     const beforeCancelSelection = app.host.querySelector('.react-flow__node.selected')?.dataset.id
     await click(buttonFor(app.host, 'Re-layout'))
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), rawAfterMoves)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawAfterMoves)
     assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), beforeCancelPosition)
     assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, beforeCancelViewport)
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, beforeCancelSelection)
@@ -2312,7 +1398,7 @@ test('successful layout saves preserve consecutive moves on different nodes', as
       configurable: true,
       writable: true,
       value: function (key, value) {
-        if (key === MAP_STATE_KEY) mapWriteCount += 1
+        if (key === LEARNING_STATE_KEY) mapWriteCount += 1
         return originalSet.call(this, key, value)
       },
     })
@@ -2346,7 +1432,7 @@ test('successful layout saves preserve consecutive moves on different nodes', as
   }
 })
 
-test('failed layout save restores the last confirmed position before the next keyboard move', async () => {
+test('failed layout save retains the target change for explicit retry', async () => {
   const app = await createHarness()
   const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
   const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
@@ -2358,7 +1444,7 @@ test('failed layout save restores the last confirmed position before the next ke
       configurable: true,
       writable: true,
       value: function (key, value) {
-        if (key === MAP_STATE_KEY && failMapWrite) {
+        if (key === LEARNING_STATE_KEY && failMapWrite) {
           failMapWrite = false
           throw new Error('quota')
         }
@@ -2375,12 +1461,9 @@ test('failed layout save restores the last confirmed position before the next ke
     const original = renderedPosition(node)
     await pressKey(window, node, 'ArrowRight')
     assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), original)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), null)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), null)
     assert.match(app.host.querySelector('.map-route-messages').textContent, /保存できませんでした/u)
-
-    node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    node.focus()
-    await pressKey(window, node, 'ArrowRight')
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
     assert.deepEqual(savedMap(window).positions[id], { x: originalPosition.x + 5, y: originalPosition.y })
   } finally {
     if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
@@ -2394,12 +1477,12 @@ test('layout conflict adopts external positions immediately and keeps them in th
     const { window } = app.dom
     await click(linkFor(app.host, '学習マップ'))
     const defaults = createMapPocGraph().nodes
-    const external = createInitialMapState(lessonRegistry)
+    const external = readLearningState(lessonRegistry, () => window.localStorage).state
     external.positions = Object.fromEntries(defaults.map(({ id, position }) => [id, {
       x: position.x + 30,
       y: position.y - 20,
     }]))
-    saveMapState(external, null, lessonRegistry, () => window.localStorage)
+    window.localStorage.setItem(LEARNING_STATE_KEY, serializeLearningState(external))
     const firstId = 'descriptive-statistics'
     const stylesBefore = Object.fromEntries([...app.host.querySelectorAll('.react-flow__node')]
       .map((node) => [node.dataset.id, node.style.transform]))
@@ -2416,6 +1499,11 @@ test('layout conflict adopts external positions immediately and keeps them in th
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, firstId)
     assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, viewportBefore)
 
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
+    const afterFirstRetry = savedMap(window).positions
+    assert.equal(Object.keys(afterFirstRetry).length, 34)
+    await click(buttonFor(app.host, '配置編集'))
+
     const secondId = 'math-arithmetic'
     await click(app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`))
     selected = app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`)
@@ -2424,14 +1512,15 @@ test('layout conflict adopts external positions immediately and keeps them in th
     const finalPositions = savedMap(window).positions
     assert.equal(Object.keys(finalPositions).length, 34)
     for (const [id, position] of Object.entries(external.positions)) {
-      assert.deepEqual(finalPositions[id], id === secondId ? { ...position, x: position.x + 5 } : position)
+      assert.deepEqual(finalPositions[id], id === secondId ? { ...position, x: position.x + 5 }
+        : id === firstId ? afterFirstRetry[id] : position)
     }
   } finally {
     await app.close()
   }
 })
 
-test('normal map-state refresh synchronizes externally changed coordinates without fitting the viewport', async () => {
+test('manual completion detects an external learning-state update and keeps its map positions', async () => {
   const app = await createHarness()
   try {
     const { window } = app.dom
@@ -2441,14 +1530,14 @@ test('normal map-state refresh synchronizes externally changed coordinates witho
     const stylesBefore = Object.fromEntries([...app.host.querySelectorAll('.react-flow__node')]
       .map((node) => [node.dataset.id, node.style.transform]))
     const viewportBefore = app.host.querySelector('.react-flow__viewport').style.transform
-    const external = createInitialMapState(lessonRegistry)
+    const external = readLearningState(lessonRegistry, () => window.localStorage).state
     external.positions = Object.fromEntries(createMapPocGraph().nodes.map(({ id: lessonId, position }) => [lessonId, {
       x: position.x + 24,
       y: position.y - 16,
     }]))
-    saveMapState(external, null, lessonRegistry, () => window.localStorage)
+    window.localStorage.setItem(LEARNING_STATE_KEY, serializeLearningState(external))
 
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Start'))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
     await settleEffects(window)
     assert.deepEqual(savedMap(window).positions, external.positions)
     for (const lessonId of Object.keys(external.positions)) {
@@ -2457,14 +1546,141 @@ test('normal map-state refresh synchronizes externally changed coordinates witho
     assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, id)
     assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, viewportBefore)
 
-    const positionStyles = Object.fromEntries([...app.host.querySelectorAll('.react-flow__node')]
-      .map((node) => [node.dataset.id, node.style.transform]))
-    await click(app.host.querySelector('.lesson-detail-card input[type="checkbox"]'))
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
     assert.deepEqual(savedMap(window).positions, external.positions)
-    for (const lessonId of Object.keys(external.positions)) {
-      assert.equal(app.host.querySelector(`.react-flow__node[data-id="${lessonId}"]`).style.transform, positionStyles[lessonId])
-    }
+    assert.ok(savedMap(window).lessons[id].completedAt)
   } finally {
+    await app.close()
+  }
+})
+
+test('unknown manual save keeps its candidate, blocks restore, and confirms it after repeated read failures', async () => {
+  let confirmations = 0
+  const app = await createHarness({ confirm: () => { confirmations += 1; return true } })
+  const { window } = app.dom
+  const previousGet = window.Storage.prototype.getItem
+  const previousSet = window.Storage.prototype.setItem
+  let writeCompleted = false
+  let unreadableReads = 2
+  let learningWriteCount = 0
+  window.Storage.prototype.setItem = function (key, value) {
+    if (key === LEARNING_STATE_KEY) {
+      learningWriteCount += 1
+      writeCompleted = true
+    }
+    return previousSet.call(this, key, value)
+  }
+  window.Storage.prototype.getItem = function (key) {
+    if (key === LEARNING_STATE_KEY && writeCompleted && unreadableReads > 0) {
+      unreadableReads -= 1
+      throw new Error('temporary learning-state read failure')
+    }
+    return previousGet.call(this, key)
+  }
+  try {
+    await click(linkFor(app.host, '学習マップ'))
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
+    assert.match(app.host.textContent, /手動進捗の変更をメモリ上に保持/u)
+    assert.match(app.host.textContent, /再読み込みすると失われます/u)
+    const unloadEvent = new window.Event('beforeunload', { cancelable: true })
+    await act(async () => window.dispatchEvent(unloadEvent))
+    assert.equal(unloadEvent.defaultPrevented, true, 'warn before the in-memory candidate can be lost')
+    assert.equal(learningWriteCount, 1)
+    const candidateRaw = previousGet.call(window.localStorage, LEARNING_STATE_KEY)
+    assert.ok(JSON.parse(candidateRaw).lessons['descriptive-statistics'].completedAt)
+
+    await click(linkFor(app.host, 'データ管理'))
+    const fileInput = app.host.querySelector('#backup-file')
+    assert.equal(fileInput.disabled, true)
+    const backup = serializeLearningBackup(
+      { schemaVersion: 1, lessons: {}, positions: {} }, { schemaVersion: 1, records: [] },
+    )
+    Object.defineProperty(fileInput, 'files', {
+      configurable: true,
+      value: [new window.File([backup], 'backup.json', { type: 'application/json' })],
+    })
+    await act(async () => fileInput.dispatchEvent(new window.Event('change', { bubbles: true })))
+    assert.match(app.host.querySelector('.data-message').textContent, /保存状態を確認してから、バックアップを復元/u)
+    assert.equal(confirmations, 0)
+    assert.equal(learningWriteCount, 1)
+
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '手動進捗の保存状態を再確認'))
+    assert.match(app.host.textContent, /再確認を続けてください/u)
+    assert.equal(learningWriteCount, 1)
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '手動進捗の保存状態を再確認'))
+    assert.equal(app.host.querySelector('.practice-recovery'), null)
+    assert.equal(learningWriteCount, 1, 'a matching candidate is confirmed without being applied twice')
+    assert.equal(previousGet.call(window.localStorage, LEARNING_STATE_KEY), candidateRaw)
+    assert.ok(savedMap(window).lessons['descriptive-statistics'].completedAt)
+  } finally {
+    window.Storage.prototype.getItem = previousGet
+    window.Storage.prototype.setItem = previousSet
+    await app.close()
+  }
+})
+
+test('unknown layout save rebases the retained node change after mismatch and can be retried', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const previousGet = window.Storage.prototype.getItem
+  const previousSet = window.Storage.prototype.setItem
+  const initial = readLearningState(lessonRegistry, () => window.localStorage).state
+  const external = { ...initial, positions: { 'external-layout': { x: 900, y: 800 } } }
+  const externalRaw = serializeLearningState(external)
+  let redirectWrite = true
+  let externalWasWritten = false
+  let hideFirstConfirmationRead = false
+  let learningWriteCount = 0
+  window.Storage.prototype.setItem = function (key, value) {
+    if (key === LEARNING_STATE_KEY) {
+      learningWriteCount += 1
+      if (redirectWrite) {
+        redirectWrite = false
+        externalWasWritten = true
+        return previousSet.call(this, key, externalRaw)
+      }
+    }
+    return previousSet.call(this, key, value)
+  }
+  window.Storage.prototype.getItem = function (key) {
+    if (key === LEARNING_STATE_KEY && externalWasWritten && hideFirstConfirmationRead) {
+      hideFirstConfirmationRead = false
+      throw new Error('temporary learning-state read failure')
+    }
+    return previousGet.call(this, key)
+  }
+  try {
+    await click(linkFor(app.host, '学習マップ'))
+    const id = 'descriptive-statistics'
+    const originalPosition = createMapPocGraph().nodes.find((candidate) => candidate.id === id).position
+    await click(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
+    await click(buttonFor(app.host, '配置編集'))
+    const node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    node.focus()
+    hideFirstConfirmationRead = true
+    await pressKey(window, node, 'ArrowRight')
+    assert.equal(learningWriteCount, 1)
+    assert.equal(previousGet.call(window.localStorage, LEARNING_STATE_KEY), externalRaw)
+    assert.match(app.host.textContent, /変更をメモリ上に保持/u)
+
+    await click(linkFor(app.host, 'データ管理'))
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '手動進捗の保存状態を再確認'))
+    assert.ok(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
+    assert.equal(previousGet.call(window.localStorage, LEARNING_STATE_KEY), externalRaw,
+      'recheck should not overwrite the newer external state')
+
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
+    assert.equal(learningWriteCount, 2)
+    const saved = readLearningState(lessonRegistry, () => window.localStorage)
+    assert.equal(saved.status, 'ok')
+    assert.deepEqual(saved.state.positions['external-layout'], { x: 900, y: 800 })
+    assert.deepEqual(saved.state.positions[id], { x: originalPosition.x + 5, y: originalPosition.y },
+      'retry applies the retained node delta once onto the latest map state')
+    assert.equal(app.host.querySelector('.practice-recovery'), null)
+  } finally {
+    window.Storage.prototype.getItem = previousGet
+    window.Storage.prototype.setItem = previousSet
     await app.close()
   }
 })
@@ -2474,11 +1690,11 @@ test('invalid map-state disables layout editing and preserves the damaged raw', 
   try {
     const { window } = app.dom
     const damaged = '{"schemaVersion":1,"positions":{"descriptive-statistics":{"x":1e999,"y":0}}}'
-    window.localStorage.setItem(MAP_STATE_KEY, damaged)
+    window.localStorage.setItem(LEARNING_STATE_KEY, damaged)
     await app.remountAt('#/map')
     assert.equal(buttonFor(app.host, '配置編集').disabled, true)
     assert.equal(buttonFor(app.host, 'Re-layout').disabled, true)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), damaged)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), damaged)
     assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
   } finally {
     await app.close()
@@ -2508,471 +1724,15 @@ test('integrated learning map Shift-click clears the selected node', async () =>
   }
 })
 
-test('descriptive-statistics preview is limited to its development overview and preserves query navigation', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    const previewUrl = '?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics'
-    await app.remountAt(previewUrl)
 
-    assert.ok(app.host.querySelector('.descriptive-statistics-preview'))
-    assert.deepEqual([...app.host.querySelectorAll('.descriptive-statistics-preview-section')].map((section) => section.id), [
-      'mean', 'deviation', 'variance', 'standard-deviation',
-    ])
-    assert.equal(app.host.querySelector('.descriptive-statistics-preview-controls'), null)
-    assert.equal(app.host.querySelectorAll('.lesson-check-question').length, 4)
-    assert.equal(app.host.querySelector('#page-title').textContent, '基本統計量')
-    assert.equal(app.host.querySelector('.ds-title-subtitle em')?.textContent, '平均が同じでも、品質は同じとは限らない')
-    assert.match(app.host.textContent, /目標の長さが 100 mm のシャフト/u)
-    assert.match(app.host.textContent, /98.*100.*102/u)
-    assert.match(app.host.textContent, /99.*100.*101/u)
-    assert.match(app.host.textContent, /A は 4 mm、B は 2 mm/u)
-    assert.match(app.host.textContent, /8 ÷ 2 = 4 mm²/u)
-    assert.match(app.host.textContent, /2 ÷ 2 = 1 mm²/u)
-    assert.match(app.host.textContent, /母平均 μ/u)
-    assert.match(app.host.textContent, /標本平均 x̄/u)
-    assert.match(app.host.textContent, /x̄ = \(x₁ \+ x₂ \+ … \+ xₙ\) ÷ n/u)
-    assert.match(app.host.textContent, /知りたいのは、ロット全体のばらつき/u)
-    assert.match(app.host.textContent, /母分散 2 と合うのは、n − 1 で割った場合/u)
-    assert.match(app.host.textContent, /1回ごとの値は母分散とずれます/u)
-    assert.equal(app.host.querySelectorAll('.ds-self-check, .ds-self-check-description').length, 0)
-    assert.ok(!app.host.textContent.includes('この考え方を理解できた'))
-    assert.equal(app.host.querySelectorAll('.interactive-variance-comparison').length, 4)
-    assert.equal(app.host.querySelectorAll('.ivc-simulation').length, 1)
-    assert.match(app.host.textContent, /全部で 125 通り/u)
-    assert.match(app.host.textContent, /1\.33/u)
-    assert.match(app.host.textContent, /2\.00/u)
-    assert.match(app.host.querySelector('#standard-deviation').textContent, /s = √4 = 2 mm/u)
-    assert.match(app.host.querySelector('#standard-deviation').textContent, /s = √1 = 1 mm/u)
-    assert.equal(linkFor(app.host, '現行版を表示')?.getAttribute('href'), '/SfQC/#/lesson/descriptive-statistics')
-    assert.equal(linkForRoute(app.host, { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' })?.dataset.navIntent, 'review')
-    assert.equal(linkForRoute(app.host, { kind: 'lesson-id', lessonId: 'math-powers-roots', sectionId: null })?.dataset.navIntent, 'review')
 
-    const indexHash = window.location.hash
-    const indexHistoryState = JSON.stringify(window.history.state)
-    const indexLinks = [...app.host.querySelectorAll('.ds-section-nav a')]
-    assert.equal(indexLinks.length, 5)
-    for (const indexLink of indexLinks) {
-      const targetId = indexLink.getAttribute('href').slice(1)
-      const targetHeading = app.host.querySelector(`#${targetId} h2`)
-      assert.ok(targetHeading, `the ${targetId} index entry must have a heading target`)
-      await click(indexLink)
-      assert.equal(window.document.activeElement, targetHeading)
-      assert.equal(window.location.hash, indexHash, 'index navigation must preserve the app route hash')
-      assert.equal(JSON.stringify(window.history.state), indexHistoryState, 'index navigation must preserve history state')
-    }
 
-    await click(linkFor(app.host, '学習マップ'))
-    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
-    assert.equal(window.location.search, '?sfqc-preview=descriptive-statistics')
-    await click(buttonFor(app.host, '教材一覧'))
-    await click(linkForRoute(app.host, { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: null }))
-    assert.ok(app.host.querySelector('.descriptive-statistics-preview'), 'returning from the query-preserving map should reopen the preview')
 
-    await app.remountAt('?sfqc-preview=other#/lesson/descriptive-statistics')
-    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
-    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/data-types')
-    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
-    await app.remountAt('?sfqc-preview=descriptive-statistics#/practice')
-    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
-    await app.remountAt('?sfqc-preview=descriptive-statistics#/feedback')
-    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
-  } finally {
-    await app.close()
-  }
-})
-
-test('descriptive-statistics exercise preview stays in the shared shell with independent, unpersisted question state', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    const previewUrl = '?sfqc-preview=descriptive-statistics-exercises#/practice'
-    await app.remountAt('#/lesson/descriptive-statistics')
-    assert.equal(linkFor(app.host, '演習の比較用モックを開く')?.getAttribute('href'), `/SfQC/${previewUrl}`)
-
-    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
-    assert.equal(linkFor(app.host, '演習の比較用モックを開く')?.getAttribute('href'), `/SfQC/${previewUrl}`)
-
-    await app.remountAt(previewUrl)
-    const preview = app.host.querySelector('.descriptive-statistics-exercise-preview')
-    assert.ok(preview)
-    assert.equal(app.host.querySelector('#page-title').textContent, '確認問題')
-    assert.equal(preview.querySelectorAll('.ds-practice-question').length, 5)
-    assert.equal(preview.querySelectorAll('.ds-practice-question details[open]').length, 0)
-    assert.equal(preview.textContent.includes('確認問題のモックです。解答は保存されません。'), false)
-    assert.equal(preview.textContent.includes('実装時に解説ページへのリンクにします。'), false)
-
-    for (const card of preview.querySelectorAll('.ds-practice-question')) {
-      assert.ok(card.querySelector('.ds-practice-question-heading h2'))
-      const categoryIndex = Number(card.dataset.practiceCategory)
-      const typeIndex = Number(card.dataset.practiceType)
-      const seed = Number(card.dataset.practiceSeed)
-      const question = generateDescriptiveStatisticsExercisePreviewQuestion(categoryIndex, typeIndex, seed)
-      assert.deepEqual([...card.querySelectorAll('.ds-practice-question-heading a')].map((link) => link.getAttribute('href')),
-        question.sections.map((sectionId) => `#/lesson/descriptive-statistics/${sectionId}`))
-      assert.ok(card.querySelector('.ds-practice-question-heading a[data-nav-intent="normal"]'))
-    }
-
-    const cards = [...preview.querySelectorAll('.ds-practice-question')]
-    const card = cards[0]
-    const initialQuestion = generateDescriptiveStatisticsExercisePreviewQuestion(
-      Number(card.dataset.practiceCategory), Number(card.dataset.practiceType), Number(card.dataset.practiceSeed),
-    )
-    if (initialQuestion.type === 'choice') {
-      await click(card.querySelector(`input[type="radio"][value="${initialQuestion.answer}"]`))
-    } else {
-      await changeTextInput(window, card.querySelector('input[type="text"]'), String(initialQuestion.answer))
-    }
-    await click(buttonFor(card, '答え合わせ'))
-    assert.equal(card.querySelector('.ds-exercise-feedback').textContent, '正解です。')
-    assert.equal(card.querySelector('details').open, true)
-    assert.equal(card.querySelector('.ds-practice-check input').checked, false, 'grading must not set the manual check')
-    assert.match(preview.querySelector('.ds-practice-toolbar [role="status"]').textContent, /正解 1 \/ 5 問/u)
-
-    const snapshots = cards.slice(1).map((other) => ({
-      seed: other.dataset.practiceSeed,
-      type: other.dataset.practiceType,
-      prompt: other.querySelector('.ds-practice-prompt').textContent,
-    }))
-    const previousType = card.dataset.practiceType
-    const previousPrompt = card.querySelector('.ds-practice-prompt').textContent
-    await click(card.querySelector('.ds-practice-check input'))
-    assert.equal(card.querySelector('.ds-practice-check input').checked, true)
-    await click(buttonFor(card, 'この問題を入れ替える'))
-    const refreshed = preview.querySelector('[data-practice-category="0"]')
-    assert.notEqual(refreshed.dataset.practiceType, previousType)
-    assert.notEqual(refreshed.querySelector('.ds-practice-prompt').textContent, previousPrompt)
-    assert.equal(refreshed.querySelector('details').open, false)
-    assert.equal(refreshed.querySelector('.ds-exercise-feedback').textContent, '')
-    assert.equal(refreshed.querySelector('.ds-practice-check input').checked, true, 'regeneration must not change the explicit check')
-    assert.equal(preview.querySelector('.ds-practice-toolbar [role="status"]').textContent, '')
-    assert.deepEqual([...preview.querySelectorAll('.ds-practice-question')].slice(1).map((other) => ({
-      seed: other.dataset.practiceSeed,
-      type: other.dataset.practiceType,
-      prompt: other.querySelector('.ds-practice-prompt').textContent,
-    })), snapshots, 'replacing one question must leave every other question untouched')
-
-    const beforeGlobal = [...preview.querySelectorAll('.ds-practice-question')].map((item) => item.dataset.practiceType)
-    await click(buttonFor(preview, '別の問題にする（5問すべて）'))
-    const afterGlobal = [...preview.querySelectorAll('.ds-practice-question')].map((item) => item.dataset.practiceType)
-    assert.deepEqual(afterGlobal.map((type, index) => type !== beforeGlobal[index]), [true, true, true, true, true])
-    assert.equal(preview.querySelector('[data-practice-category="0"] .ds-practice-check input').checked, true)
-
-    const updatedCard = preview.querySelector('[data-practice-category="0"]')
-    const updatedQuestion = generateDescriptiveStatisticsExercisePreviewQuestion(
-      Number(updatedCard.dataset.practiceCategory), Number(updatedCard.dataset.practiceType), Number(updatedCard.dataset.practiceSeed),
-    )
-    const sectionLink = updatedCard.querySelector(`a[href="#/lesson/descriptive-statistics/${updatedQuestion.sections[0]}"]`)
-    assert.ok(sectionLink)
-    await click(sectionLink)
-    assert.equal(window.location.hash, `#/lesson/descriptive-statistics/${updatedQuestion.sections[0]}`)
-    assert.equal(app.host.querySelector('.descriptive-statistics-exercise-preview'), null)
-    assert.ok(app.host.querySelector('.lesson-panel'))
-
-    await app.remountAt('?sfqc-preview=descriptive-statistics-exercises#/lesson/descriptive-statistics')
-    assert.equal(app.host.querySelector('.descriptive-statistics-exercise-preview'), null)
-    await app.remountAt('?sfqc-preview=descriptive-statistics-exercises#/feedback')
-    assert.equal(app.host.querySelector('.descriptive-statistics-exercise-preview'), null)
-  } finally {
-    await app.close()
-  }
-})
-
-test('public preview mode renders the isolated mock without writing learning data', async () => {
-  const app = await createHarness({ mode: 'sfqc-preview', productionPreview: true })
-  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
-  const setDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
-  const removeDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'removeItem')
-  try {
-    const { window } = app.dom
-    const localRaw = '{ public preview local-data sentinel'
-    const mapRaw = '{ public preview map-state sentinel'
-    window.localStorage.setItem(LOCAL_DATA_KEY, localRaw)
-    window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
-    const writes = []
-    Object.defineProperty(storagePrototype, 'setItem', {
-      ...setDescriptor,
-      value(key, value) {
-        if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writes.push(['setItem', key])
-        return setDescriptor.value.call(this, key, value)
-      },
-    })
-    Object.defineProperty(storagePrototype, 'removeItem', {
-      ...removeDescriptor,
-      value(key) {
-        if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writes.push(['removeItem', key])
-        return removeDescriptor.value.call(this, key)
-      },
-    })
-
-    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
-    assert.ok(app.host.querySelector('.descriptive-statistics-preview'))
-    const exercise = app.host.querySelector('[data-preview-exercise="mean"]')
-    await click(buttonFor(exercise, '答え合わせ'))
-    await click(buttonFor(exercise, '別の数値で'))
-    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
-    assert.deepEqual(writes, [])
-
-    await app.remountAt('?sfqc-preview=descriptive-statistics-exercises#/practice')
-    const exercisePreview = app.host.querySelector('.descriptive-statistics-exercise-preview')
-    assert.ok(exercisePreview)
-    const card = exercisePreview.querySelector('.ds-practice-question')
-    const question = generateDescriptiveStatisticsExercisePreviewQuestion(
-      Number(card.dataset.practiceCategory), Number(card.dataset.practiceType), Number(card.dataset.practiceSeed),
-    )
-    if (question.type === 'choice') {
-      await click(card.querySelector(`input[type="radio"][value="${question.answer}"]`))
-    } else {
-      await changeTextInput(window, card.querySelector('input[type="text"]'), String(question.answer))
-    }
-    await click(buttonFor(card, '答え合わせ'))
-    await click(buttonFor(card, 'この問題を入れ替える'))
-    await click(card.querySelector('.ds-practice-check input'))
-    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
-    assert.deepEqual(writes, [])
-  } finally {
-    if (setDescriptor) Object.defineProperty(storagePrototype, 'setItem', setDescriptor)
-    else delete storagePrototype.setItem
-    if (removeDescriptor) Object.defineProperty(storagePrototype, 'removeItem', removeDescriptor)
-    else delete storagePrototype.removeItem
-    await app.close()
-  }
-})
-
-test('preview exercises keep each answer, regeneration, explanation, figure, and saved data independent', async () => {
+test('published basic statistics figures remain interactive without saving measurement changes', async () => {
   const app = await createHarness()
   const { window } = app.dom
-  const wrongAnswer = fixedInstance.questionDefinitionSnapshot.content.choices
-    .map((choice) => choice.id)
-    .find((choiceId) => !gradeQuestionAnswer(fixedInstance, choiceId).isCorrect)
-  assert.ok(wrongAnswer, 'fixture must include a wrong answer')
-  const attempt = {
-    attemptId: 'preview-exercise-saved-attempt',
-    instanceId: fixedInstance.instanceId,
-    answer: wrongAnswer,
-    gradingResult: gradeQuestionAnswer(fixedInstance, wrongAnswer),
-    attemptedAt: '2026-11-06T00:00:00.000Z',
-  }
-  const localRaw = serializeLocalData({
-    schemaVersion: 2,
-    questionInstances: [fixedInstance],
-    answerAttempts: [attempt],
-    reviewEvents: [{
-      reviewEventId: 'preview-exercise-saved-review',
-      targetRef: 'descriptive-statistics#variance',
-      sourceAttemptId: attempt.attemptId,
-      reviewedAt: '2026-11-06T00:05:00.000Z',
-    }],
-  })
-  const mapState = createInitialMapState(lessonRegistry)
-  const progress = mapState.lessons['descriptive-statistics']
-  mapState.lessons['descriptive-statistics'] = {
-    ...progress,
-    status: 'completed',
-    checks: progress.checks.map(() => true),
-    completedAt: '2026-11-06T00:00:00.000Z',
-  }
-  const mapRaw = serializeMapState(mapState)
-  window.localStorage.setItem(LOCAL_DATA_KEY, localRaw)
-  window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
-  const backupBefore = exportBackup(() => window.localStorage)
-  const writeCalls = []
-  const storagePrototype = Object.getPrototypeOf(window.localStorage)
-  const setDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
-  const removeDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'removeItem')
-  Object.defineProperty(storagePrototype, 'setItem', {
-    ...setDescriptor,
-    value(key, value) {
-      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writeCalls.push(['setItem', key])
-      return setDescriptor.value.call(this, key, value)
-    },
-  })
-  Object.defineProperty(storagePrototype, 'removeItem', {
-    ...removeDescriptor,
-    value(key) {
-      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) writeCalls.push(['removeItem', key])
-      return removeDescriptor.value.call(this, key)
-    },
-  })
-
-  try {
-    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
-    const references = app.host.querySelector('.descriptive-statistics-preview-references')
-    assert.ok(references)
-    assert.equal(references.open, false)
-    assert.equal(references.querySelectorAll('li').length, 4)
-    assert.match(references.textContent, /https:\/\/webdesk\.jsa\.or\.jp\/pdf\/qc\/md_4609\.pdf/u)
-    const jsaPdfUrls = [
-      'https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf',
-      'https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf',
-    ]
-    const referenceCodeText = [...references.querySelectorAll('code')].map((code) => code.textContent)
-    for (const pdfUrl of jsaPdfUrls) {
-      assert.ok(referenceCodeText.includes(pdfUrl), `${pdfUrl} should remain visible as plain reference text`)
-      assert.equal(references.querySelector(`a[href="${pdfUrl}"]`), null, `${pdfUrl} must not be a direct link`)
-    }
-    const jsaReferenceLinks = [...references.querySelectorAll('a[href*="jsa.or.jp"]')]
-    assert.equal(jsaReferenceLinks.length, 2)
-    assert.ok(jsaReferenceLinks.every((link) => link.href === 'https://webdesk.jsa.or.jp/'))
-    assert.match(references.textContent, /公式経路はWebdeskトップ → QC検定 → 各級のレベルと内容 → 3級のレベル表/u)
-    assert.match(references.textContent, /公式経路はWebdeskトップ → QC検定 → 各級のレベルと内容 → 4級のレベル表/u)
-    assert.match(references.textContent, /このmockはトップページだけをリンクします/u)
-    assert.match(references.textContent, /本文確認日/u)
-    assert.match(references.textContent, /到達確認日/u)
-    assert.match(references.textContent, /© QM \/ QC Examination Center, 2019/u)
-    assert.match(references.textContent, /個別の再利用許諾表示は見当たりません/u)
-    assert.match(references.textContent, /サービス規約は無承諾のコンテンツ利用とJSAページ\/ファイル\/画像への直接リンクを禁じています/u)
-    assert.match(references.textContent, /OpenStaxトップ.*Browse the free library.*Subjects.*Math.*Statistics.*Introductory Statistics 2e.*View online.*§2\.7/u)
-    assert.ok(references.querySelector('a[href="https://openstax.org/"]'))
-    assert.ok(references.querySelector('a[href="https://openstax.org/details/books/introductory-statistics-2e"]'))
-    assert.ok(references.querySelector('a[href="https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data"]'))
-    assert.ok(references.querySelector('a[href="https://assets.openstax.org/oscms-prodcms/media/documents/introductory-statistics-2e_-_WEB.pdf"]'))
-    assert.match(references.textContent, /PDF p\.119（印刷p\.107）/u)
-    assert.match(references.textContent, /PDF p\.4.*CC BY-NC-SA 4\.0/su)
-    assert.match(references.textContent, /Web Prefaceと条件は一致します/u)
-    assert.match(references.textContent, /CC BY-NC-SA 4\.0/u)
-    assert.match(references.querySelector('a').textContent, /JSA「3級のレベル表」/u)
-    await click(references.querySelector('summary'))
-    assert.equal(references.open, true)
-    const licenseCredit = app.host.querySelector('.descriptive-statistics-preview-license-credit')
-    assert.ok(licenseCredit)
-    assert.equal(licenseCredit.closest('details'), null)
-    assert.match(licenseCredit.textContent, /Solarized by Ethan Schoonover/u)
-    assert.match(licenseCredit.querySelector('a').getAttribute('href'), /third-party-licenses\.txt$/u)
-    const ids = ['mean', 'deviation', 'variance', 'standard-deviation']
-    const card = (id) => app.host.querySelector(`[data-preview-exercise="${id}"]`)
-    const snapshot = (exerciseCard) => {
-      const details = exerciseCard.querySelector('details')
-      return {
-        index: exerciseCard.dataset.previewExerciseIndex,
-        prompt: exerciseCard.querySelector('.ds-exercise-prompt').textContent,
-        solution: details.querySelector('[data-preview-exercise-answer]').textContent,
-        open: details.open,
-        values: [...exerciseCard.querySelectorAll('.ds-exercise-fields input')].map((input) => input.value),
-        feedback: exerciseCard.querySelector('.ds-exercise-feedback').textContent,
-      }
-    }
-    const meanMeasurements = (index) => generateDescriptiveStatisticsPreviewExercise('mean', index)
-      .prompt.match(/ところ、(.+?) でした/u)[1]
-      .split(' mm、')
-      .map((value) => Number(value.replace(/ mm$/u, '')))
-      .sort((left, right) => left - right)
-
-    const figures = [...app.host.querySelectorAll('.interactive-variance-comparison')]
-    assert.equal(figures.length, 4)
-    const figureState = () => figures.map((figure) => ({
-      mode: figure.dataset.figureMode,
-      values: [...figure.querySelectorAll('[role="slider"]')].map((point) => point.getAttribute('aria-valuenow')),
-      readout: figure.querySelector('.ivc-readout').textContent,
-    }))
-    const figureBefore = figureState()
-
-    for (const id of ids) {
-      const exerciseCard = card(id)
-      const exercise = generateDescriptiveStatisticsPreviewExercise(id, previewExerciseDefinitions[id].initialIndex)
-      assert.ok(exerciseCard, `expected the ${id} exercise`)
-      assert.equal(exerciseCard.dataset.previewExerciseIndex, String(previewExerciseDefinitions[id].initialIndex))
-      assert.equal(exerciseCard.querySelector('details').open, false)
-      assert.equal(exerciseCard.querySelector('details summary').textContent, '考え方を見る')
-      assert.equal(exerciseCard.querySelector('.ds-exercise-prompt').textContent, exercise.prompt)
-      assert.equal(exerciseCard.querySelector('[data-preview-exercise-answer]').textContent, exercise.solution)
-      assert.equal(exerciseCard.querySelectorAll('.ds-exercise-fields input').length, exercise.fields.length)
-      const visibleText = [...exerciseCard.children]
-        .filter((child) => child.tagName !== 'DETAILS')
-        .map((child) => child.textContent)
-        .join(' ')
-      assert.ok(!visibleText.includes(exercise.solution), `${id} explanation must stay inside closed details`)
-      assert.equal(exerciseCard.querySelector('input[type="checkbox"]'), null, `${id} must not render a self-assessment checkbox`)
-      assert.equal(exerciseCard.querySelector('.ds-self-check-description'), null)
-      assert.equal(exerciseCard.querySelector('.ds-exercise-feedback').textContent, '')
-      await click(exerciseCard.querySelector('.ds-exercise-actions button:first-child'))
-      assert.match(exerciseCard.querySelector('.ds-exercise-feedback').textContent, /数字で入力してください/u)
-      for (const [fieldIndex, answer] of exercise.answers.entries()) {
-        const input = exerciseCard.querySelectorAll('.ds-exercise-fields input')[fieldIndex]
-        const text = id === 'deviation' && fieldIndex === 0 ? '−2' : String(answer)
-        await changeTextInput(window, input, text)
-      }
-      await click(exerciseCard.querySelector('.ds-exercise-actions button:first-child'))
-      assert.equal(exerciseCard.querySelector('.ds-exercise-feedback').textContent, '正解です。')
-      const firstInput = exerciseCard.querySelector('.ds-exercise-fields input')
-      await changeTextInput(window, firstInput, String(exercise.answers[0] + 1))
-      await click(exerciseCard.querySelector('.ds-exercise-actions button:first-child'))
-      assert.match(exerciseCard.querySelector('.ds-exercise-feedback').textContent, /合っていない/u)
-      await click(exerciseCard.querySelector('details summary'))
-      assert.equal(exerciseCard.querySelector('details').open, true)
-    }
-    const savedHistoryState = JSON.stringify(window.history.state)
-
-    for (const id of ids) {
-      const exerciseCard = card(id)
-      const details = exerciseCard.querySelector('details')
-      if (!details.open) await click(details.querySelector('summary'))
-      const before = snapshot(exerciseCard)
-      const othersBefore = ids.filter((otherId) => otherId !== id)
-        .map((otherId) => [otherId, snapshot(card(otherId))])
-
-      for (let repeat = 0; repeat < 4; repeat += 1) {
-        await click(exerciseCard.querySelector('.ds-exercise-actions button:last-child'))
-        const after = snapshot(exerciseCard)
-        assert.notEqual(after.index, before.index, `${id} should receive a different numeric variant`)
-        if (id === 'mean') {
-          assert.notDeepEqual(meanMeasurements(Number(after.index)), meanMeasurements(Number(before.index)),
-            'mean regeneration should change the measurement multiset, not only its order')
-        }
-        assert.equal(after.open, false, `${id} explanation should close after a numeric change`)
-        const generated = generateDescriptiveStatisticsPreviewExercise(id, Number(after.index))
-        assert.equal(after.prompt, generated.prompt)
-        assert.equal(after.solution, generated.solution)
-        assert.deepEqual(after.values, generated.fields.map(() => ''))
-        assert.equal(after.feedback, '')
-        assert.equal(card(id).querySelector('details').open, false)
-        for (const [otherId, state] of othersBefore) {
-          assert.deepEqual(snapshot(card(otherId)), state, `${id} regeneration must not change ${otherId}`)
-        }
-        assert.deepEqual(figureState(), figureBefore, `${id} regeneration must not change the separate review figures`)
-        before.index = after.index
-        before.prompt = after.prompt
-        before.solution = after.solution
-        before.open = after.open
-        before.values = after.values
-        before.feedback = after.feedback
-        if (repeat < 3) await click(details.querySelector('summary'))
-      }
-    }
-
-    assert.equal(JSON.stringify(window.history.state), savedHistoryState)
-    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
-    assert.equal(exportBackup(() => window.localStorage), backupBefore)
-    assert.deepEqual(writeCalls, [], 'preview exercises must not write or delete protected saved data')
-
-    await app.remount()
-    for (const id of ids) {
-      const exerciseCard = card(id)
-      assert.equal(exerciseCard.dataset.previewExerciseIndex, String(previewExerciseDefinitions[id].initialIndex))
-      assert.equal(exerciseCard.querySelector('details').open, false)
-      assert.equal(exerciseCard.querySelector('input[type="checkbox"]'), null)
-    }
-    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
-    assert.equal(exportBackup(() => window.localStorage), backupBefore)
-    assert.deepEqual(writeCalls, [], 'remount must not persist temporary preview state')
-  } finally {
-    if (setDescriptor) Object.defineProperty(storagePrototype, 'setItem', setDescriptor)
-    else delete storagePrototype.setItem
-    if (removeDescriptor) Object.defineProperty(storagePrototype, 'removeItem', removeDescriptor)
-    else delete storagePrototype.removeItem
-    await app.close()
-  }
-})
-
-test('the four interactive preview figures and n versus n − 1 simulation stay in sync without saving', async () => {
-  const app = await createHarness()
-  const { window } = app.dom
-  const localRaw = serializeLocalData({ schemaVersion: 2, questionInstances: [], answerAttempts: [], reviewEvents: [] })
-  const mapRaw = serializeMapState(createInitialMapState(lessonRegistry))
+  const localRaw = 'retired local-data sentinel'
+  const mapRaw = 'retired map-state sentinel'
   window.localStorage.setItem(LOCAL_DATA_KEY, localRaw)
   window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
   const writeCalls = []
@@ -2995,7 +1755,7 @@ test('the four interactive preview figures and n versus n − 1 simulation stay 
   })
 
   try {
-    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
+    await app.remountAt('#/course/descriptive-statistics/lesson/mean')
     const figures = [...app.host.querySelectorAll('.interactive-variance-comparison')]
     assert.deepEqual(figures.map((figure) => figure.dataset.figureMode), ['mean', 'deviation', 'variance', 'sd'])
     const figure = (mode) => figures.find((item) => item.dataset.figureMode === mode)
@@ -3057,7 +1817,8 @@ test('the four interactive preview figures and n versus n − 1 simulation stay 
     const [oneDraw, oneHundred, reset] = simulation.querySelectorAll('.ivc-simulation-actions button')
     await click(oneDraw)
     assert.match(simulation.querySelector('.ivc-simulation-last').textContent, /1 回の平均を表示中/u)
-    assert.ok([...simulation.querySelectorAll('.ivc-bar')].every((bar) => Number(bar.getAttribute('aria-valuenow')) > 0))
+    assert.ok([...simulation.querySelectorAll('.ivc-bar')].some((bar) => Number(bar.getAttribute('aria-valuenow')) > 0),
+      'one sampled result should increment its distribution bin')
     await click(oneHundred)
     assert.match(simulation.querySelector('.ivc-simulation-last').textContent, /101 回取り出した平均/u)
     await click(reset)
@@ -3076,146 +1837,444 @@ test('the four interactive preview figures and n versus n − 1 simulation stay 
   }
 })
 
-test('review navigation from the preview preserves saved data while a normal lesson still records visits', async () => {
+
+
+test('section checks stay local while independent judgments and manual completion remain separate', async () => {
   const app = await createHarness()
   const { window } = app.dom
-  const answer = fixedInstance.questionDefinitionSnapshot.content.choices
-    .map((choice) => choice.id)
-    .find((choiceId) => !gradeQuestionAnswer(fixedInstance, choiceId).isCorrect)
-  assert.ok(answer, 'fixture must include a wrong answer')
-  const attempt = {
-    attemptId: 'saved-attempt-1',
-    instanceId: fixedInstance.instanceId,
-    answer,
-    gradingResult: gradeQuestionAnswer(fixedInstance, answer),
-    attemptedAt: '2026-11-06T00:00:00.000Z',
-  }
-  const localRaw = serializeLocalData({
-    schemaVersion: 2,
-    questionInstances: [fixedInstance],
-    answerAttempts: [attempt],
-    reviewEvents: [{
-      reviewEventId: 'saved-review-1',
-      targetRef: 'descriptive-statistics#variance',
-      sourceAttemptId: attempt.attemptId,
-      reviewedAt: '2026-11-06T00:05:00.000Z',
-    }],
-  })
-  const mapState = createInitialMapState(lessonRegistry)
-  const descriptiveStatisticsProgress = mapState.lessons['descriptive-statistics']
-  mapState.lessons['descriptive-statistics'] = {
-    ...descriptiveStatisticsProgress,
-    status: 'completed',
-    checks: descriptiveStatisticsProgress.checks.map(() => true),
-    completedAt: '2026-11-06T00:00:00.000Z',
-  }
-  const mapRaw = serializeMapState(mapState)
-  window.localStorage.setItem(LOCAL_DATA_KEY, localRaw)
+  const legacyRaw = 'leave legacy storage untouched'
+  const mapRaw = 'leave retired map-state untouched'
+  window.localStorage.setItem(LOCAL_DATA_KEY, legacyRaw)
   window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
-  const backupBefore = exportBackup(() => window.localStorage)
-  const protectedWrites = []
-  const setDescriptor = Object.getOwnPropertyDescriptor(window.Storage.prototype, 'setItem')
-  const removeDescriptor = Object.getOwnPropertyDescriptor(window.Storage.prototype, 'removeItem')
-  Object.defineProperty(window.Storage.prototype, 'setItem', {
-    ...setDescriptor,
-    value(key, value) {
-      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) protectedWrites.push(['setItem', key])
-      return setDescriptor.value.call(this, key, value)
-    },
-  })
-  Object.defineProperty(window.Storage.prototype, 'removeItem', {
-    ...removeDescriptor,
-    value(key) {
-      if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) protectedWrites.push(['removeItem', key])
-      return removeDescriptor.value.call(this, key)
-    },
-  })
+  const previousGet = window.Storage.prototype.getItem
+  const previousSet = window.Storage.prototype.setItem
+  const previousRemove = window.Storage.prototype.removeItem
+  const legacyCalls = []
+  const trackLegacy = (operation, key) => {
+    if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) legacyCalls.push([operation, key])
+  }
+  window.Storage.prototype.getItem = function (key) {
+    trackLegacy('getItem', key)
+    return previousGet.call(this, key)
+  }
+  window.Storage.prototype.setItem = function (key, value) {
+    trackLegacy('setItem', key)
+    return previousSet.call(this, key, value)
+  }
+  window.Storage.prototype.removeItem = function (key) {
+    trackLegacy('removeItem', key)
+    return previousRemove.call(this, key)
+  }
 
   try {
-    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
-    const feedbackRoute = { kind: 'feedback-id', attemptId: attempt.attemptId }
-    const feedbackHash = routeToHash(feedbackRoute)
-    const feedbackState = createRouteHistoryState(feedbackRoute, feedbackHash)
-    const previewRoute = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: null }
-    const previewHash = routeToHash(previewRoute)
-    const previewState = navigateRouteHistory(feedbackState, previewRoute, previewHash, 'review')
-    window.history.replaceState(previewState, '', `${window.location.pathname}${window.location.search}${previewHash}`)
+    await app.remountAt('#/course/descriptive-statistics/lesson/mean')
+    assert.equal(app.host.querySelectorAll('.course-section').length, 4)
+    assert.equal(app.host.querySelectorAll('.course-inline-exercise').length, 4)
+    assert.ok(app.host.querySelector('.interactive-variance-comparison'))
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null)
 
-    let scrollY = 321
-    const restoredPositions = []
-    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY })
-    window.scrollTo = (x, y) => {
-      restoredPositions.push([x, y])
-      scrollY = y
-    }
-    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value() {},
-    })
+    const exercise = app.host.querySelector('.course-inline-exercise')
+    const input = exercise.querySelector('input')
+    await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, 'invalid input must not create a judgment')
 
-    const sigmaRoute = { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' }
-    const powersRoute = { kind: 'lesson-id', lessonId: 'math-powers-roots', sectionId: null }
-    for (const route of [sigmaRoute, powersRoute]) {
-      await click(linkForRoute(app.host, route))
-      await settleEffects(window)
-      assert.equal(window.location.hash, routeToHash(route))
-      await click(linkFor(app.host, '1段戻る'))
-      await settleEffects(window)
-      assert.equal(window.location.hash, previewHash)
-      assert.equal(window.scrollY, 321)
+    const expected = generateDescriptiveStatisticsPreviewExercise('mean', previewExerciseDefinitions.mean.initialIndex).answers[0]
+    assert.equal(typeof expected, 'string')
+    await changeTextInput(window, input, '0' + expected)
+    await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(exercise.querySelector('[role="status"]').textContent, /入力形式/u)
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, 'invalid input must not create a judgment')
+    await changeTextInput(window, input, '10 1')
+    await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(exercise.querySelector('[role="status"]').textContent, /入力形式/u)
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, 'internal whitespace must not be deleted')
+
+    for (const [answer, feedback] of [['１０１', /正解/u], ['101.4', /正解/u], ['101.5', /違います/u]]) {
+      await changeTextInput(window, input, answer)
+      await act(async () => exercise.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+      assert.match(exercise.querySelector('[role="status"]').textContent, feedback)
+      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null,
+        'section confirmation questions never enter independent practice history')
     }
 
-    const reviewsBefore = readLocalData().data.reviewEvents
-    assert.equal(reviewsBefore.length, 1)
-    assert.equal(reviewsBefore[0].reviewEventId, 'saved-review-1')
-    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), localRaw)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
-    assert.equal(exportBackup(() => window.localStorage), backupBefore)
-    assert.deepEqual(protectedWrites, [], 'preview operations must not write or delete either protected key')
-    assert.ok(restoredPositions.some(([x, y]) => x === 0 && y === 321), 'return navigation restores the saved reading position')
-
-    protectedWrites.length = 0
-    const normalRoute = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
-    const normalHash = routeToHash(normalRoute)
-    await app.remountAt(`?sfqc-preview=descriptive-statistics${normalHash}`)
-    const normalState = navigateRouteHistory(feedbackState, normalRoute, normalHash, 'review')
-    window.history.replaceState(normalState, '', `${window.location.pathname}${window.location.search}${normalHash}`)
-    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
-    await click(linkForRoute(app.host, sigmaRoute))
-    const updatedReviews = readLocalData().data.reviewEvents
-    assert.equal(updatedReviews.length, 2)
-    assert.equal(updatedReviews.at(-1).targetRef, 'math-algebra-sigma#sigma')
-    assert.deepEqual(protectedWrites, [['setItem', LOCAL_DATA_KEY]])
+    await click(linkFor(app.host, '学習マップ'))
+    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    await click(buttonFor(app.host, 'Mark completed'))
+    const learning = readLearningState(undefined, () => window.localStorage)
+    assert.equal(learning.status, 'ok')
+    assert.ok(learning.state.lessons['descriptive-statistics'].completedAt)
+    assert.deepEqual(learning.state.positions, {})
+    assert.equal(previousGet.call(window.localStorage, LOCAL_DATA_KEY), legacyRaw)
+    assert.equal(previousGet.call(window.localStorage, MAP_STATE_KEY), mapRaw)
+    assert.deepEqual(legacyCalls, [])
   } finally {
-    if (setDescriptor) Object.defineProperty(window.Storage.prototype, 'setItem', setDescriptor)
-    else delete window.Storage.prototype.setItem
-    if (removeDescriptor) Object.defineProperty(window.Storage.prototype, 'removeItem', removeDescriptor)
-    else delete window.Storage.prototype.removeItem
+    window.Storage.prototype.getItem = previousGet
+    window.Storage.prototype.setItem = previousSet
+    window.Storage.prototype.removeItem = previousRemove
     await app.close()
   }
 })
 
-test('descriptive-statistics preview pauses legacy migration only while active', async () => {
+test('comparison preview grades generated answer strings without deleting internal whitespace', async () => {
   const app = await createHarness()
   try {
     const { window } = app.dom
-    const legacyRaw = JSON.stringify({ schemaVersion: 1, questionInstances: [fixedInstance] })
-    const mapRaw = serializeMapState(createInitialMapState(lessonRegistry))
-    window.localStorage.setItem(LOCAL_DATA_KEY, legacyRaw)
-    window.localStorage.setItem(MAP_STATE_KEY, mapRaw)
-
-    await app.remountAt('?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics')
-    await settleEffects(window)
-    assert.equal(window.localStorage.getItem(LOCAL_DATA_KEY), legacyRaw)
-    assert.ok(app.host.querySelector('.descriptive-statistics-preview'))
-
-    await click(linkFor(app.host, '学習マップ'))
-    await settleEffects(window)
-    assert.equal(window.location.search, '?sfqc-preview=descriptive-statistics')
-    assert.equal(app.host.querySelector('.descriptive-statistics-preview'), null)
-    assert.equal(JSON.parse(window.localStorage.getItem(LOCAL_DATA_KEY)).schemaVersion, 2)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapRaw)
+    window.history.replaceState(null, '', `${window.location.pathname}?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics`)
+    await app.remount()
+    const exercise = app.host.querySelector('.descriptive-statistics-preview-exercise[data-preview-exercise="mean"]')
+    assert.ok(exercise)
+    const input = exercise.querySelector('input')
+    const grade = exercise.querySelector('.ds-button-primary')
+    for (const invalid of ['0101', '10 1']) {
+      await changeTextInput(window, input, invalid)
+      await click(grade)
+      assert.match(exercise.querySelector('.ds-exercise-feedback').textContent, /入力形式/u)
+      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null)
+    }
+    for (const [answer, expectedFeedback] of [['１０１', /正解/u], ['101.4', /正解/u], ['101.5', /合っていない/u]]) {
+      await changeTextInput(window, input, answer)
+      await click(grade)
+      assert.match(exercise.querySelector('.ds-exercise-feedback').textContent, expectedFeedback)
+      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null)
+    }
   } finally {
+    await app.close()
+  }
+})
+
+test('unknown judgment writes block backup restore until a recheck confirms the saved record', async () => {
+  let confirmations = 0
+  const app = await createHarness({ confirm: () => { confirmations += 1; return true } })
+  const { window } = app.dom
+  const previousGet = window.Storage.prototype.getItem
+  const previousSet = window.Storage.prototype.setItem
+  let practiceWasWritten = false
+  let failPostWriteRead = true
+  window.Storage.prototype.setItem = function (key, value) {
+    const result = previousSet.call(this, key, value)
+    if (key === PRACTICE_RESULTS_KEY) practiceWasWritten = true
+    return result
+  }
+  window.Storage.prototype.getItem = function (key) {
+    if (key === PRACTICE_RESULTS_KEY && practiceWasWritten && failPostWriteRead) {
+      failPostWriteRead = false
+      throw new Error('temporary read failure')
+    }
+    return previousGet.call(this, key)
+  }
+  try {
+    await submitWrongIndependentJudgement(app, window)
+    assert.match(app.host.textContent, /保存結果未確認/u)
+    assert.equal(JSON.parse(previousGet.call(window.localStorage, PRACTICE_RESULTS_KEY)).records.length, 1)
+
+    await click(linkFor(app.host, 'データ管理'))
+    const inputFile = app.host.querySelector('#backup-file')
+    Object.defineProperty(inputFile, 'files', { configurable: true, value: [new window.File(['{}'], 'backup.json')] })
+    await act(async () => inputFile.dispatchEvent(new window.Event('change', { bubbles: true })))
+    assert.match(app.host.querySelector('.data-message').textContent, /未保存判定の保存状態を再確認/u)
+    assert.equal(confirmations, 0)
+
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '保存状態を再確認'))
+    assert.doesNotMatch(app.host.textContent, /保存結果未確認/u)
+    assert.equal(JSON.parse(previousGet.call(window.localStorage, PRACTICE_RESULTS_KEY)).records.length, 1)
+    assert.equal(confirmations, 0, 'the ambiguous append is rechecked and never imported again')
+  } finally {
+    window.Storage.prototype.getItem = previousGet
+    window.Storage.prototype.setItem = previousSet
+    await app.close()
+  }
+})
+
+test('backup export warns about unsaved judgments and restore explicitly retains them', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const previousSet = window.Storage.prototype.setItem
+  let failPracticeWrite = true
+  window.Storage.prototype.setItem = function (key, value) {
+    if (key === PRACTICE_RESULTS_KEY && failPracticeWrite) {
+      failPracticeWrite = false
+      throw new Error('quota')
+    }
+    return previousSet.call(this, key, value)
+  }
+  try {
+    await submitWrongIndependentJudgement(app, window)
+    window.Storage.prototype.setItem = previousSet
+
+    await click(linkFor(app.host, 'データ管理'))
+    assert.match(app.host.textContent, /このバックアップには未保存の判定1件が含まれません/u)
+    assert.equal(buttonFor(app.host, '全データを書き出し').disabled, false)
+
+    const backup = serializeLearningBackup(
+      { schemaVersion: 1, lessons: {}, positions: {} },
+      { schemaVersion: 1, records: [] },
+    )
+    const fileInput = app.host.querySelector('#backup-file')
+    Object.defineProperty(fileInput, 'files', {
+      configurable: true,
+      value: [new window.File([backup], 'learning-backup.json', { type: 'application/json' })],
+    })
+    await act(async () => fileInput.dispatchEvent(new window.Event('change', { bubbles: true })))
+    assert.match(app.host.querySelector('.data-message').textContent, /未保存の判定は候補として保持しました/u)
+    assert.match(app.host.textContent, /未保存の判定1件/u)
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 0)
+  } finally {
+    window.Storage.prototype.setItem = previousSet
+    await app.close()
+  }
+})
+
+test('backup restore can explicitly discard unsaved judgments after a second confirmation', async () => {
+  const confirmations = []
+  const answers = [false, true, true]
+  const app = await createHarness({ confirm: (message) => {
+    confirmations.push(message)
+    return answers.shift() ?? false
+  } })
+  const { window } = app.dom
+  const previousSet = window.Storage.prototype.setItem
+  let failPracticeWrite = true
+  window.Storage.prototype.setItem = function (key, value) {
+    if (key === PRACTICE_RESULTS_KEY && failPracticeWrite) {
+      failPracticeWrite = false
+      throw new Error('quota')
+    }
+    return previousSet.call(this, key, value)
+  }
+  try {
+    await submitWrongIndependentJudgement(app, window)
+    window.Storage.prototype.setItem = previousSet
+    await click(linkFor(app.host, 'データ管理'))
+
+    const backup = serializeLearningBackup({ schemaVersion: 1, lessons: {}, positions: {} }, { schemaVersion: 1, records: [] })
+    const fileInput = app.host.querySelector('#backup-file')
+    Object.defineProperty(fileInput, 'files', {
+      configurable: true,
+      value: [new window.File([backup], 'learning-backup.json', { type: 'application/json' })],
+    })
+    await act(async () => fileInput.dispatchEvent(new window.Event('change', { bubbles: true })))
+    assert.equal(confirmations.length, 3)
+    assert.match(confirmations[0], /復元後も候補として保持/u)
+    assert.match(confirmations[1], /破棄してバックアップを復元/u)
+    assert.match(confirmations[2], /新形式のバックアップ/u)
+    assert.doesNotMatch(app.host.querySelector('.data-message').textContent, /候補として保持/u)
+    assert.doesNotMatch(app.host.textContent, /未保存の判定1件/u)
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 0)
+  } finally {
+    window.Storage.prototype.setItem = previousSet
+    await app.close()
+  }
+})
+
+test('course practice presents five categories, records one valid judgment, and keeps lesson review links', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    window.HTMLElement.prototype.scrollIntoView = () => {}
+    await app.remountAt('#/course/descriptive-statistics/practice')
+    const cards = [...app.host.querySelectorAll('.ds-practice-question')]
+    assert.equal(cards.length, 5)
+
+    const card = cards[0]
+    const categoryIndex = Number(card.dataset.practiceCategory)
+    const question = generateDescriptiveStatisticsExercisePreviewQuestion(
+      categoryIndex, Number(card.dataset.practiceType), Number(card.dataset.practiceSeed),
+    )
+    assert.deepEqual([...card.querySelectorAll('.ds-practice-question-heading a')].map((link) => link.href.split('#')[1]),
+      question.sections.map((sectionId) => `/course/descriptive-statistics/lesson/${sectionId}`))
+    assert.ok([...card.querySelectorAll('.ds-practice-question-heading a')].every((link) => link.dataset.navIntent === 'review'),
+      'a lesson link from a course exercise must focus the section and allow returning to the exercise')
+
+    const submit = card.querySelector('form')
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null,
+      'an empty numeric answer or unselected choice must not consume the first grade')
+
+    if (question.type === 'choice') {
+      const wrongIndex = question.answer === 0 ? 1 : 0
+      await click(card.querySelector(`input[type="radio"][value="${wrongIndex}"]`))
+    } else {
+      await changeTextInput(window, card.querySelector('input[type="text"]'), String(Number(question.answer) + 1))
+    }
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    const saved = JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY))
+    assert.equal(saved.records.length, 1)
+    assert.equal(saved.records[0].categoryId, ['mean-deviation', 'data-transformation', 'unbiased-variance', 'comprehensive', 'variance-standard-deviation'][categoryIndex])
+    assert.equal(saved.records[0].isCorrect, false)
+    assert.match(saved.records[0].attemptedAt, /^\d{4}-\d{2}-\d{2}T/u)
+
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1,
+      'grading the same generated question again must not append another judgment')
+
+    const otherQuestions = cards.slice(1).map((item) => [item.dataset.practiceType, item.dataset.practiceSeed])
+    await click(buttonFor(card, 'この問題を入れ替える'))
+    const regenerated = app.host.querySelector('.ds-practice-question[data-practice-category="0"]')
+    assert.equal(regenerated.querySelector('.ds-exercise-feedback').textContent, '')
+    assert.deepEqual([...app.host.querySelectorAll('.ds-practice-question')].slice(1)
+      .map((item) => [item.dataset.practiceType, item.dataset.practiceSeed]), otherQuestions)
+
+    await click(regenerated.querySelector('.ds-practice-question-heading a'))
+    await settleEffects(window)
+    assert.match(window.location.hash, /^#\/course\/descriptive-statistics\/lesson\//u)
+    assert.equal(window.document.activeElement.id,
+      `course-section-${window.location.hash.split('/').at(-1)}`,
+      'the lesson link must focus its referenced section')
+    assert.ok(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'),
+      'the referenced lesson must offer a route back to the independent exercise')
+    await click(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'))
+    await settleEffects(window)
+    assert.equal(window.location.hash, '#/course/descriptive-statistics/practice')
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1,
+      'returning from lesson review must keep the saved first judgment')
+
+    await click(linkFor(app.host, '進捗'))
+    const categoryRows = [...app.host.querySelectorAll('.progress-subsection li')]
+    assert.equal(categoryRows.length, 5)
+    assert.match(categoryRows[0].textContent, /0\/1回 · 正答率 0%/u)
+    assert.equal(categoryRows.slice(1).filter((row) => /記録なし（0回）/u.test(row.textContent)).length, 4)
+    assert.match(app.host.querySelector('.progress-card').textContent, /未完了/u,
+      'answering a question must not mark the lesson manually complete')
+  } finally {
+    await app.close()
+  }
+})
+
+test('independent numeric practice uses strict decimal grading and saves only the first valid judgment', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const originalRandom = Math.random
+  const randomValues = [0.1, 1 / 2 ** 32, 0.4, 21 / 2 ** 32]
+  Math.random = () => randomValues.shift() ?? 0.2
+  try {
+    await app.remountAt('#/course/descriptive-statistics/practice')
+    const card = app.host.querySelector('.ds-practice-question[data-practice-category="1"]')
+    assert.equal(card.dataset.practiceType, '1')
+    assert.equal(card.dataset.practiceSeed, '21')
+    const question = generateDescriptiveStatisticsExercisePreviewQuestion(1, 1, 21)
+    assert.equal(question.answer, '12')
+    const input = card.querySelector('input[type="text"]')
+    const submit = card.querySelector('form')
+
+    for (const invalid of ['012', '1 2']) {
+      await changeTextInput(window, input, invalid)
+      await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+      assert.match(card.querySelector('.ds-exercise-feedback').textContent, /入力形式/u)
+      assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null, `${invalid} is invalid and must not be saved`)
+    }
+
+    await changeTextInput(window, input, '１２')
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /正解/u)
+    const firstSaved = JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY))
+    assert.equal(firstSaved.records.length, 1)
+    assert.equal(firstSaved.records[0].isCorrect, true)
+
+    await changeTextInput(window, input, '12.4')
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /正解/u)
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1)
+
+    await changeTextInput(window, input, '12.5')
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1)
+  } finally {
+    Math.random = originalRandom
+    await app.close()
+  }
+})
+
+test('progress view toggles between map order and stable lowest-accuracy order', async () => {
+  const app = await createHarness()
+  try {
+    app.dom.window.localStorage.setItem(PRACTICE_RESULTS_KEY, JSON.stringify({ schemaVersion: 1, records: [
+      { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-11-13T00:00:00.000Z' },
+      { categoryId: 'data-transformation', isCorrect: true, attemptedAt: '2026-11-13T00:01:00.000Z' },
+    ] }))
+    await app.remountAt('#/progress')
+    const rows = () => [...app.host.querySelectorAll('.progress-subsection li')].map((row) => row.textContent)
+    const mapOrder = rows()
+    assert.match(mapOrder[0], /^平均と偏差/u)
+    assert.match(mapOrder[1], /^データの変換/u)
+    assert.equal(buttonFor(app.host, '学習マップ順').getAttribute('aria-pressed'), 'true')
+
+    await click(buttonFor(app.host, '正答率の低い順'))
+    assert.equal(buttonFor(app.host, '正答率の低い順').getAttribute('aria-pressed'), 'true')
+    const lowOrder = rows()
+    assert.match(lowOrder[0], /^平均と偏差：0\/1回 · 正答率 0%/u)
+    assert.match(lowOrder[1], /^データの変換：1\/1回 · 正答率 100%/u)
+    assert.deepEqual(lowOrder.slice(2).map((row) => row.split('：')[0]), ['不偏分散', '総合', '分散と標準偏差'])
+
+    await click(buttonFor(app.host, '学習マップ順'))
+    assert.deepEqual(rows(), mapOrder)
+  } finally {
+    await app.close()
+  }
+})
+
+test('course section links update the hash and browser back and forward restore the active section', async () => {
+  const app = await createHarness()
+  try {
+    const { window } = app.dom
+    window.HTMLElement.prototype.scrollIntoView = () => {}
+    await app.remountAt('#/course/descriptive-statistics/lesson/mean')
+    const deviationLink = app.host.querySelector('.course-section-nav a[href="#/course/descriptive-statistics/lesson/deviation"]')
+    await click(deviationLink)
+    await settleEffects(window)
+    assert.equal(window.location.hash, '#/course/descriptive-statistics/lesson/deviation')
+    assert.equal(window.document.activeElement, app.host.querySelector('#course-section-deviation'))
+
+    await waitForHistory(window, 'back')
+    assert.equal(window.location.hash, '#/course/descriptive-statistics/lesson/mean')
+    assert.ok(app.host.querySelector('#course-section-mean'))
+    await waitForHistory(window, 'forward')
+    assert.equal(window.location.hash, '#/course/descriptive-statistics/lesson/deviation')
+    assert.ok(app.host.querySelector('#course-section-deviation'))
+  } finally {
+    await app.close()
+  }
+})
+
+test('map layout saves to learning-state and leaves retired local data keys untouched', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const legacyLocal = 'legacy local-data sentinel'
+  const legacyMap = 'legacy map-state sentinel'
+  window.localStorage.setItem(LOCAL_DATA_KEY, legacyLocal)
+  window.localStorage.setItem(MAP_STATE_KEY, legacyMap)
+  const previousGet = window.Storage.prototype.getItem
+  const previousSet = window.Storage.prototype.setItem
+  const previousRemove = window.Storage.prototype.removeItem
+  const legacyCalls = []
+  const track = (operation, key) => {
+    if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) legacyCalls.push([operation, key])
+  }
+  window.Storage.prototype.getItem = function (key) { track('getItem', key); return previousGet.call(this, key) }
+  window.Storage.prototype.setItem = function (key, value) { track('setItem', key); return previousSet.call(this, key, value) }
+  window.Storage.prototype.removeItem = function (key) { track('removeItem', key); return previousRemove.call(this, key) }
+  try {
+    await app.remountAt('#/map')
+    await click(buttonFor(app.host, '配置編集'))
+    const id = 'descriptive-statistics'
+    await click(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
+    const node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
+    node.focus()
+    await pressKey(window, node, 'ArrowRight')
+
+    const state = readLearningState(lessonRegistry, () => window.localStorage)
+    assert.equal(state.status, 'ok')
+    assert.equal(Object.keys(state.state.positions).length, lessonRegistry.lessons.length)
+    const initial = createMapPocGraph().nodes.find((item) => item.id === id).position
+    assert.deepEqual(state.state.positions[id], { x: initial.x + 5, y: initial.y })
+    assert.equal(previousGet.call(window.localStorage, LOCAL_DATA_KEY), legacyLocal)
+    assert.equal(previousGet.call(window.localStorage, MAP_STATE_KEY), legacyMap)
+    assert.deepEqual(legacyCalls, [])
+  } finally {
+    window.Storage.prototype.getItem = previousGet
+    window.Storage.prototype.setItem = previousSet
+    window.Storage.prototype.removeItem = previousRemove
     await app.close()
   }
 })

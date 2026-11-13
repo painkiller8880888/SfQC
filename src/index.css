@@ -213,17 +213,15 @@ h1:focus {
 
 .page-content {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-height: calc(100vh - 5rem);
   padding: clamp(1.25rem, 5vw, 4rem);
   place-items: start center;
 }
 
-.page-content-wide-preview {
-  padding-inline: 0;
-}
-
 .screen {
   width: min(100%, 50rem);
+  min-width: 0;
   padding: clamp(1.5rem, 6vw, 3.5rem);
   border: 1px solid var(--border);
   border-radius: 1.5rem;
@@ -415,6 +413,87 @@ h1 {
   font-family: math, "Cambria Math", "Yu Mincho", serif;
   line-height: 2;
   overflow-wrap: anywhere;
+}
+
+.descriptive-statistics-course .course-sections {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.descriptive-statistics-course .course-section {
+  min-width: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 1rem;
+}
+
+.descriptive-statistics-course .course-section h2,
+.descriptive-statistics-course h3,
+.descriptive-statistics-course h4 {
+  line-height: 1.35;
+}
+
+.course-section-nav ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding-left: 1.5rem;
+}
+
+.course-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.course-table-wrap table {
+  min-width: 23rem;
+  border-collapse: collapse;
+}
+
+.course-table-wrap th,
+.course-table-wrap td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+}
+
+.course-details,
+.course-references,
+.course-inline-exercise {
+  margin-block: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.course-details > summary,
+.course-references > summary,
+.course-inline-exercise details > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.course-inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.4rem 0.6rem 0.4rem 0;
+}
+
+.course-inline-field input {
+  width: 6.5rem;
+  min-height: 2.5rem;
+}
+
+.course-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+
+.course-inline-actions button {
+  min-height: 2.5rem;
 }
 
 .lesson-actions {

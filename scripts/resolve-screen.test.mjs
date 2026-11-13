@@ -31,6 +31,25 @@ test('ID routes resolve without checking whether the ID exists', () => {
   assert.equal(resolveScreen('#/practice/not-in-storage'), 'practice')
 })
 
+test('course lesson and practice routes resolve as stable IDs and round-trip', () => {
+  const lesson = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'standard-deviation' }
+  const practice = { kind: 'course-practice', courseId: 'descriptive-statistics' }
+  assert.equal(routeToHash(lesson), '#/course/descriptive-statistics/lesson/standard-deviation')
+  assert.equal(routeToHash(practice), '#/course/descriptive-statistics/practice')
+  assert.deepEqual(resolveRoute(routeToHash(lesson)), lesson)
+  assert.deepEqual(resolveRoute(routeToHash(practice)), practice)
+  assert.equal(resolveScreen(routeToHash(lesson)), 'lesson')
+  assert.equal(resolveScreen(routeToHash(practice)), 'practice')
+  for (const route of [
+    { kind: 'course-lesson', courseId: 5, sectionId: 'mean' },
+    { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: {} },
+    { kind: 'course-practice', courseId: {} },
+  ]) assert.throws(() => routeToHash(route), TypeError)
+  for (const hash of ['#/course/descriptive-statistics/lesson/', '#/course/descriptive-statistics/practice/extra', '#/course/%20/practice']) {
+    assert.equal(resolveRoute(hash).kind, 'not-found', hash)
+  }
+})
+
 test('practice and feedback IDs round-trip each URL segment exactly once', () => {
   for (const id of ['a/b', 'a#b', 'a%b', '日本語', '%2F']) {
     const practice = routeToHash({ kind: 'practice-id', instanceId: id })

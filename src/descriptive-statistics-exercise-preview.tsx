@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { LessonReference } from './lesson-view'
+import { gradeDecimalAnswer } from './question-grading.mjs'
 import {
   createDescriptiveStatisticsExercisePreviewState,
   descriptiveStatisticsExerciseCategories,
@@ -9,7 +10,7 @@ import {
 import type {
   DescriptiveStatisticsExercisePreviewState,
 } from './descriptive-statistics-exercise-preview-data.mjs'
-import previewStyles from './descriptive-statistics-preview.css?inline'
+import practiceStyles from './course-practice.css?inline'
 
 const sectionLabels: Record<string, string> = {
   mean: '1 平均',
@@ -18,30 +19,29 @@ const sectionLabels: Record<string, string> = {
   'standard-deviation': '4 標準偏差',
 }
 
-function parseAnswer(text: string) {
-  const value = text.normalize('NFKC').replace(/−/gu, '-').replace(/\s+/gu, '')
-  if (!value || !/^[+-]?\d+(\.\d+)?$/u.test(value)) return Number.NaN
-  return Number(value)
+function normalizeNumericInput(text: string) {
+  return text.normalize('NFKC').replace(/−/gu, '-')
 }
 
-function ExerciseCard({ categoryIndex, state, checked, onGrade, onRegenerate, onCheck }: {
+function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
   categoryIndex: number
   state: DescriptiveStatisticsExercisePreviewState
-  checked: boolean
   onGrade: (correct: boolean) => void
   onRegenerate: () => void
-  onCheck: (checked: boolean) => void
 }) {
   const id = useId()
   const detailsRef = useRef<HTMLDetailsElement>(null)
+  const gradedQuestionRef = useRef('')
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState({ kind: '', text: '' })
   const question = generateDescriptiveStatisticsExercisePreviewQuestion(categoryIndex, state.typeIndex, state.seed)
+  const questionKey = descriptiveStatisticsExerciseCategories[categoryIndex].id + ':' + state.seed + ':' + state.typeIndex
   const titleId = `${id}-title`
 
   useEffect(() => {
     setAnswer('')
     setFeedback({ kind: '', text: '' })
+    gradedQuestionRef.current = ''
     if (detailsRef.current) detailsRef.current.open = false
   }, [state.seed, state.typeIndex])
 
@@ -56,14 +56,17 @@ function ExerciseCard({ categoryIndex, state, checked, onGrade, onRegenerate, on
       }
       correct = Number(selected) === question.answer
     } else {
-      const value = parseAnswer(answer)
-      if (Number.isNaN(value)) {
-        setFeedback({ kind: 'ng', text: '数字で入力してください（例：12、−2、+3、0.5）。' })
+      const result = gradeDecimalAnswer(normalizeNumericInput(answer), String(question.answer), 0)
+      if (result.status === 'invalid') {
+        setFeedback({ kind: 'ng', text: '入力形式を確認してください（例：12、−2、+3、0.5）。' })
         return
       }
-      correct = Math.abs(value - question.answer) < 1e-6
+      correct = result.isCorrect
     }
-    onGrade(correct)
+    if (gradedQuestionRef.current !== questionKey) {
+      gradedQuestionRef.current = questionKey
+      onGrade(correct)
+    }
     if (correct) {
       setFeedback({ kind: 'ok', text: '正解です。' })
       if (detailsRef.current) detailsRef.current.open = true
@@ -79,7 +82,7 @@ function ExerciseCard({ categoryIndex, state, checked, onGrade, onRegenerate, on
         {index > 0 && '・'}<LessonReference
           targetRef={`descriptive-statistics#${sectionId}`}
           label={sectionLabels[sectionId] ?? sectionId}
-          intent="normal"
+          intent="review"
         />
       </span>)}</p>
     </div>
@@ -121,10 +124,6 @@ function ExerciseCard({ categoryIndex, state, checked, onGrade, onRegenerate, on
       </div>
     </form>
     <p className={`ds-exercise-feedback ${feedback.kind}`} role="status" aria-live="polite">{feedback.text}</p>
-    <label className="ds-practice-check">
-      <input type="checkbox" checked={checked} onChange={(event) => onCheck(event.currentTarget.checked)} />
-      <span>この問題を確認した</span>
-    </label>
     <details ref={detailsRef}>
       <summary>解説を見る</summary>
       <p className="ds-exercise-solution">{question.explanation}</p>
@@ -132,16 +131,18 @@ function ExerciseCard({ categoryIndex, state, checked, onGrade, onRegenerate, on
   </section>
 }
 
-export function DescriptiveStatisticsExercisePreview({ currentPracticeHref }: { currentPracticeHref: string }) {
+export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirstGrade }: {
+  currentLessonHref: string
+  onFirstGrade?: (categoryId: string, isCorrect: boolean) => void
+}) {
   const [questions, setQuestions] = useState(() => descriptiveStatisticsExerciseCategories.map((_, index) =>
     createDescriptiveStatisticsExercisePreviewState(index)))
   const [grades, setGrades] = useState<(boolean | null)[]>(() => Array(descriptiveStatisticsExerciseCategories.length).fill(null))
-  const [checks, setChecks] = useState<boolean[]>(() => Array(descriptiveStatisticsExerciseCategories.length).fill(false))
   const questionListRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const style = document.createElement('style')
-    style.textContent = previewStyles
+    style.textContent = practiceStyles
     document.head.append(style)
     return () => style.remove()
   }, [])
@@ -158,16 +159,14 @@ export function DescriptiveStatisticsExercisePreview({ currentPracticeHref }: { 
   }
   const answered = grades.filter((grade) => grade !== null).length
   const correct = grades.filter(Boolean).length
-  const checkedCount = checks.filter(Boolean).length
 
-  return <section className="lesson-panel descriptive-statistics-exercise-preview" aria-label="基本統計量の演習モック">
-    <div className="descriptive-statistics-exercise-preview-content">
+  return <section className="lesson-panel course-practice" aria-label="基本統計量の演習">
+    <div className="course-practice-content">
       <header className="ds-practice-header">
         <p>平均、偏差、分散、標準偏差の理解を確かめる5問です。5つの分野から1問ずつ出題します。問題ごとに内容を入れ替えて、考え方を繰り返し確認できます。</p>
         <div className="ds-practice-toolbar">
           <button className="ds-button ds-button-primary" type="button" onClick={regenerateAll}>別の問題にする（5問すべて）</button>
           <p role="status" aria-live="polite">{answered === 0 ? '' : `正解 ${correct} / 5 問（答え合わせ済み ${answered} 問）${correct === 5 ? '　全問正解です。' : ''}`}</p>
-          <p role="status" aria-live="polite">手動チェック：{checkedCount} / 5 問</p>
         </div>
       </header>
       <div className="ds-practice-list" ref={questionListRef}>
@@ -175,15 +174,16 @@ export function DescriptiveStatisticsExercisePreview({ currentPracticeHref }: { 
           key={categoryIndex}
           categoryIndex={categoryIndex}
           state={state}
-          checked={checks[categoryIndex]}
-          onGrade={(isCorrect) => setGrades((current) => current.map((grade, index) => index === categoryIndex ? isCorrect : grade))}
+          onGrade={(isCorrect) => {
+            setGrades((current) => current.map((grade, index) => index === categoryIndex ? isCorrect : grade))
+            onFirstGrade?.(descriptiveStatisticsExerciseCategories[categoryIndex].id, isCorrect)
+          }}
           onRegenerate={() => regenerateOne(categoryIndex)}
-          onCheck={(isChecked) => setChecks((current) => current.map((value, index) => index === categoryIndex ? isChecked : value))}
         />)}
       </div>
       <div className="ds-practice-footer">
         <button className="ds-button ds-button-primary" type="button" onClick={regenerateAll}>別の問題にする（5問すべて）</button>
-        <p><a href={currentPracticeHref}>現行の演習一覧を表示</a></p>
+        <p><a href={currentLessonHref} data-nav-intent="normal">基本統計量の解説に戻る</a></p>
       </div>
     </div>
   </section>

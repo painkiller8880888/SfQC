@@ -5,7 +5,7 @@ export type PreviewExerciseDefinition = Readonly<{ initialIndex: number; count: 
 export type DescriptiveStatisticsPreviewExercise = Readonly<{
   prompt: string
   fields: readonly Readonly<{ label: string; unit: string }>[]
-  answers: readonly number[]
+  answers: readonly string[]
   solution: string
 }>
 
