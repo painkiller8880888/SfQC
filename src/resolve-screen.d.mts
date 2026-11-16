@@ -2,7 +2,6 @@ export type ScreenKind =
   | 'map'
   | 'lesson'
   | 'practice'
-  | 'feedback'
   | 'progress'
   | 'data'
   | 'not-found'
@@ -13,10 +12,6 @@ export type AppRoute =
   | { kind: 'lesson-id'; lessonId: string; sectionId: string | null }
   | { kind: 'course-lesson'; courseId: string; sectionId: string }
   | { kind: 'course-practice'; courseId: string }
-  | { kind: 'practice' }
-  | { kind: 'practice-id'; instanceId: string }
-  | { kind: 'feedback' }
-  | { kind: 'feedback-id'; attemptId: string }
   | { kind: 'progress' }
   | { kind: 'data' }
   | { kind: 'not-found' }

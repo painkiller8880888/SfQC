@@ -1,19 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyRouteNavigationEffect, refreshRouteView, resolveRouteView } from '../src/route-view.mjs'
+import { applyRouteNavigationEffect, resolveRouteView } from '../src/route-view.mjs'
 import { createRouteHistoryState } from '../src/route-history.mjs'
 import { routeToHash } from '../src/resolve-screen.mjs'
 
-const emptyData = { schemaVersion: 2, questionInstances: [], answerAttempts: [], reviewEvents: [] }
-
-test('new course routes resolve without loading legacy local-data storage', () => {
-  const route = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'mean' }
-  const hash = routeToHash(route)
-  const state = createRouteHistoryState(route, hash)
+test('course routes resolve without reading stored snapshots', () => {
+  const lesson = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'mean' }
+  const hash = routeToHash(lesson)
+  const state = createRouteHistoryState(lesson, hash)
   const view = resolveRouteView(hash, state, 'initial', 0)
   assert.equal(view.route.kind, 'course-lesson')
   assert.equal(view.resolved.status, 'lesson')
-  assert.equal(view.storedData.status, 'missing')
+  assert.equal(Object.hasOwn(view, 'storedData'), false)
   const practiceHash = routeToHash({ kind: 'course-practice', courseId: 'descriptive-statistics' })
   assert.equal(resolveRouteView(practiceHash, null, 'initial', 1).resolved.status, 'course-practice')
 })
@@ -40,28 +38,26 @@ test('a direct course deep link focuses and scrolls to its section when history 
   assert.equal(page.scrolledTo, true)
 })
 
-test('refreshing migrated data keeps the scheduled first-load scroll restoration valid', () => {
-  const route = { kind: 'lesson-id', lessonId: 'descriptive-statistics', sectionId: 'variance' }
+test('a v1 answer draft and resume frame are rejected and rebuilt from the URL as v2', () => {
+  const route = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance' }
   const hash = routeToHash(route)
-  const historyState = createRouteHistoryState(route, hash, {
-    entryId: 'initial-entry',
-    scrollY: 700,
-  })
-  const initial = resolveRouteView(hash, historyState, 'initial', 0, {
-    status: 'legacy',
-    raw: JSON.stringify({ schemaVersion: 1, questionInstances: [] }),
-    data: emptyData,
-  })
+  const legacyState = {
+    version: 1, routeHash: hash, route, entryId: 'old-entry', draft: 'old answer', scrollY: 700,
+    resumeAttemptId: 'old-attempt', returnStack: [],
+  }
 
-  const refreshed = refreshRouteView(initial, { status: 'ok', raw: '{}', data: emptyData })
-
-  assert.equal(refreshed.navigation, 'refresh')
-  assert.equal(refreshed.navigationId, initial.navigationId)
-  assert.equal(refreshed.historyState.entryId, initial.historyState.entryId)
-  assert.equal(refreshed.historyState.scrollY, 700)
+  const repaired = resolveRouteView(hash, legacyState, 'restore', 4)
+  assert.equal(repaired.stateNeedsRepair, true)
+  assert.equal(repaired.historyWarning, true)
+  assert.equal(repaired.navigation, 'normal')
+  assert.equal(repaired.historyState.version, 2)
+  assert.equal(repaired.historyState.routeHash, hash)
+  assert.deepEqual(Object.keys(repaired.historyState).sort(), [
+    'entryId', 'returnStack', 'route', 'routeHash', 'scrollY', 'version',
+  ])
 })
 
-test('explicit return focuses the destination heading and keeps its saved scroll position', () => {
+test('explicit return focuses the destination heading and restores its saved scroll position', () => {
   const page = { activeElement: null, scrollY: 0 }
   let focusOptions
   const heading = {
@@ -71,9 +67,7 @@ test('explicit return focuses the destination heading and keeps its saved scroll
     },
     scrollIntoView() {},
   }
-  const historyState = { scrollY: 640 }
-
-  applyRouteNavigationEffect('return', historyState, {
+  applyRouteNavigationEffect('return', { scrollY: 640 }, {
     heading,
     sectionHeading: null,
     scrollTo(_x, y) { page.scrollY = y },

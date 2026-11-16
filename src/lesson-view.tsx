@@ -1,11 +1,9 @@
 import { useRef, type ReactNode, type RefObject } from 'react'
 import { lessonRegistry } from './lesson-registry.mjs'
-import { availablePracticeQuestions } from './practice-actions.mjs'
 import { parseLessonRef, type IncludedLessonDefinition, type LessonDefinition, type LessonRegistry } from './lesson-contract.mjs'
 import { routeToHash, type AppRoute } from './resolve-screen.mjs'
 import type { NavigationIntent } from './route-history.mjs'
 import { FigureRef } from './figures/figure-ref'
-import type { ProgressData } from './progress-data.mjs'
 import type { CourseProgress } from './course-progress.mjs'
 import type { ManualLessonProgress, ManualProgressCommand } from './manual-progress.mjs'
 
@@ -266,94 +264,6 @@ export function LessonMap({ registry = lessonRegistry, progress }: {
   </div>
 }
 
-function formatLocalDate(value: string | null) {
-  return value === null ? '記録なし' : new Date(value).toLocaleString('ja-JP')
-}
-
-function SavedProgressLink({ route, children, canResolveRoute, unavailableMessage }: {
-  route: Extract<AppRoute, { kind: 'feedback-id' | 'practice-id' }>
-  children: ReactNode
-  canResolveRoute: (route: Extract<AppRoute, { kind: 'feedback-id' | 'practice-id' }>) => boolean
-  unavailableMessage: string
-}) {
-  return canResolveRoute(route)
-    ? <InternalLink route={route} intent="normal">{children}</InternalLink>
-    : <span className="lesson-reference-unavailable">{unavailableMessage}</span>
-}
-
-export function ProgressView({ progress, registry = lessonRegistry, canResolveRoute, unavailableMessage }: {
-  progress: ProgressData
-  registry?: LessonRegistry
-  canResolveRoute: (route: Extract<AppRoute, { kind: 'feedback-id' | 'practice-id' }>) => boolean
-  unavailableMessage: string
-}) {
-  return <section className="progress-view" aria-labelledby="progress-summary-title">
-    <div className="progress-guidance" aria-labelledby="progress-summary-title">
-      <h2 id="progress-summary-title">記録の見方</h2>
-      <p>正答割合は正答回数 ÷ 回答回数です。分子と母数を表示し、同じ出題への再回答も回答回数に含めます。記録が少ない場合や繰り返し回答だけでは理解度を判断できません。</p>
-      <p>教材の閲覧履歴は保存していないため、「演習記録なし」は未学習を意味しません。復習訪問は教材への移動記録で、復習完了や理解の証拠ではありません。後の正答や訪問があっても過去の誤答候補は残ります。</p>
-    </div>
-
-    <section aria-labelledby="progress-lessons-title">
-      <h2 id="progress-lessons-title">単元ごとの記録</h2>
-      <div className="progress-card-list">
-        {progress.lessons.map((item) => {
-          const lesson = registry.lessons.find((candidate) => candidate.lessonId === item.lessonId)
-          const title = lesson?.title ?? `${item.lessonId}（現在の教材に未登録）`
-          const hasActivity = item.questionInstanceCount > 0 || item.reviewCandidates.length > 0 || item.reviewVisits.length > 0
-          return <details className="progress-card" key={item.lessonId} open={hasActivity}>
-            <summary>
-              <strong>{title}</strong>{lesson?.availability === 'planned' && <span className="lesson-status">（未収録）</span>}
-              {' — '}{item.state} · 回答試行：{item.attemptCount}回 · 誤答からの復習候補：{item.reviewCandidates.length ? 'あり' : 'なし'}
-            </summary>
-            <div className="progress-card-detail">
-              <p>保存済み出題snapshot：{item.questionInstanceCount}件 · 回答済み出題ID：{item.answeredInstanceCount}件 · 未回答出題：{item.unansweredInstanceCount}件</p>
-              <p>回答試行：{item.attemptCount}回（正答 {item.correctCount}回・誤答 {item.incorrectCount}回）</p>
-              <p>正答割合：{item.correctRate === null ? '回答記録なし' : `${item.correctCount} / ${item.attemptCount}回（${(item.correctRate * 100).toFixed(1)}%）`}</p>
-              <p>最終回答：{formatLocalDate(item.lastAttemptAt)}{item.daysSinceLastAttempt === null ? '' : item.hasFutureAttempt
-                ? ' · 経過日数 0日'
-                : ` · ${item.daysSinceLastAttempt}日前`}</p>
-              {item.hasFutureAttempt && <p className="progress-clock-note">記録日時が端末時刻より未来です（端末時計のずれの可能性があります）。</p>}
-
-              <section className="progress-subsection" aria-label={`${title}の誤答候補`}>
-                <h3>過去の誤答からの復習候補</h3>
-                {item.reviewCandidates.length === 0 ? <p>候補の記録はありません。</p> : <ul>
-                  {item.reviewCandidates.map((candidate) => <li key={candidate.reference}>
-                    <p>復習先：<LessonReference targetRef={candidate.reference} intent="normal" registry={registry} /></p>
-                    <p>この節を指定した誤答：{candidate.attemptCount}回 · 最終誤答：{formatLocalDate(candidate.latestAttemptAt)}</p>
-                    {candidate.crossUnitAttemptCount > 0 && <p>別単元に属する出題の誤答{candidate.crossUnitAttemptCount}件からも、この教材が復習先に指定されています。</p>}
-                    <p>復習先への総訪問：{candidate.visitCount}回（最終 {formatLocalDate(candidate.lastVisitedAt)}） · 代表誤答からの訪問：{candidate.representativeVisitCount}回（最終 {formatLocalDate(candidate.representativeLastVisitedAt)}）</p>
-                    <p><SavedProgressLink route={{ kind: 'feedback-id', attemptId: candidate.attemptId }} canResolveRoute={canResolveRoute} unavailableMessage={unavailableMessage}>誤答と復習先を見る</SavedProgressLink></p>
-                    <p><SavedProgressLink route={{ kind: 'practice-id', instanceId: candidate.instanceId }} canResolveRoute={canResolveRoute} unavailableMessage={unavailableMessage}>同じ出題へ戻る</SavedProgressLink></p>
-                  </li>)}
-                </ul>}
-              </section>
-
-              {item.reviewVisits.length > 0 && <section className="progress-subsection" aria-label={`${title}への復習訪問`}>
-                <h3>記録された復習先への訪問</h3>
-                <ul>{item.reviewVisits.map((visit) => <li key={visit.reference}>
-                  <LessonReference targetRef={visit.reference} intent="normal" registry={registry} />
-                  {' · 総訪問：'}{visit.visitCount}回（最終 {formatLocalDate(visit.lastVisitedAt)}）
-                </li>)}</ul>
-              </section>}
-            </div>
-          </details>
-        })}
-      </div>
-    </section>
-
-    {progress.unavailableReferences.length > 0 && <section aria-labelledby="progress-unavailable-title">
-      <h2 id="progress-unavailable-title">現在の教材にない参照</h2>
-      <p>保存時の参照を残しています。教材未登録・未収録・存在しない節は開けません。</p>
-      <ul>{progress.unavailableReferences.map((item) => <li key={item.reference}>
-        {item.status === 'invalid-reference'
-          ? `${item.reference}（参照形式を確認できません）`
-          : <LessonReference targetRef={item.reference} intent="normal" registry={registry} />}
-      </li>)}</ul>
-    </section>}
-  </section>
-}
-
 export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, registry = lessonRegistry }: {
   lesson: IncludedLessonDefinition
   sectionId: string | null
@@ -384,8 +294,6 @@ export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, regis
       </li>)}</ul>
     </nav>
     <ReferenceGroups lesson={lesson} currentRef={currentRef} registry={registry} />
-    {availablePracticeQuestions().some((question) => lesson.questionIds.includes(question.questionId))
-      ? <p className="lesson-actions"><a href="#/practice" data-nav-intent="normal">利用できる演習問題を選ぶ</a></p>
-      : <p className="lesson-actions">この単元の演習は準備中です。</p>}
+    <p className="lesson-actions">この単元の演習は準備中です。</p>
   </section>
 }

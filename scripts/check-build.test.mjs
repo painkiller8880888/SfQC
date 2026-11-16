@@ -9,6 +9,8 @@ test('check-build rejects development-only JavaScript and CSS markers', async ()
   const fixtureDirectory = await mkdtemp(fileURLToPath(new URL('../dist/assets/.check-build-', import.meta.url)))
   let stylesheetPath
   let originalStylesheet
+  const previewDirectory = fileURLToPath(new URL('../dist/preview', import.meta.url))
+  let previewDirectoryCreated = false
 
   try {
     const distDirectory = fileURLToPath(new URL('../dist', import.meta.url))
@@ -43,8 +45,18 @@ test('check-build rejects development-only JavaScript and CSS markers', async ()
       assert.notEqual(cssResult.status, 0)
       assert.match(cssResult.stderr, /production CSS must not include development-only comparison preview styles/u)
     }
+
+    await writeFile(join(nestedDirectory, 'preview.css'), 'safe')
+    await mkdir(previewDirectory)
+    previewDirectoryCreated = true
+    const previewResult = spawnSync(process.execPath, [fileURLToPath(new URL('./check-build.mjs', import.meta.url))], {
+      encoding: 'utf8',
+    })
+    assert.notEqual(previewResult.status, 0)
+    assert.match(previewResult.stderr, /retired comparison preview build must not be published/u)
   } finally {
     if (stylesheetPath && originalStylesheet !== undefined) await writeFile(stylesheetPath, originalStylesheet)
+    if (previewDirectoryCreated) await rm(previewDirectory, { recursive: true, force: true })
     await rm(fixtureDirectory, { recursive: true, force: true })
   }
 })

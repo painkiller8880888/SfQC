@@ -1,17 +1,15 @@
 import type { AppRoute } from './resolve-screen.mjs'
 
-export const ROUTE_HISTORY_VERSION: 1
+export const ROUTE_HISTORY_VERSION: 2
 
 export type RouteHistoryFrame = {
   routeHash: string
   route: AppRoute
-  draft: string
   scrollY: number
-  resumeAttemptId: string | null
 }
 
 export type RouteHistoryState = RouteHistoryFrame & {
-  version: 1
+  version: 2
   entryId: string
   returnStack: RouteHistoryFrame[]
 }
@@ -20,17 +18,17 @@ export function validateRouteHistoryState(value: unknown, expectedHash: string):
 export function createRouteHistoryState(
   route: AppRoute,
   routeHash: string,
-  options?: Partial<Pick<RouteHistoryState, 'entryId' | 'draft' | 'scrollY' | 'resumeAttemptId' | 'returnStack'>>,
+  options?: Partial<Pick<RouteHistoryState, 'entryId' | 'scrollY' | 'returnStack'>>,
 ): RouteHistoryState
-export type NavigationIntent = 'normal' | 'review' | 'section' | 'resume' | 'return'
+export type NavigationIntent = 'normal' | 'review' | 'section' | 'return'
 export function navigateRouteHistory(
   state: RouteHistoryState,
   route: AppRoute,
   routeHash: string,
   intent?: NavigationIntent,
-  options?: { entryId?: string; attemptId?: string; answer?: string },
+  options?: { entryId?: string },
 ): RouteHistoryState | null
 export function updateRouteHistoryState(
   state: RouteHistoryState,
-  patch: Partial<Pick<RouteHistoryState, 'draft' | 'scrollY'>>,
+  patch: Partial<Pick<RouteHistoryState, 'scrollY'>>,
 ): RouteHistoryState

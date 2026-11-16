@@ -4,13 +4,9 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
-import { questionRegistry } from '../src/question-registry.mjs'
-import { deriveProgress } from '../src/progress-data.mjs'
 import { deriveCourseProgress } from '../src/course-progress.mjs'
-import { gradeQuestionAnswer } from '../src/question-grading.mjs'
 import { createInitialManualProgress } from '../src/manual-progress.mjs'
 import { createMapPocGraph } from '../src/map-poc-graph.mjs'
-import { fixedInstance } from './question-contract.fixture.mjs'
 
 test('registry-driven map, references, lesson blocks, and app routes render only available lessons', async () => {
   const server = await createServer({
@@ -20,9 +16,8 @@ test('registry-driven map, references, lesson blocks, and app routes render only
   })
   const previousWindow = globalThis.window
   try {
-    const { LessonDetailCard, LessonMap, LessonReference, LessonRouteContent, ProgressView, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
+    const { LessonDetailCard, LessonMap, LessonReference, LessonRouteContent, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
     const render = (component, props = {}) => renderToStaticMarkup(createElement(component, props))
-    const emptyData = { schemaVersion: 2, questionInstances: [], answerAttempts: [], reviewEvents: [] }
     const emptyProgress = deriveCourseProgress(null, { schemaVersion: 1, records: [] }, lessonRegistry)
     const map = render(LessonMap, { progress: emptyProgress })
     const included = lessonRegistry.lessons.filter((lesson) => lesson.availability === 'included')
@@ -55,49 +50,11 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     })
     assert.equal(resolveLessonRef('math-algebra-sigma').sectionId, null)
 
-    const fixedContent = fixedInstance.questionDefinitionSnapshot.content
-    const wrongAnswer = fixedContent.choices.find((choice) => choice.id !== fixedContent.correctAnswer).id
-    const attempt = {
-      attemptId: 'progress-ui-attempt',
-      instanceId: fixedInstance.instanceId,
-      answer: wrongAnswer,
-      gradingResult: gradeQuestionAnswer(fixedInstance, wrongAnswer),
-      attemptedAt: '2026-10-26T00:00:00.000Z',
-    }
-    const progress = deriveProgress({
-      ...emptyData,
-      questionInstances: [fixedInstance],
-      answerAttempts: [attempt],
-      reviewEvents: [{
-        reviewEventId: 'progress-ui-review',
-        sourceAttemptId: attempt.attemptId,
-        targetRef: 'math-algebra-sigma#sigma',
-        reviewedAt: '2026-10-26T01:00:00.000Z',
-      }],
-    }, lessonRegistry, Date.parse('2026-10-27T00:00:00.000Z'))
     const courseProgress = deriveCourseProgress(null, { schemaVersion: 1, records: [
       { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-10-26T00:00:00.000Z' },
     ] }, lessonRegistry)
     const progressMap = render(LessonMap, { progress: courseProgress })
     assert.match(progressMap, /回答試行：1回 · 正答率 0%/u)
-    const progressView = render(ProgressView, {
-      progress,
-      canResolveRoute: () => true,
-      unavailableMessage: '保存IDを開けません。',
-    })
-    assert.match(progressView, /回答試行：1回（正答 0回・誤答 1回）/u)
-    assert.match(progressView, /href="#\/feedback\/progress-ui-attempt" data-nav-intent="normal">誤答と復習先を見る/u)
-    assert.match(progressView, /href="#\/practice\/attempt-question-1" data-nav-intent="normal">同じ出題へ戻る/u)
-    assert.match(progressView, /href="#\/lesson\/math-algebra-sigma\/sigma" data-nav-intent="normal"/u)
-    assert.match(progressView, /href="#\/course\/descriptive-statistics\/lesson\/variance" data-nav-intent="normal"/u)
-    assert.match(progressView, /記録された復習先への訪問/u)
-    const failedRouteProgress = render(ProgressView, {
-      progress,
-      canResolveRoute: () => false,
-      unavailableMessage: '保存形式の移行に失敗したため、この保存IDは開けません。',
-    })
-    assert.doesNotMatch(failedRouteProgress, /href="#\/(?:feedback|practice)\//u)
-    assert.match(failedRouteProgress, /保存形式の移行に失敗したため、この保存IDは開けません/u)
 
     const conditional = render(LessonReference, { targetRef: 'mean-inference#z' })
     assert.match(conditional, /未収録/u)
@@ -173,8 +130,6 @@ test('registry-driven map, references, lesson blocks, and app routes render only
 
     const mathBridge = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'math-powers-roots')
     assert.ok(mathBridge)
-    assert.equal(questionRegistry.some((question) => question.lessonRefs.some((reference) =>
-      reference === 'math-powers-roots' || reference.startsWith('math-powers-roots#'))), false)
     const mathBridgeRoute = render(LessonRouteContent, {
       lesson: mathBridge,
       sectionId: mathBridge.sections[0].sectionId,
@@ -184,7 +139,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.doesNotMatch(mathBridgeRoute, /href="#\/practice"/u)
 
     const formulaLesson = {
-      ...descriptive,
+      ...mathBridge,
       commonPrerequisites: [],
       conditionalPrerequisites: [],
       optionalReviews: [],
@@ -246,15 +201,19 @@ test('registry-driven map, references, lesson blocks, and app routes render only
 
     globalThis.window.location.hash = '#/practice'
     const retiredPracticeRoute = render(App)
-    assert.match(retiredPracticeRoute, /演習は学習マップから単元を選んで開いてください/u)
-    assert.doesNotMatch(retiredPracticeRoute, /href="#\/feedback"/u)
+    assert.match(retiredPracticeRoute, /画面が見つかりません/u)
+    assert.doesNotMatch(retiredPracticeRoute, /基本統計量の演習/u)
     globalThis.window.location.hash = '#/course/descriptive-statistics/practice'
     const coursePractice = render(App)
     assert.match(coursePractice, /基本統計量の演習/u)
     assert.match(coursePractice, /問1：平均と偏差/u)
-    globalThis.window.location.hash = '#/practice/missing-instance'
-    const missingPractice = render(App)
-    assert.doesNotMatch(missingPractice, /href="#\/feedback"/u)
+    for (const hash of [
+      '#/practice/missing-instance', '#/feedback', '#/feedback/missing-attempt',
+      '#/lesson/descriptive-statistics', '#/lesson/descriptive-statistics/variance',
+    ]) {
+      globalThis.window.location.hash = hash
+      assert.match(render(App), /画面が見つかりません/u, hash)
+    }
   } finally {
     if (previousWindow === undefined) delete globalThis.window
     else globalThis.window = previousWindow

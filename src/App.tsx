@@ -15,13 +15,8 @@ import {
   type RouteHistoryState,
 } from './route-history.mjs'
 import { exportLearningBackup, importLearningBackup, recheckLearningBackupImport, type LearningBackupImportResult } from './backup.mjs'
-import { LocalDataError, migrateLocalData, readLocalData, type LocalData } from './local-data.mjs'
-import { availablePracticeQuestions, createSimilarPractice, recordReviewEvent, submitPracticeAnswer } from './practice-actions.mjs'
-import { PracticeQuestionView } from './practice-view'
-import type { ReadonlyQuestionInstance } from './question-contract.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
-import { LessonMap, LessonReference, LessonRouteContent, lessonRefLabel } from './lesson-view'
-import { DescriptiveStatisticsPreview } from './descriptive-statistics-preview'
+import { LessonMap, LessonRouteContent } from './lesson-view'
 import { DescriptiveStatisticsExercisePreview } from './descriptive-statistics-exercise-preview'
 import { DescriptiveStatisticsCourse } from './descriptive-statistics-course'
 import { CourseProgressView } from './course-progress-view'
@@ -35,11 +30,9 @@ import { readLearningState, saveLearningState, type LearningState, type Learning
 import { appendPracticeResult, readPracticeResults, recheckPracticeResult, type PracticeResultSaveResult, type PracticeResultsReadResult } from './practice-results.mjs'
 import {
   applyRouteNavigationEffect,
-  refreshRouteView,
   resolveRouteView,
   type NavigationCause,
   type RouteView,
-  type StoredLocalData,
 } from './route-view.mjs'
 
 const navigation = [
@@ -53,7 +46,6 @@ type ThemePreference = 'system' | Theme
 
 const themeStorageKey = 'sfqc:theme-preference'
 const themeMediaQuery = '(prefers-color-scheme: dark)'
-const comparisonPreviewEnabled = import.meta.env.DEV || import.meta.env.MODE === 'sfqc-preview'
 
 type PendingJudgement = {
   id: string
@@ -149,18 +141,9 @@ const screens: Record<ScreenKind, {
   },
   practice: {
     title: '演習',
-    description: '保存された出題に回答し、結果を確認する画面です。',
-    placeholder: '問題を選んでください。',
+    description: '基本統計量の理解を確かめるコース演習です。',
+    placeholder: '学習マップから単元の演習を開いてください。',
     links: [],
-  },
-  feedback: {
-    title: '解答・フィードバック',
-    description: '解答の根拠を確認し、必要な内容を復習する画面です。',
-    placeholder: '採点結果・誤答理由・復習先の表示と類題の選出は準備中です。',
-    links: [
-      { label: '復習先の単元解説へ', href: '#/lesson' },
-      { label: '再演習へ', href: '#/practice' },
-    ],
   },
   progress: {
     title: '進捗',
@@ -211,17 +194,6 @@ function App() {
   const [view, setView] = useState(() => resolveRouteView(
     window.location.hash, window.history.state, 'initial', 0,
   ))
-  const previewKind = new URLSearchParams(window.location.search).get('sfqc-preview')
-  const isDescriptiveStatisticsPreview = comparisonPreviewEnabled
-    && previewKind === 'descriptive-statistics'
-    && view.route.kind === 'lesson-id'
-    && view.route.lessonId === 'descriptive-statistics'
-    && view.route.sectionId === null
-  const isDescriptiveStatisticsExercisePreview = comparisonPreviewEnabled
-    && previewKind === 'descriptive-statistics-exercises'
-    && view.route.kind === 'practice'
-  const isComparisonPreview = isDescriptiveStatisticsPreview || isDescriptiveStatisticsExercisePreview
-  const [storedData, setStoredData] = useState<StoredLocalData>(() => view.storedData)
   const [mapStateRead, setMapStateRead] = useState(() => readLearningState(lessonRegistry))
   const [pendingLearningWrite, setPendingLearningWrite] = useState<PendingLearningWrite | null>(null)
   const initialMapState = isReadableLearningState(mapStateRead) ? mapStateRead.state : emptyLearningState()
@@ -232,11 +204,7 @@ function App() {
       ? mapStateRead.error.message : ''
   const [mapStateMessage, setMapStateMessage] = useState(initialMapMessage)
   const [dataMessage, setDataMessage] = useState('')
-  const [reviewMessage, setReviewMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  const [practiceError, setPracticeError] = useState('')
-  const [practiceBusy, setPracticeBusy] = useState(false)
-  const [pendingPracticeNavigation, setPendingPracticeNavigation] = useState<{ route: AppRoute; message: string; sourceEntryId: string } | null>(null)
   const [mapView, setMapView] = useState<'graph' | 'list'>('graph')
   const [mapAuthorMode, setMapAuthorMode] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -256,7 +224,6 @@ function App() {
   const navigationIdRef = useRef(0)
   const lastHandledRef = useRef('')
   const busyRef = useRef(false)
-  const practiceBusyRef = useRef(false)
   const [practiceResultsRead, setPracticeResultsRead] = useState(() => readPracticeResults())
   const practiceResultsReadRef = useRef(practiceResultsRead)
   const expectedPracticeRawRef = useRef(isReadablePracticeResults(practiceResultsRead) ? practiceResultsRead.raw : null)
@@ -538,20 +505,11 @@ function App() {
     ? view.resolved.section?.title ?? view.resolved.lesson.title
     : view.resolved.status === 'course-practice'
       ? view.resolved.lesson.title + 'の演習'
-    : view.resolved.status === 'practice'
-      ? view.resolved.instance.questionId + 'の演習'
-      : view.resolved.status === 'feedback'
-        ? '解答結果'
-        : current.title
-  const pageTitle = isDescriptiveStatisticsExercisePreview ? '確認問題'
-    : isDescriptiveStatisticsPreview ? '基本統計量' : entityTitle
+      : current.title
+  const pageTitle = entityTitle
   const documentTitle = screen === 'lesson' && view.resolved.status === 'lesson' && view.resolved.section
     ? view.resolved.section.title + ' | ' + view.resolved.lesson.title
     : pageTitle
-  const storageError = storedData.status === 'invalid' || storedData.status === 'unreadable'
-  const storageIssue = storageError || storedData.status === 'migration-failed'
-    ? storedData.error
-    : null
   const mapStateUnavailable = mapStateRead.status === 'invalid' || mapStateRead.status === 'unsupported' || mapStateRead.status === 'unreadable'
   const practiceResultsUnavailable = practiceResultsRead.status === 'invalid' || practiceResultsRead.status === 'unsupported' || practiceResultsRead.status === 'unreadable'
   const canExportCombined = isReadableLearningState(mapStateRead) && isReadablePracticeResults(practiceResultsRead)
@@ -569,18 +527,14 @@ function App() {
       ? '手動進捗の保存状態を確認できません。画面には最後に確認した値を表示し、編集と保存を停止しています。'
       : '手動進捗の保存状態を確認できません。画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'
     : '手動完了とマップ配置はこのブラウザーに保存され、演習結果とは別に集計されます。バックアップに含まれます。'
-  const practiceQuestions = availablePracticeQuestions()
   const manualCompletedCount = Object.values(manualProgress).filter((item) => item.status === 'completed').length
   const progress = useMemo(() => {
     if (!isReadableLearningState(mapStateRead) || !isReadablePracticeResults(practiceResultsRead)) return null
     return deriveCourseProgress(mapStateRead.state, practiceResultsRead.results, lessonRegistry)
   }, [mapStateRead, practiceResultsRead])
   const publishRouteView = (next: RouteView) => {
-    setPendingPracticeNavigation((pending) =>
-      pending?.sourceEntryId === next.historyState.entryId ? pending : null)
     viewRef.current = next
     setView(next)
-    setStoredData(next.storedData)
   }
 
   const resolveCurrentLocation = (cause: NavigationCause, rawState: unknown, historyWarning = false) => {
@@ -598,7 +552,7 @@ function App() {
   }
 
   const replaceCurrentEntry = (
-    patch: Partial<Pick<RouteHistoryState, 'draft' | 'scrollY'>>,
+    patch: Partial<Pick<RouteHistoryState, 'scrollY'>>,
     publish = true,
   ) => {
     const hash = window.location.hash
@@ -627,31 +581,9 @@ function App() {
     const currentView = viewRef.current
     const currentState = validateRouteHistoryState(window.history.state, window.location.hash)
       ?? currentView.historyState
-    const sourceFrame = currentState.returnStack.find((frame) => frame.route.kind === 'feedback-id')
-    const sourceAttemptRoute = sourceFrame?.route.kind === 'feedback-id' ? sourceFrame.route : null
-    const savedSourceAttempt = sourceAttemptRoute && currentView.storedData.status === 'ok'
-      ? currentView.storedData.data.answerAttempts.find((attempt) => attempt.attemptId === sourceAttemptRoute.attemptId)
-      : null
-    const sourceAttemptId = intent !== 'review' ? null
-      : currentView.resolved.status === 'feedback'
-        ? currentView.resolved.attempt.gradingResult.isCorrect ? null : currentView.resolved.attempt.attemptId
-        : savedSourceAttempt && !savedSourceAttempt.gradingResult.isCorrect ? savedSourceAttempt.attemptId : null
-    let options: { attemptId?: string; answer?: string } = {}
-    if (intent === 'resume') {
-      if (currentView.resolved.status !== 'feedback'
-        || route.kind !== 'practice-id'
-        || route.instanceId !== currentView.resolved.attempt.instanceId) {
-        setDataMessage('保存済み解答から同じ出題を再開できません。')
-        return false
-      }
-      options = {
-        attemptId: currentView.resolved.attempt.attemptId,
-        answer: currentView.resolved.attempt.answer,
-      }
-    }
     let nextState: RouteHistoryState | null
     try {
-      nextState = navigateRouteHistory(currentState, route, hash, intent, options)
+      nextState = navigateRouteHistory(currentState, route, hash, intent)
     } catch {
       setDataMessage('画面の復帰情報を作成できませんでした。現在の画面に留まっています。')
       return false
@@ -665,14 +597,6 @@ function App() {
     } catch {
       setDataMessage('ブラウザー履歴に復帰情報を保存できませんでした。現在の画面に留まっています。')
       return false
-    }
-    setReviewMessage('')
-    if (intent === 'review' && sourceAttemptId && route.kind === 'lesson-id' && !isComparisonPreview) {
-      try {
-        recordReviewEvent(route.lessonId + (route.sectionId ? '#' + route.sectionId : ''), sourceAttemptId)
-      } catch {
-        setReviewMessage('復習先には移動しましたが、誤答からの復習訪問を保存できませんでした。保存データを確認してください。')
-      }
     }
     lastHandledRef.current = hash + '\u0000' + nextState.entryId
     resolveCurrentLocation(intent, nextState)
@@ -691,7 +615,7 @@ function App() {
     if (url.origin !== window.location.origin || url.pathname !== window.location.pathname
       || url.search !== window.location.search) return
     const intent = anchor.dataset.navIntent as NavigationIntent
-    if (!['normal', 'review', 'section', 'resume', 'return'].includes(intent)) return
+    if (!['normal', 'review', 'section', 'return'].includes(intent)) return
     event.preventDefault()
     pushNavigation(resolveRoute(url.hash), url.hash, intent)
   }
@@ -737,101 +661,6 @@ function App() {
       busyRef.current = false
       setBusy(false)
     }
-  }
-
-  const refreshRouteWithData = (data: StoredLocalData) => {
-    const hash = window.location.hash
-    const currentView = viewRef.current
-    const state = validateRouteHistoryState(window.history.state, hash) ?? currentView.historyState
-    // A data-only refresh must not cancel the route's pending scroll effect.
-    const next = refreshRouteView(currentView, data, hash, state)
-    if (next.stateNeedsRepair) {
-      try {
-        window.history.replaceState(next.historyState, '', browserUrl(hash))
-      } catch {
-        next.historyWarning = true
-      }
-    }
-    publishRouteView(next)
-  }
-
-  const openSavedPracticeRoute = (saved: { data: LocalData; raw: string }, route: AppRoute, message: string) => {
-    refreshRouteWithData({ status: 'ok', raw: saved.raw, data: saved.data })
-    if (pushNavigation(route, routeToHash(route), 'normal')) {
-      setPendingPracticeNavigation(null)
-    } else {
-      setPendingPracticeNavigation({ route, message, sourceEntryId: viewRef.current.historyState.entryId })
-    }
-  }
-
-  const handlePracticeFailure = (error: unknown) => {
-    if (error instanceof LocalDataError && error.code === 'storage-changed') {
-      refreshRouteWithData(readLocalData())
-    }
-    setPracticeError(error instanceof Error ? error.message : '保存に失敗しました。')
-  }
-
-  const handleSimilarPractice = (instance: ReadonlyQuestionInstance) => {
-    if (practiceBusyRef.current) return
-    practiceBusyRef.current = true
-    setPracticeBusy(true)
-    setPracticeError('')
-    let saved = false
-    try {
-      const record = createSimilarPractice(instance)
-      saved = true
-      openSavedPracticeRoute(record, { kind: 'practice-id', instanceId: record.instance.instanceId },
-        '類題のsnapshotは保存済みですが、画面を開けませんでした。保存済みの出題を開いてください。')
-    } catch (error) {
-      handlePracticeFailure(error)
-    } finally {
-      if (!saved) {
-        practiceBusyRef.current = false
-        setPracticeBusy(false)
-      }
-    }
-  }
-
-  const handleSubmitPractice = (instance: ReadonlyQuestionInstance, answer: string) => {
-    if (practiceBusyRef.current || (
-      pendingPracticeNavigation?.sourceEntryId === viewRef.current.historyState.entryId
-      && pendingPracticeNavigation.route.kind === 'feedback-id'
-    )) return
-    practiceBusyRef.current = true
-    setPracticeBusy(true)
-    setPracticeError('')
-    let saved = false
-    try {
-      const result = submitPracticeAnswer(instance, answer)
-      if (result.status === 'invalid') {
-        const content = instance.questionDefinitionSnapshot.content
-        setPracticeError(result.reason === 'invalid-instance'
-          ? 'この出題snapshotを確認できません。データ管理画面で保存状態を確認してください。'
-          : content.format === 'single-choice'
-            ? answer === '' ? '選択肢を1つ選んでください。' : '利用できる選択肢を1つ選んでください。'
-            : answer.trim() === '' ? '数値を入力してください。' : '符号付き整数または小数の十進数で入力してください。')
-        return
-      }
-      saved = true
-      openSavedPracticeRoute(result, { kind: 'feedback-id', attemptId: result.attempt.attemptId },
-        '回答は保存済みですが、解答結果を開けませんでした。保存済みの結果を開いてください。')
-    } catch (error) {
-      handlePracticeFailure(error)
-    } finally {
-      if (!saved) {
-        practiceBusyRef.current = false
-        setPracticeBusy(false)
-      }
-    }
-  }
-
-  const handleRetryPracticeNavigation = () => {
-    if (!pendingPracticeNavigation || pendingPracticeNavigation.sourceEntryId !== viewRef.current.historyState.entryId) return
-    if (pushNavigation(
-      pendingPracticeNavigation.route,
-      routeToHash(pendingPracticeNavigation.route),
-      'normal',
-    )) setPendingPracticeNavigation(null)
   }
 
   const applyLearningBackupResult = (result: LearningBackupImportResult) => {
@@ -934,12 +763,6 @@ function App() {
   }
 
   useEffect(() => {
-    practiceBusyRef.current = false
-    setPracticeBusy(false)
-    setPracticeError('')
-  }, [view.navigationId])
-
-  useEffect(() => {
     const originalScrollRestoration = window.history.scrollRestoration
     window.history.scrollRestoration = 'manual'
     const initial = viewRef.current
@@ -955,7 +778,6 @@ function App() {
     lastHandledRef.current = initial.historyState.routeHash + '\u0000' + initial.historyState.entryId
 
     const handleLocationChange = () => {
-      setReviewMessage('')
       const hash = window.location.hash
       const rawState = window.history.state
       const structuralState = validateRouteHistoryState(rawState, hash)
@@ -1015,30 +837,6 @@ function App() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [view.navigationId])
 
-  useEffect(() => {
-    if (isComparisonPreview) return
-    if (storedData.status !== 'legacy') return
-    try {
-      const result = migrateLocalData(storedData.raw, storedData.data)
-      const migrated = { status: 'ok' as const, raw: result.raw, data: result.data }
-      refreshRouteWithData(migrated)
-      setDataMessage('保存データをschemaVersion 2へ移行しました。')
-    } catch (error) {
-      if (error instanceof LocalDataError && error.code === 'storage-changed') {
-        refreshRouteWithData(readLocalData())
-        return
-      }
-      const migrationError = error instanceof Error
-        ? error
-        : new Error('保存データの移行に失敗しました。元のデータはそのままです。')
-      const failed: StoredLocalData = {
-        status: 'migration-failed', raw: storedData.raw, data: storedData.data, error: migrationError,
-      }
-      refreshRouteWithData(failed)
-      setDataMessage(migrationError.message + ' データ管理画面からバックアップを保存できます。')
-    }
-  }, [storedData, isComparisonPreview])
-
   const changeMapView = (next: 'graph' | 'list') => {
     const focusedContent = mapView === 'graph' ? mapGraphContentRef.current : mapListContentRef.current
     const returnFocus = focusedContent?.contains(document.activeElement) ?? false
@@ -1063,11 +861,6 @@ function App() {
   }
 
   const routeMessages = <>
-    {storageIssue && (
-      <p className="storage-alert" role="alert">
-        {storageIssue.message} 保存データを空として扱ったり、自動で上書きしたりしません。データ管理画面で確認してください。
-      </p>
-    )}
     {mapStateUnavailable && <p className="storage-alert" role="alert">
       {mapStateMessage || '手動進捗を確認できません。'} {mapStateConfirmed
         ? '画面には最後に確認した値を表示し、編集と保存を停止しています。'
@@ -1097,30 +890,13 @@ function App() {
     </section>}
     {view.historyWarning && (
       <p className="storage-alert" role="status">
-        このURLの復帰情報は利用できないため、保存データとURLだけで画面を開きました。読書位置や復習経路の一部は復元できないことがあります。
+        このURLの復帰情報は利用できないため、URLから画面を再構築しました。読書位置や復習経路の一部は復元できないことがあります。
       </p>
-    )}
-    {reviewMessage && <p className="storage-alert" role="status" aria-live="polite">{reviewMessage}</p>}
-    {pendingPracticeNavigation && (
-      <section className="practice-recovery" role="status" aria-live="polite">
-        <p>{pendingPracticeNavigation.message}</p>
-        <button type="button" onClick={handleRetryPracticeNavigation}>保存済みの画面を開く</button>
-      </section>
     )}
   </>
 
   const renderLessonRoute = () => {
     if (view.route.kind !== 'lesson-id') return null
-    if (isDescriptiveStatisticsPreview) {
-      const lesson = lessonRegistry.lessons.find((item) => item.lessonId === 'descriptive-statistics')
-      if (!lesson || lesson.availability !== 'included') return null
-      return <DescriptiveStatisticsPreview
-        sections={lesson.sections}
-        currentLessonHref={`${window.location.pathname}#/lesson/descriptive-statistics`}
-        practicePreviewHref={`${window.location.pathname}?sfqc-preview=descriptive-statistics-exercises#/practice`}
-      />
-    }
-    if (view.resolved.status === 'data-error') return <RouteProblem message="保存データに問題があるため、このID付き画面を解決できません。データ管理画面で保存状態を確認してください。" />
     if (view.resolved.status === 'unknown-id') {
       return <RouteProblem message={view.resolved.target === 'section'
         ? 'この単元に指定された節はありません。別の節を選ぶか、学習マップへ戻ってください。'
@@ -1136,18 +912,6 @@ function App() {
         sectionId={view.route.sectionId}
         sectionHeadingRef={sectionHeadingRef}
       />
-      {comparisonPreviewEnabled && view.resolved.lesson.lessonId === 'descriptive-statistics'
-        && view.route.sectionId === null && <p className="lesson-actions">
-          <a href={`${window.location.pathname}?sfqc-preview=descriptive-statistics#/lesson/descriptive-statistics`}>
-            比較用モックを開く
-          </a>
-        </p>}
-      {comparisonPreviewEnabled && view.resolved.lesson.lessonId === 'descriptive-statistics'
-        && view.route.sectionId === null && <p className="lesson-actions">
-          <a href={`${window.location.pathname}?sfqc-preview=descriptive-statistics-exercises#/practice`}>
-            演習の比較用モックを開く
-          </a>
-        </p>}
     </>
   }
 
@@ -1173,70 +937,6 @@ function App() {
       currentLessonHref={routeToHash({ kind: 'course-lesson', courseId: view.route.courseId, sectionId: 'mean' })}
       onFirstGrade={handleFirstGrade}
     />
-  }
-
-  const renderPracticeRoute = () => {
-    if (view.route.kind !== 'practice-id') return null
-    if (view.resolved.status === 'data-error') return <RouteProblem message="保存データに問題があるため、出題IDを解決できません。データ管理画面で保存状態を確認してください。" />
-    if (view.resolved.status === 'unknown-id') {
-      return <RouteProblem message="指定された出題IDは保存データにありません。別の問題へ自動で置き換えていません。学習マップから利用できる内容を選んでください。" />
-    }
-    if (view.resolved.status !== 'practice') return null
-    const { instance } = view.resolved
-    const canCreateSimilar = instance.kind === 'generated' && practiceQuestions.some(
-      (question) => question.kind === 'generated' && question.questionId === instance.questionId,
-    )
-    return (
-      <PracticeQuestionView
-        instance={instance}
-        entryId={view.historyState.entryId}
-        draft={view.historyState.draft}
-        error={practiceError}
-        busy={practiceBusy}
-        canCreateSimilar={canCreateSimilar}
-        similarUnavailableMessage="現在の問題定義が利用できないため、類題を作成できません。"
-        onDraftChange={(draft) => {
-          setPracticeError('')
-          return replaceCurrentEntry({ draft })
-        }}
-        onSubmit={(answer) => handleSubmitPractice(instance, answer)}
-        onSimilar={() => handleSimilarPractice(instance)}
-      />
-    )
-  }
-
-  const renderFeedbackRoute = () => {
-    if (view.route.kind !== 'feedback-id') return null
-    if (view.resolved.status === 'data-error') return <RouteProblem message="保存データに問題があるため、解答IDを解決できません。データ管理画面で保存状態を確認してください。" />
-    if (view.resolved.status === 'unknown-id') {
-      return <RouteProblem message="指定された解答IDは保存データにありません。新しい解答や別の問題へ置き換えていません。" />
-    }
-    if (view.resolved.status !== 'feedback') return null
-    const { attempt, instance } = view.resolved
-    const feedback = attempt.gradingResult.feedback
-    const practiceRoute: AppRoute = { kind: 'practice-id', instanceId: instance.instanceId }
-    return (
-      <section className="route-summary" aria-labelledby="feedback-title">
-        <p>解答ID：<code>{attempt.attemptId}</code></p>
-        <p>出題ID：<code>{instance.instanceId}</code></p>
-        <h2 id="feedback-title">解答結果</h2>
-        <p>あなたの回答：{attempt.answer}</p>
-        <p>{attempt.gradingResult.isCorrect ? '正解です。' : '不正解です。'}</p>
-        <p>{instance.questionDefinitionSnapshot.content.solution}</p>
-        {feedback && (
-          <div className="reference-group">
-            <h3>解説</h3>
-            <p>{feedback.explanation}</p>
-            <LessonReference
-              targetRef={feedback.lessonRef}
-              label={lessonRefLabel(feedback.lessonRef)}
-              intent="review"
-            />
-          </div>
-        )}
-        <p><InternalLink route={practiceRoute} intent="resume">同じ出題を再開する</InternalLink></p>
-      </section>
-    )
   }
 
   return (
@@ -1278,7 +978,8 @@ function App() {
       {screen === 'map' ? (
         <main className="map-workspace" onKeyDownCapture={handleMapKeyDownCapture}>
           <div className="map-route-messages" tabIndex={mapAuthorMode && (
-            storageIssue || mapStateUnavailable || mapStateMessage || view.historyWarning || reviewMessage || pendingPracticeNavigation
+            mapStateUnavailable || mapStateMessage || view.historyWarning || pendingLearningWrite
+            || practiceResultsUnavailable || pendingJudgements.length > 0 || pendingBackupImport?.pending
           ) ? 0 : undefined}>{routeMessages}</div>
           {view.historyState.returnStack.length > 0 && (
             <nav className="return-navigation map-return-navigation" aria-label="復習から戻る">
@@ -1339,16 +1040,11 @@ function App() {
           )}
         </main>
       ) : (
-      <main className={`page-content${isComparisonPreview ? ' page-content-wide-preview' : ''}`}>
+      <main className="page-content">
         {routeMessages}
-        <article className={`screen${isComparisonPreview ? ' screen-wide-preview' : ''}`}>
-          {isComparisonPreview && <p className="description ds-eyebrow">SfQC · QC検定2級に向けた統計の基礎</p>}
+        <article className="screen">
           <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
-          {isComparisonPreview
-            ? <p className="description ds-title-subtitle">{isDescriptiveStatisticsPreview
-              ? <em>平均が同じでも、品質は同じとは限らない</em>
-              : '平均、偏差、分散、標準偏差の理解を確かめる問題です。'}</p>
-            : <p className="description">{current.description}</p>}
+          <p className="description">{current.description}</p>
 
           {screen === 'data' ? (
             <section className="data-panel" aria-labelledby="data-title">
@@ -1387,14 +1083,8 @@ function App() {
             </section>
           ) : screen === 'practice' && view.route.kind === 'course-practice' ? (
             renderCoursePracticeRoute()
-          ) : screen === 'practice' && view.route.kind === 'practice-id' ? (
-            renderPracticeRoute()
-          ) : screen === 'practice' && isDescriptiveStatisticsExercisePreview ? (
-            <DescriptiveStatisticsExercisePreview currentLessonHref={routeToHash({ kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'mean' })} />
           ) : screen === 'practice' ? (
             <RouteProblem message="演習は学習マップから単元を選んで開いてください。" />
-          ) : screen === 'feedback' && view.route.kind === 'feedback-id' ? (
-            renderFeedbackRoute()
           ) : screen === 'progress' ? (
             progress
               ? <CourseProgressView progress={progress} />

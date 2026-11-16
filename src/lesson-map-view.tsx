@@ -20,11 +20,11 @@ import { createMapPocGraph, type MapPocNode } from './map-poc-graph.mjs'
 import { lessonDomainColors, lessonDomains, type LessonDomain } from './lesson-contract.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import type { ManualProgressCommand, ManualProgressState } from './manual-progress.mjs'
-import type { MapState } from './map-state.mjs'
+import type { LearningState } from './learning-state.mjs'
 import type { CourseProgress } from './course-progress.mjs'
 import { LessonDetailCard } from './lesson-view'
 
-export type Positions = MapState['positions']
+export type Positions = LearningState['positions']
 export type LayoutSaveResult = { ok: true; positions: Positions } | { ok: false; positions: Positions }
 
 export function applyMapNodeChanges(nodes: MapPocNode[], changes: NodeChange<MapPocNode>[]) {

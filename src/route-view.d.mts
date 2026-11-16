@@ -1,17 +1,12 @@
-import type { LocalData, LocalDataReadResult } from './local-data.mjs'
 import type { RouteDataResult } from './route-data.mjs'
 import type { AppRoute } from './resolve-screen.mjs'
 import type { RouteHistoryState } from './route-history.mjs'
 
-export type StoredLocalData = LocalDataReadResult
-  | { status: 'migration-failed'; raw: string; data: LocalData; error: Error }
-
-export type NavigationCause = 'initial' | 'normal' | 'review' | 'section' | 'resume' | 'return' | 'restore' | 'refresh'
+export type NavigationCause = 'initial' | 'normal' | 'review' | 'section' | 'return' | 'restore'
 
 export type RouteView = {
   route: AppRoute
   historyState: RouteHistoryState
-  storedData: StoredLocalData
   resolved: RouteDataResult
   navigation: NavigationCause
   navigationId: number
@@ -30,14 +25,6 @@ export function resolveRouteView(
   rawState: unknown,
   navigationCause: NavigationCause,
   navigationId: number,
-  storedData?: StoredLocalData,
-): RouteView
-
-export function refreshRouteView(
-  currentView: RouteView,
-  storedData: StoredLocalData,
-  hash?: string,
-  rawState?: unknown,
 ): RouteView
 
 export function applyRouteNavigationEffect(
