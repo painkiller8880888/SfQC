@@ -55,7 +55,7 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
   const firstAuthorControlRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
-  const selectedButtonLessonIdRef = useRef<string | null>(null)
+  const selectedButtonLessonIdRef = useRef<string | null>(initialSelectedLessonId)
   const focusFrameRef = useRef<number | null>(null)
 
   const selectedLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === selectedLessonId)

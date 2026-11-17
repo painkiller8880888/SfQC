@@ -714,14 +714,23 @@ test('integrated learning map renders all registry lessons in five categories wi
     await click(buttonFor(app.host, 'マップ表示'))
     assert.equal(app.dom.window.location.hash, '#/map')
     assert.equal(app.host.querySelector(`[data-lesson-id="${selectedId}"]`).getAttribute('aria-pressed'), 'true')
+    const remountedTile = app.host.querySelector(`[data-lesson-id="${selectedId}"]`)
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
+    assert.equal(app.dom.window.document.activeElement, remountedTile,
+      'closing detail after switching views restores focus to the selected tile')
 
     app.host.querySelector('.map-grid-scroll').scrollTop = 220
+    await click(remountedTile)
     await click(linkFor(app.host, '解説を読む'))
     assert.equal(app.dom.window.location.hash, '#/course/descriptive-statistics/lesson/mean')
     assert.equal(app.dom.window.history.state.scrollY, 0, 'the grid scroll stays separate from route window scroll')
     await waitForHistory(app.dom.window, 'back')
     assert.equal(app.dom.window.location.hash, '#/map')
     assert.equal(app.dom.window.history.state.scrollY, 0)
+    const routeRemountedTile = app.host.querySelector(`[data-lesson-id="${selectedId}"]`)
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
+    assert.equal(app.dom.window.document.activeElement, routeRemountedTile,
+      'closing detail after returning from a lesson restores focus to the selected tile')
   } finally {
     await app.close()
   }
