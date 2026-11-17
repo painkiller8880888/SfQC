@@ -10,6 +10,8 @@ GitHub Pagesで公開し、学習・採点・進捗保存をブラウザ内で�
 
 [プロジェクト基本方針（Draft v0.1）](docs/PROJECT_CHARTER_DRAFT.md)
 
+スクリーンリーダー対応の現行範囲と、引き続き対応するキーボード操作・フォーカス要件は[AGENTS.md](AGENTS.md)に定めています。
+
 ## 現行の作業と文書の優先順位
 
 現在の全体マップ再設計は[親Issue #101](https://github.com/painkiller8880888/SfQC/issues/101)と子Issue [#102](https://github.com/painkiller8880888/SfQC/issues/102)〜[#104](https://github.com/painkiller8880888/SfQC/issues/104)で追跡しています。各Issue本文と詳細計画コメントが目的・受入条件の正本です。#101の2026-11-17後続判断は、#43と[3段階の移行計画](docs/ISSUE_81_MIGRATION_PLAN.md)の前提表示、手動進捗保存、マップ/詳細の正答率表示に関する該当契約を置き換えます。基本統計量移行の完了状況と従来の契約は同計画を参照してください。既存契約と未決事項の背景は[比較モックの適用範囲と既存契約の確認記録](docs/MVP_DESIGN_DRAFT.md#mock-contract-snapshot)を参照してください。

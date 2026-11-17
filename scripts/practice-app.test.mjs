@@ -727,15 +727,35 @@ test('integrated learning map renders all registry lessons in five categories wi
   }
 })
 
-test('keyboard-style map selection focuses details and Escape restores tile focus', async () => {
+test('keyboard-style map selection restores tile focus below a sticky header', async () => {
   const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
   const { window } = app.dom
   try {
+    let pageScrollY = 50
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 240 })
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => pageScrollY })
+    window.scrollBy = ({ top }) => { pageScrollY += top }
+    const header = app.host.querySelector('.site-header')
+    header.style.position = 'sticky'
     const button = app.host.querySelector('[data-lesson-id="descriptive-statistics"]')
-    button.focus()
-    await act(async () => {
-      button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, detail: 0 }))
+    const originalGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect
+    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value() {
+        if (this === header) return { top: 0, right: 320, bottom: 52, left: 0, width: 320, height: 52 }
+        if (this === button) {
+          const top = 90 - pageScrollY
+          return { top, right: 300, bottom: top + 40, left: 0, width: 300, height: 40 }
+        }
+        if (this.matches('.lesson-detail-header h2')) {
+          const top = 150 - pageScrollY
+          return { top, right: 300, bottom: top + 24, left: 0, width: 300, height: 24 }
+        }
+        return originalGetBoundingClientRect.call(this)
+      },
     })
+    button.focus()
+    await act(async () => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, detail: 0 })))
     await settleEffects(window)
     const heading = app.host.querySelector('#lesson-detail-title-descriptive-statistics')
     assert.equal(button.getAttribute('aria-pressed'), 'true')
@@ -745,6 +765,50 @@ test('keyboard-style map selection focuses details and Escape restores tile focu
     assert.equal(event.defaultPrevented, true)
     assert.equal(button.getAttribute('aria-pressed'), 'false')
     assert.equal(window.document.activeElement, button)
+    const headerRect = header.getBoundingClientRect()
+    const buttonRect = button.getBoundingClientRect()
+    assert.ok(buttonRect.top >= headerRect.bottom, 'the restored tile is below the sticky header')
+    assert.ok(buttonRect.bottom <= window.innerHeight, 'the restored tile is inside the viewport')
+  } finally {
+    await app.close()
+  }
+})
+
+test('pointer selection scrolls a mobile detail heading into the viewport', async () => {
+  const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
+  const { window } = app.dom
+  try {
+    let pageScrollY = 0
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 })
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => pageScrollY })
+    window.scrollBy = ({ top }) => { pageScrollY += top }
+    const originalGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect
+    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value() {
+        if (this.matches('.lesson-detail-header')) {
+          const top = 1000 - pageScrollY
+          return { top, right: 300, bottom: top + 72, left: 0, width: 300, height: 72 }
+        }
+        if (this.matches('.lesson-detail-header h2')) {
+          const top = 1010 - pageScrollY
+          return { top, right: 300, bottom: top + 24, left: 0, width: 300, height: 24 }
+        }
+        return originalGetBoundingClientRect.call(this)
+      },
+    })
+    const button = app.host.querySelector('[data-lesson-id="descriptive-statistics"]')
+    await act(async () => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, detail: 1 })))
+    await settleEffects(window)
+
+    const heading = app.host.querySelector('#lesson-detail-title-descriptive-statistics')
+    const detailHeader = app.host.querySelector('.lesson-detail-header')
+    const rect = detailHeader.getBoundingClientRect()
+    assert.ok(rect.top >= 0, 'the mobile detail header is visible after pointer selection')
+    assert.ok(rect.bottom <= window.innerHeight, 'the mobile detail header is inside the viewport')
+    assert.ok(heading.getBoundingClientRect().top >= rect.top)
+    assert.notEqual(window.document.activeElement, heading, 'pointer selection does not move keyboard focus')
   } finally {
     await app.close()
   }
@@ -752,22 +816,32 @@ test('keyboard-style map selection focuses details and Escape restores tile focu
 
 test('development domain and color editor remains attached to the grid', async () => {
   const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
+  const { window } = app.dom
   try {
     await click(buttonFor(app.host, '分野編集'))
     assert.equal(app.host.querySelectorAll('.map-lesson-button').length, 34)
     assert.ok(app.host.querySelector('.map-author-editor'))
     const lessonId = 'math-arithmetic'
+    const originalTile = app.host.querySelector(`[data-lesson-id="${lessonId}"]`)
+    originalTile.focus()
+    await act(async () => originalTile.dispatchEvent(new window.MouseEvent('click', { bubbles: true, detail: 0 })))
+    await settleEffects(window)
+    assert.equal(window.document.activeElement, app.host.querySelector(`#lesson-detail-title-${lessonId}`))
     const lessonEditor = [...app.host.querySelectorAll('.map-author-domain-fields label')]
       .find((label) => label.textContent.includes(lessonRegistry.lessons.find((lesson) => lesson.lessonId === lessonId).title))
     const select = lessonEditor.querySelector('select')
     await changeControl(app.dom.window, select, 'quality-methods')
-    assert.equal(app.host.querySelector(`[data-lesson-id="${lessonId}"]`).closest('.map-domain-column').querySelector('h2').textContent.includes('品質管理手法'), true)
-    assert.equal(app.host.querySelector(`[data-lesson-id="${lessonId}"]`).dataset.lessonId, lessonId)
+    const movedTile = app.host.querySelector(`[data-lesson-id="${lessonId}"]`)
+    assert.notEqual(movedTile, originalTile)
+    assert.equal(movedTile.closest('.map-domain-column').querySelector('h2').textContent.includes('品質管理手法'), true)
+    assert.equal(movedTile.dataset.lessonId, lessonId)
     const colors = app.host.querySelectorAll('.map-author-color-fields input[type="color"]')
     await changeControl(app.dom.window, colors[0], '#123456')
     assert.equal(app.host.querySelector('.map-graph-layout').style.getPropertyValue('--map-author-domain-math-foundations'), '#123456')
     assert.ok(buttonFor(app.host, 'レビュー用JSONを書き出す'))
     assert.equal(buttonFor(app.host, 'Re-layout'), undefined)
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
+    assert.equal(window.document.activeElement, movedTile)
   } finally {
     await app.close()
   }

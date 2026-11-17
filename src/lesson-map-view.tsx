@@ -55,7 +55,7 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
   const firstAuthorControlRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
-  const selectedButtonRef = useRef<HTMLButtonElement | null>(null)
+  const selectedButtonLessonIdRef = useRef<string | null>(null)
   const focusFrameRef = useRef<number | null>(null)
 
   const selectedLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === selectedLessonId)
@@ -81,26 +81,32 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
       if (delta) grid.scrollTop += delta
       return
     }
+    const stickyHeader = element.ownerDocument.querySelector<HTMLElement>('.map-app-shell > .site-header')
+    const headerBottom = stickyHeader && ['fixed', 'sticky'].includes(window.getComputedStyle(stickyHeader).position)
+      ? Math.max(0, Math.min(window.innerHeight, stickyHeader.getBoundingClientRect().bottom))
+      : 0
     const rect = element.getBoundingClientRect()
-    const delta = rect.top < 8 ? rect.top - 8 : rect.bottom > window.innerHeight - 8 ? rect.bottom - window.innerHeight + 8 : 0
+    const visibleTop = headerBottom + 8
+    const delta = rect.top < visibleTop ? rect.top - visibleTop : rect.bottom > window.innerHeight - 8 ? rect.bottom - window.innerHeight + 8 : 0
     if (delta) window.scrollBy({ top: delta, behavior: 'instant' })
   }, [])
 
-  const focusDetail = useCallback(() => {
+  const showDetail = useCallback((moveFocus = true) => {
     if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current)
     focusFrameRef.current = window.requestAnimationFrame(() => {
       focusFrameRef.current = null
       const heading = detailHeadingRef.current
-      heading?.focus({ preventScroll: true })
-      if (heading) scrollFocusTargetIntoView(heading)
+      if (moveFocus) heading?.focus({ preventScroll: true })
+      const target = moveFocus ? heading : heading?.closest<HTMLElement>('.lesson-detail-header')
+      if (target) scrollFocusTargetIntoView(target)
     })
   }, [scrollFocusTargetIntoView])
 
-  const selectLesson = (lessonId: string, button: HTMLButtonElement, moveFocus: boolean) => {
-    selectedButtonRef.current = button
+  const selectLesson = (lessonId: string, moveFocus: boolean) => {
+    selectedButtonLessonIdRef.current = lessonId
     setSelectedLessonId(lessonId)
     onSelectionChange(lessonId)
-    if (moveFocus) focusDetail()
+    if (moveFocus || window.innerWidth <= 768) showDetail(moveFocus)
   }
 
   const clearSelection = useCallback((restoreFocus = false) => {
@@ -109,8 +115,9 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
     setSelectedLessonId(null)
     onSelectionChange(null)
     if (restoreFocus) {
-      const button = selectedButtonRef.current
-      if (button?.isConnected) {
+      const button = Array.from(gridRef.current?.querySelectorAll<HTMLButtonElement>('[data-lesson-id]') ?? [])
+        .find((candidate) => candidate.dataset.lessonId === selectedButtonLessonIdRef.current)
+      if (button) {
         button.focus({ preventScroll: true })
         scrollFocusTargetIntoView(button)
       }
@@ -203,7 +210,7 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
                         aria-label={`${lesson.title}（${lesson.availability === 'planned' ? '未収録、' : ''}手動進捗：${statusLabel}）`}
                         aria-pressed={selected}
                         aria-describedby={prerequisite ? `map-prerequisite-${lesson.lessonId}` : undefined}
-                        onClick={(event) => selectLesson(lesson.lessonId, event.currentTarget, event.detail === 0)}
+                        onClick={(event) => selectLesson(lesson.lessonId, event.detail === 0)}
                       >
                         <span className="map-lesson-title">{lesson.title}</span>
                         <span className="map-lesson-status">
