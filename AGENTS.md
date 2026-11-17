@@ -5,7 +5,7 @@
 ## Read first
 
 - `.codex/config.toml` - 作業におけるモデル選択についての設定
-- [`README.md`](README.md#現行の作業と文書の優先順位) — 現行の作業入口（親Issue #94と子Issue #95〜#97）
+- [`README.md`](README.md#現行の作業と文書の優先順位) — 現行の作業入口（親Issue #101と子Issue #102〜#104）
 - `docs/` — プロジェクトの実装計画
 - [`docs/P2_1_IMPLEMENTATION_PLAN.md`](docs/P2_1_IMPLEMENTATION_PLAN.md) — 完了したP2.1の実行順・確定契約の記録
 - [`docs/legacy/README.md`](docs/legacy/README.md) — P2の履歴資料と文書の優先順位
@@ -17,6 +17,10 @@
 QC検定2級を目標とした、統計学の初学者向けの解説主体のWeb教材＋問題集です。
 解説 → 演習 → 誤答フィードバック → 関連する解説・前提知識の復習 → 再演習、という学習サイクルを中心に開発します。図やグラフはコードによる描画を基本とし、生成画像・生成アセットは使用しません。
 GitHub Pagesで公開し、学習・採点・進捗保存をブラウザ内で完結させる方針です。
+
+### スクリーンリーダー対応の範囲
+
+2026-11-17の明示的な設計決定として、今後のスクリーンリーダー固有の対応と検証は対象外とします。この判断は[プロジェクト基本方針Draft](docs/PROJECT_CHARTER_DRAFT.md)にあるスクリーンリーダー配慮の記述を、現在の受入範囲として置き換えます。これは読み上げ名・順序・ライブ通知などのスクリーンリーダー固有要件に適用します。キーボード操作、可視フォーカス、操作後に対象が画面上で見えること、マウス/タッチ操作は引き続き実装・検証対象です。既存のARIA属性等はこの判断だけを理由に削除せず、スクリーンリーダー固有の追加開発は行いません。
 
 ## agents
 
@@ -65,8 +69,9 @@ subagent が作業結果を返す際は、少なくとも以下をまとめる�
 
 | 分類 | 正本・例 | 扱い |
 |---|---|---|
-| 現行作業 | [親Issue #94](https://github.com/painkiller8880888/SfQC/issues/94) と子Issue [#95〜#97](https://github.com/painkiller8880888/SfQC/issues/95) | 各Issueの目的・許可範囲・受入条件に従います。詳細計画がある場合はその指示も適用します。 |
-| 現行移行計画 | [`docs/ISSUE_81_MIGRATION_PLAN.md`](docs/ISSUE_81_MIGRATION_PLAN.md) | #94配下の基本統計量移行で合意した移行順と契約を記録します。本書の2026-11-12後続決定と衝突する#81の旧受入条件は、その範囲で本書を優先します。それ以外の受入条件と本書で変更していない既存契約は維持します。 |
+| 現行作業 | [親Issue #101](https://github.com/painkiller8880888/SfQC/issues/101) と子Issue [#102〜#104](https://github.com/painkiller8880888/SfQC/issues/102) | 各Issueの目的・許可範囲・受入条件に従います。詳細計画がある場合はその指示も適用します。 |
+| 現行マップ契約 | [Issue #101](https://github.com/painkiller8880888/SfQC/issues/101) と子Issue [#102〜#104](https://github.com/painkiller8880888/SfQC/issues/102) | 2026-11-17の後続決定として、#43と下記移行計画の前提表示・マップ進捗保存・マップ/詳細の正答率表示に関する該当契約を、このIssue群の範囲で置き換えます。 |
+| 基本統計量移行の完了記録 | [`docs/ISSUE_81_MIGRATION_PLAN.md`](docs/ISSUE_81_MIGRATION_PLAN.md) | 親Issue #94配下で完了した移行順と契約を記録します。2026-11-17の後続決定により、マップの前提表示・配置保存・正答率表示に関する該当箇所は現行契約ではありません。それ以外の受入条件と変更していない既存契約は維持します。 |
 | 確定済み契約 | 明示的な設計判断を記録したIssue（例: [完了した#43](https://github.com/painkiller8880888/SfQC/issues/43)） | 既存境界として保ちます。変更が必要な場合は明示的な設計判断を経ます。 |
 | 実装形式・現在の挙動 | `src/`、契約validator、`scripts/*test.mjs` | 現在の形式・挙動・回帰範囲の確認に使います。コードやテストだけで設計判断の妥当性を決めません。 |
 | 教育方針 | [`docs/PROJECT_CHARTER_DRAFT.md`](docs/PROJECT_CHARTER_DRAFT.md) | 解説→演習→誤答feedback→関連解説・前提復習→再演習の方針を参照します。§3/§6/§9の初期画面・進捗・フェーズ案は確定仕様ではありません。 |

@@ -4,17 +4,19 @@
 
 解説 → 演習 → 誤答フィードバック → 関連する解説・前提知識の復習 → 再演習、という学習サイクルを中心に開発します。図やグラフはコードによる描画を基本とし、生成画像・生成アセットは使用しません。
 
-GitHub Pagesで公開し、学習・採点・進捗保存をブラウザ内で完結させる方針です。P2では平均・分散・標準偏差の解説と演習、誤答からの前提復習、進捗保存までを公開しました。P2.1は学習マップと手動進捗管理を実装して完了し、現在は基本統計量教材を比較用モックから本実装へ移行しています。
+GitHub Pagesで公開し、学習・採点・進捗保存をブラウザ内で完結させる方針です。P2では平均・分散・標準偏差の解説と演習、誤答からの前提復習、進捗保存までを公開しました。P2.1と基本統計量の本実装への移行は完了し、現在は全体マップの再設計を進めています。
 
 ## プロジェクト方針
 
 [プロジェクト基本方針（Draft v0.1）](docs/PROJECT_CHARTER_DRAFT.md)
 
+スクリーンリーダー対応の現行範囲と、引き続き対応するキーボード操作・フォーカス要件は[AGENTS.md](AGENTS.md)に定めています。
+
 ## 現行の作業と文書の優先順位
 
-現在の基本統計量教材の移行は[親Issue #94](https://github.com/painkiller8880888/SfQC/issues/94)と子Issue [#95](https://github.com/painkiller8880888/SfQC/issues/95)〜[#97](https://github.com/painkiller8880888/SfQC/issues/97)で追跡しています。Issue本文と#97の詳細実装計画コメントが目的・受入条件の正本です。移行順と確定契約は[3段階の移行計画](docs/ISSUE_81_MIGRATION_PLAN.md)を参照してください。#81の旧受入条件と同計画に明記した後続決定が衝突する場合は、移行計画を優先します。既存契約と未決事項の背景は[比較モックの適用範囲と既存契約の確認記録](docs/MVP_DESIGN_DRAFT.md#mock-contract-snapshot)を参照してください。
+現在の全体マップ再設計は[親Issue #101](https://github.com/painkiller8880888/SfQC/issues/101)と子Issue [#102](https://github.com/painkiller8880888/SfQC/issues/102)〜[#104](https://github.com/painkiller8880888/SfQC/issues/104)で追跡しています。各Issue本文と詳細計画コメントが目的・受入条件の正本です。#101の2026-11-17後続判断は、#43と[3段階の移行計画](docs/ISSUE_81_MIGRATION_PLAN.md)の前提表示、手動進捗保存、マップ/詳細の正答率表示に関する該当契約を置き換えます。基本統計量移行の完了状況と従来の契約は同計画を参照してください。既存契約と未決事項の背景は[比較モックの適用範囲と既存契約の確認記録](docs/MVP_DESIGN_DRAFT.md#mock-contract-snapshot)を参照してください。
 
-P2.1の確定契約と完了状況は[親Issue #43](https://github.com/painkiller8880888/SfQC/issues/43)、過去の実行順は[P2.1実装計画の完了記録](docs/P2_1_IMPLEMENTATION_PLAN.md)、P2の履歴資料は[legacy index](docs/legacy/README.md)を参照してください。文書の分類と優先順位は[AGENTS.md](AGENTS.md#文書の優先順位)にあります。#81から本実装へ移す場合の[調査報告](docs/ISSUE_81_INVESTIGATION_REPORT.md)と、後続決定を反映した[3段階の移行計画](docs/ISSUE_81_MIGRATION_PLAN.md)を参照してください。legacy資料と旧パスの案内は履歴であり、現行の実装指示ではありません。
+P2.1の確定契約と完了状況は[親Issue #43](https://github.com/painkiller8880888/SfQC/issues/43)、過去の実行順は[P2.1実装計画の完了記録](docs/P2_1_IMPLEMENTATION_PLAN.md)、P2の履歴資料は[legacy index](docs/legacy/README.md)を参照してください。文書の分類と優先順位は[AGENTS.md](AGENTS.md#文書の優先順位)にあります。基本統計量移行の[調査報告](docs/ISSUE_81_INVESTIGATION_REPORT.md)と[3段階の移行計画](docs/ISSUE_81_MIGRATION_PLAN.md)は完了記録です。legacy資料と旧パスの案内は履歴であり、現行の実装指示ではありません。
 
 ## 開発の進め方
 
@@ -40,11 +42,11 @@ previewは `http://127.0.0.1:4173/SfQC/` で確認できます。`check`はTypeS
 
 `sfqc-learning-recovery-raw`形式の救出ファイルは保全専用で、アプリの通常の読み込み操作では復元できません。保守者が復旧する場合は、同じブラウザープロファイルで対象アプリのoriginを開き、開発者ツールのApplication（またはStorage）> Local Storageから次のキーを個別に扱います。
 
-- `raw["sfqc:learning-state:v1"]`を`sfqc:learning-state:v1`の値へ、その文字列のまま設定します。
+- `raw["sfqc:learning-state:v2"]`を`sfqc:learning-state:v2`の値へ、その文字列のまま設定します。
 - `raw["sfqc:practice-results:v1"]`を`sfqc:practice-results:v1`の値へ、その文字列のまま設定します。
 - 対応する値が`null`なら、そのキーを削除します。空文字やJSON文字列の`"null"`は代わりに使いません。
 
-救出ファイルの外側JSONをキーの値として貼り付けず、元ファイルは編集せず保管してください。片方ずつ設定または削除した後にアプリを再読み込みし、データ管理画面で保存状態を確認します。
+救出ファイルの外側JSONをキーの値として貼り付けず、元ファイルは編集せず保管してください。旧`sfqc:learning-state:v1`は自動で読み取り・変換・削除せず、手動完了も引き継ぎません。片方ずつ設定または削除した後にアプリを再読み込みし、データ管理画面で保存状態を確認します。
 
 ## CI と GitHub Pages
 

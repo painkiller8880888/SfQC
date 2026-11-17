@@ -6,12 +6,11 @@ import { PRACTICE_CATEGORY_IDS } from '../src/practice-results.mjs'
 
 test('course progress preserves map order and manual completion remains independent', () => {
   const learningState = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     lessons: {
       'descriptive-statistics': { completedAt: '2026-11-12T10:00:00.000Z' },
       'data-types': { completedAt: null },
     },
-    positions: {},
   }
   const records = [
     { categoryId: 'mean-deviation', isCorrect: true, attemptedAt: '2026-11-01T00:00:00.000Z' },

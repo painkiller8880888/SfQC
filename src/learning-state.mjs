@@ -1,6 +1,6 @@
 import { lessonRegistry } from './lesson-registry.mjs'
 
-export const LEARNING_STATE_KEY = 'sfqc:learning-state:v1'
+export const LEARNING_STATE_KEY = 'sfqc:learning-state:v2'
 export const LEARNING_STATE_MAX_BYTES = 65_536
 
 const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
@@ -40,24 +40,22 @@ function isTimestamp(value) {
 
 function checkSize(text) {
   if (new TextEncoder().encode(text).byteLength > LEARNING_STATE_MAX_BYTES) {
-    fail('too-large', '手動進捗・マップ配置の保存サイズが上限（64 KiB）を超えています。')
+    fail('too-large', '手動進捗の保存サイズが上限（64 KiB）を超えています。')
   }
 }
 
 function validateAndComplete(value, registry) {
   if (!isRecord(value)) fail('invalid-schema', '手動進捗の保存形式が不正です。')
-  if (value.schemaVersion !== 1) {
+  if (value.schemaVersion !== 2) {
     if (typeof value.schemaVersion === 'number') fail('unsupported-version', '未対応の手動進捗形式です。')
     fail('invalid-schema', '手動進捗の保存形式が不正です。')
   }
-  if (!hasExactKeys(value, ['schemaVersion', 'lessons', 'positions'])
-    || !isRecord(value.lessons) || !isRecord(value.positions)) {
+  if (!hasExactKeys(value, ['schemaVersion', 'lessons']) || !isRecord(value.lessons)) {
     fail('invalid-schema', '手動進捗の保存形式が不正です。')
   }
 
   const registryLessons = new Map(registry.lessons.map((lesson) => [lesson.lessonId, lesson]))
   const lessons = { ...value.lessons }
-  const positions = { ...value.positions }
   for (const [lessonId, progress] of Object.entries(lessons)) {
     if (!idPattern.test(lessonId) || !hasExactKeys(progress, ['completedAt'])
       || !(progress.completedAt === null || isTimestamp(progress.completedAt))
@@ -65,24 +63,15 @@ function validateAndComplete(value, registry) {
       fail('invalid-schema', '単元の手動進捗または完了日時が不正です。')
     }
   }
-  for (const [lessonId, position] of Object.entries(positions)) {
-    if (!idPattern.test(lessonId) || !hasExactKeys(position, ['x', 'y'])
-      || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
-      fail('invalid-schema', '学習マップの配置データが不正です。')
-    }
-  }
   for (const lesson of registry.lessons) lessons[lesson.lessonId] ??= { completedAt: null }
   return {
-    state: { schemaVersion: 1, lessons, positions },
-    unresolvedIds: {
-      lessons: Object.keys(value.lessons).filter((lessonId) => !registryLessons.has(lessonId)),
-      positions: Object.keys(value.positions).filter((lessonId) => !registryLessons.has(lessonId)),
-    },
+    state: { schemaVersion: 2, lessons },
+    unresolvedIds: { lessons: Object.keys(value.lessons).filter((lessonId) => !registryLessons.has(lessonId)) },
   }
 }
 
 function initialState(registry) {
-  return validateAndComplete({ schemaVersion: 1, lessons: {}, positions: {} }, registry).state
+  return validateAndComplete({ schemaVersion: 2, lessons: {} }, registry).state
 }
 
 export function parseLearningState(text, registry = lessonRegistry) {
@@ -113,7 +102,7 @@ function readFromStorage(storage, registry) {
   try { raw = storage.getItem(LEARNING_STATE_KEY) } catch {
     return { status: 'unreadable', error: new LearningStateError('storage-unavailable', '手動進捗を読み取れません。') }
   }
-  if (raw === null) return { status: 'missing', raw: null, state: initialState(registry), unresolvedIds: { lessons: [], positions: [] } }
+  if (raw === null) return { status: 'missing', raw: null, state: initialState(registry), unresolvedIds: { lessons: [] } }
   if (typeof raw !== 'string') {
     return { status: 'invalid', error: new LearningStateError('invalid-schema', '手動進捗の保存形式が不正です。') }
   }
@@ -137,15 +126,11 @@ export function readLearningState(registry = lessonRegistry, getStorageFactory =
 }
 
 function sameUnresolvedEntries(before, candidate) {
-  const sameEntries = (beforeIds, nextIds, left, right, kind) => beforeIds.length === nextIds.length
+  const beforeIds = before.unresolvedIds.lessons
+  const nextIds = candidate.unresolvedIds.lessons
+  return beforeIds.length === nextIds.length
     && beforeIds.every((id) => nextIds.includes(id)
-      && (kind === 'lesson'
-        ? left[id].completedAt === right[id].completedAt
-        : left[id].x === right[id].x && left[id].y === right[id].y))
-  return sameEntries(before.unresolvedIds.lessons, candidate.unresolvedIds.lessons,
-    before.state.lessons, candidate.state.lessons, 'lesson')
-    && sameEntries(before.unresolvedIds.positions, candidate.unresolvedIds.positions,
-      before.state.positions, candidate.state.positions, 'position')
+      && before.state.lessons[id].completedAt === candidate.state.lessons[id].completedAt)
 }
 
 function result(status, expectedRaw, candidateRaw, latest, error) {
@@ -175,14 +160,14 @@ export function saveLearningState(value, expectedRaw, registry = lessonRegistry,
   let baseline
   try {
     baseline = expectedRaw === null
-      ? { state: initialState(registry), unresolvedIds: { lessons: [], positions: [] } }
+      ? { state: initialState(registry), unresolvedIds: { lessons: [] } }
       : parseLearningState(expectedRaw, registry)
   } catch (error) {
     return result('not-written', expectedRaw, candidateRaw, latest, error)
   }
   if (!sameUnresolvedEntries(baseline, candidate)) {
     return result('not-written', expectedRaw, candidateRaw, latest,
-      new LearningStateError('unresolved-changed', '未解決の単元IDや配置は通常保存で変更できません。確認したバックアップから置き換えてください。'))
+      new LearningStateError('unresolved-changed', '未解決の単元IDは通常保存で変更できません。確認したバックアップから置き換えてください。'))
   }
   // shortcut: localStorage cannot compare and write atomically; use a transactional store if strict tab exclusion is required.
   try { storage.setItem(LEARNING_STATE_KEY, candidateRaw) } catch {

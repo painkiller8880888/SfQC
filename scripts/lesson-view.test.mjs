@@ -6,7 +6,7 @@ import { createServer } from 'vite'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 import { deriveCourseProgress } from '../src/course-progress.mjs'
 import { createInitialManualProgress } from '../src/manual-progress.mjs'
-import { createMapPocGraph } from '../src/map-poc-graph.mjs'
+import { deriveLessonGraph } from '../src/lesson-graph.mjs'
 
 test('registry-driven map, references, lesson blocks, and app routes render only available lessons', async () => {
   const server = await createServer({
@@ -230,7 +230,7 @@ test('all common prerequisite edges are listed in the target lesson detail card'
   try {
     const { LessonDetailCard } = await server.ssrLoadModule('/src/lesson-view.tsx')
     const manualProgress = createInitialManualProgress(lessonRegistry)
-    const { commonPrerequisiteEdges } = createMapPocGraph()
+    const { commonPrerequisiteEdges } = deriveLessonGraph(lessonRegistry)
     assert.equal(commonPrerequisiteEdges.length, 64)
 
     for (const target of lessonRegistry.lessons) {

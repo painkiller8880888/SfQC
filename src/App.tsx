@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import type { Viewport } from '@xyflow/react'
 import {
   resolveRoute,
   routeToHash,
@@ -20,7 +19,7 @@ import { LessonMap, LessonRouteContent } from './lesson-view'
 import { DescriptiveStatisticsExercisePreview } from './descriptive-statistics-exercise-preview'
 import { DescriptiveStatisticsCourse } from './descriptive-statistics-course'
 import { CourseProgressView } from './course-progress-view'
-import { LessonMapView, samePositions, type LayoutSaveResult, type Positions } from './lesson-map-view'
+import { LessonMapView } from './lesson-map-view'
 import { deriveCourseProgress } from './course-progress.mjs'
 import {
   type ManualProgressCommand,
@@ -55,8 +54,7 @@ type PendingJudgement = {
 }
 
 type PendingLearningChange =
-  | { kind: 'layout'; positions: Positions }
-  | { kind: 'manual-progress'; lessonId: string; completedAt: string | null }
+  { kind: 'manual-progress'; lessonId: string; completedAt: string | null }
 
 type PendingLearningWrite = {
   status: 'unknown' | 'retryable'
@@ -67,9 +65,8 @@ type PendingLearningWrite = {
 
 function emptyLearningState(): LearningState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     lessons: Object.fromEntries(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, { completedAt: null }])),
-    positions: {},
   }
 }
 
@@ -154,7 +151,7 @@ const screens: Record<ScreenKind, {
   data: {
     title: 'データ管理',
     description: 'ブラウザー内の演習記録と手動進捗を管理する画面です。',
-    placeholder: '演習記録・手動進捗・配置を統合バックアップで書き出し・読み込みできます。',
+    placeholder: '演習記録と手動進捗を統合バックアップで書き出し・読み込みできます。',
     links: [{ label: '進捗を見る', href: '#/progress' }],
   },
   'not-found': {
@@ -198,7 +195,6 @@ function App() {
   const [pendingLearningWrite, setPendingLearningWrite] = useState<PendingLearningWrite | null>(null)
   const initialMapState = isReadableLearningState(mapStateRead) ? mapStateRead.state : emptyLearningState()
   const [manualProgress, setManualProgress] = useState(() => manualProgressFromLearning(initialMapState))
-  const [positionSyncRevision, setPositionSyncRevision] = useState(0)
   const [mapStateConfirmed, setMapStateConfirmed] = useState(() => isReadableLearningState(mapStateRead))
   const initialMapMessage = mapStateRead.status === 'invalid' || mapStateRead.status === 'unsupported' || mapStateRead.status === 'unreadable'
       ? mapStateRead.error.message : ''
@@ -206,10 +202,8 @@ function App() {
   const [dataMessage, setDataMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [mapView, setMapView] = useState<'graph' | 'list'>('graph')
-  const [mapAuthorMode, setMapAuthorMode] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null)
-  const mapViewportRef = useRef<Viewport | null>(null)
   const selectedLessonIdRef = useRef<string | null>(null)
   const clearMapSelectionRef = useRef<(() => void) | null>(null)
   const mapGraphContentRef = useRef<HTMLDivElement>(null)
@@ -217,10 +211,8 @@ function App() {
   const mapGraphButtonRef = useRef<HTMLButtonElement>(null)
   const mapListButtonRef = useRef<HTMLButtonElement>(null)
   const viewRef = useRef(view)
-  const mapStateRef = useRef<LearningState>(initialMapState)
   const mapStateReadRef = useRef(mapStateRead)
   const pendingLearningWriteRef = useRef<PendingLearningWrite | null>(pendingLearningWrite)
-  const publishedPositionsRef = useRef(initialMapState.positions)
   const navigationIdRef = useRef(0)
   const lastHandledRef = useRef('')
   const busyRef = useRef(false)
@@ -232,9 +224,6 @@ function App() {
   const judgementIdRef = useRef(0)
   const [pendingBackupImport, setPendingBackupImport] = useState<LearningBackupImportResult | null>(null)
   const keepJudgementsAfterRestoreRef = useRef(true)
-  const onMapMove = useCallback((viewport: Viewport) => {
-    mapViewportRef.current = viewport
-  }, [])
   const onMapSelectionChange = useCallback((lessonId: string | null) => {
     selectedLessonIdRef.current = lessonId
   }, [])
@@ -276,14 +265,10 @@ function App() {
     saveThemePreference(preference)
   }
 
-  const publishMapStateRead = (next: LearningStateReadResult, syncPositions = true) => {
+  const publishMapStateRead = (next: LearningStateReadResult) => {
     mapStateReadRef.current = next
     setMapStateRead(next)
     if (isReadableLearningState(next)) {
-      const positionsChanged = !samePositions(publishedPositionsRef.current, next.state.positions)
-      publishedPositionsRef.current = next.state.positions
-      if (syncPositions && positionsChanged) setPositionSyncRevision((revision) => revision + 1)
-      mapStateRef.current = next.state
       setMapStateConfirmed(true)
       setManualProgress(manualProgressFromLearning(next.state))
       setMapStateMessage('')
@@ -299,16 +284,17 @@ function App() {
 
   const refreshMapState = () => publishMapStateRead(readLearningState(lessonRegistry))
 
-  const saveLearningChange = (change: PendingLearningChange, base: Extract<LearningStateReadResult, { status: 'missing' | 'ok' }>): LayoutSaveResult => {
-    const candidate: LearningState = change.kind === 'layout'
-      ? { ...base.state, positions: { ...base.state.positions, ...change.positions } }
-      : { ...base.state, lessons: { ...base.state.lessons, [change.lessonId]: { completedAt: change.completedAt } } }
+  const saveLearningChange = (change: PendingLearningChange, base: Extract<LearningStateReadResult, { status: 'missing' | 'ok' }>) => {
+    const candidate: LearningState = {
+      ...base.state,
+      lessons: { ...base.state.lessons, [change.lessonId]: { completedAt: change.completedAt } },
+    }
     const result = saveLearningState(candidate, base.raw, lessonRegistry)
     if (result.status === 'saved') {
       publishMapStateRead(result.latest)
       publishPendingLearningWrite(null)
       setMapStateMessage('')
-      return { ok: true, positions: result.state.positions }
+      return
     }
 
     const latestRead = isReadableLearningState(result.latest) ? result.latest : null
@@ -316,7 +302,7 @@ function App() {
       publishMapStateRead(result.latest)
       publishPendingLearningWrite(null)
       setMapStateMessage('保存状態を確認し、対象の変更が保存済みであることを確認しました。')
-      return { ok: true, positions: latestRead.state.positions }
+      return
     }
     publishMapStateRead(result.latest)
     if (result.candidateRaw !== null) {
@@ -328,29 +314,12 @@ function App() {
       })
     }
     const message = result.status === 'unknown' || !latestRead
-      ? '手動進捗・マップ配置の保存結果を確認できません。データ管理画面で保存状態を再確認してください。'
+      ? '手動進捗の保存結果を確認できません。データ管理画面で保存状態を再確認してください。'
       : result.status === 'conflict'
         ? '保存データが別の変更で更新されました。対象の変更は保持しています。確認後に再試行できます。'
-        : result.error?.message ?? '手動進捗・マップ配置を保存できませんでした。対象の変更は保持しています。'
+        : result.error?.message ?? '手動進捗を保存できませんでした。対象の変更は保持しています。'
     setMapStateMessage(message)
-    return { ok: false, positions: latestRead ? latestRead.state.positions : mapStateRef.current.positions }
   }
-
-  const onMapLayoutSave = useCallback((positions: Positions, changedPositions: Positions): LayoutSaveResult => {
-    const currentRead = mapStateReadRef.current
-    if (pendingLearningWriteRef.current) {
-      setMapStateMessage('保存結果が確認できていない変更があります。データ管理画面で確認または再試行してください。')
-      return { ok: false, positions: mapStateRef.current.positions }
-    }
-    if (!isReadableLearningState(currentRead)) {
-      setMapStateMessage('手動進捗の保存状態を確認できないため、配置の編集と保存を停止しています。データ管理画面で保存状態を確認してください。')
-      return { ok: false, positions: mapStateRef.current.positions }
-    }
-    return saveLearningChange({ kind: 'layout', positions: changedPositions }, {
-      ...currentRead,
-      state: { ...currentRead.state, positions: { ...currentRead.state.positions, ...positions } },
-    })
-  }, [])
 
   const onManualProgressAction = useCallback((lessonId: string, command: ManualProgressCommand) => {
     const currentRead = mapStateReadRef.current
@@ -526,7 +495,7 @@ function App() {
     ? mapStateConfirmed
       ? '手動進捗の保存状態を確認できません。画面には最後に確認した値を表示し、編集と保存を停止しています。'
       : '手動進捗の保存状態を確認できません。画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'
-    : '手動完了とマップ配置はこのブラウザーに保存され、演習結果とは別に集計されます。バックアップに含まれます。'
+    : '手動完了はこのブラウザーに保存され、演習結果とは別に扱われます。バックアップに含まれます。'
   const manualCompletedCount = Object.values(manualProgress).filter((item) => item.status === 'completed').length
   const progress = useMemo(() => {
     if (!isReadableLearningState(mapStateRead) || !isReadablePracticeResults(practiceResultsRead)) return null
@@ -642,7 +611,7 @@ function App() {
   const handleExport = () => {
     if (busyRef.current) return
     if (pendingLearningWriteRef.current) {
-      setDataMessage('手動進捗・マップ配置の保存状態を確認してから、バックアップを書き出してください。')
+      setDataMessage('手動進捗の保存状態を確認してから、バックアップを書き出してください。')
       return
     }
     busyRef.current = true
@@ -709,7 +678,7 @@ function App() {
       return
     }
     if (pendingLearningWriteRef.current) {
-      setDataMessage('手動進捗・マップ配置の保存状態を確認してから、バックアップを復元してください。')
+      setDataMessage('手動進捗の保存状態を確認してから、バックアップを復元してください。')
       input.value = ''
       return
     }
@@ -849,7 +818,7 @@ function App() {
   }
 
   const handleMapKeyDownCapture = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Escape' || selectedLessonIdRef.current === null || mapAuthorMode) return
+    if (event.key !== 'Escape' || selectedLessonIdRef.current === null) return
     event.preventDefault()
     event.stopPropagation()
     if (mapView === 'graph') {
@@ -868,7 +837,7 @@ function App() {
     </p>}
     {!mapStateUnavailable && mapStateMessage && <p className="storage-alert" role="status" aria-live="polite">{mapStateMessage}</p>}
     {pendingLearningWrite && <section className="practice-recovery" role={pendingLearningWrite.status === 'unknown' ? 'alert' : 'status'} aria-live="polite">
-      <p>{pendingLearningWrite.change.kind === 'layout' ? 'マップ配置' : '手動進捗'}の変更をメモリ上に保持しています。再読み込みすると失われます。保存状態が確認できるまで、他の手動進捗変更とバックアップ操作を停止しています。</p>
+      <p>手動進捗の変更をメモリ上に保持しています。再読み込みすると失われます。保存状態が確認できるまで、他の手動進捗変更とバックアップ操作を停止しています。</p>
       <button type="button" onClick={pendingLearningWrite.status === 'unknown' ? recheckPendingLearningWrite : retryPendingLearningWrite}>
         {pendingLearningWrite.status === 'unknown' ? '手動進捗の保存状態を再確認' : '未保存の変更を再試行'}
       </button>
@@ -940,7 +909,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell${screen === 'map' ? ` map-app-shell${mapView === 'list' ? ' map-list-layout' : ''}${import.meta.env.DEV && mapView === 'graph' && mapAuthorMode ? ' map-author-mode' : ''}` : ''}`} data-theme={theme} onClick={handleInternalClick}>
+    <div className={`app-shell${screen === 'map' ? ` map-app-shell${mapView === 'list' ? ' map-list-layout' : ''}` : ''}`} data-theme={theme} onClick={handleInternalClick}>
       <button
         type="button"
         className="skip-link"
@@ -977,10 +946,7 @@ function App() {
 
       {screen === 'map' ? (
         <main className="map-workspace" onKeyDownCapture={handleMapKeyDownCapture}>
-          <div className="map-route-messages" tabIndex={mapAuthorMode && (
-            mapStateUnavailable || mapStateMessage || view.historyWarning || pendingLearningWrite
-            || practiceResultsUnavailable || pendingJudgements.length > 0 || pendingBackupImport?.pending
-          ) ? 0 : undefined}>{routeMessages}</div>
+          <div className="map-route-messages">{routeMessages}</div>
           {view.historyState.returnStack.length > 0 && (
             <nav className="return-navigation map-return-navigation" aria-label="復習から戻る">
               <a href={view.historyState.returnStack.at(-1)?.routeHash} data-nav-intent="return">1段戻る</a>
@@ -1016,19 +982,12 @@ function App() {
           {mapView === 'graph' ? (
             <div className="map-graph-content" ref={mapGraphContentRef}>
               <LessonMapView
-                theme={theme}
-                viewport={mapViewportRef.current}
                 selectedLessonId={selectedLessonIdRef.current}
                 progress={progress}
                 manualProgress={manualProgress}
                 manualProgressDisabled={manualProgressDisabled}
-                positions={mapStateRef.current.positions}
-                positionSyncRevision={positionSyncRevision}
-                onLayoutSave={onMapLayoutSave}
                 onManualProgressAction={onManualProgressAction}
-                onViewportChange={onMapMove}
                 onSelectionChange={onMapSelectionChange}
-                onAuthorModeChange={setMapAuthorMode}
                 onAuthorExport={requestLessonDomainDownload}
                 clearSelectionRef={clearMapSelectionRef}
               />
@@ -1051,8 +1010,9 @@ function App() {
               <h2 id="data-title">保存データ</h2>
               <p>保存済み演習判定：{isReadablePracticeResults(practiceResultsRead) ? practiceResultsRead.results.records.length + '件' : '読み込みエラー'}</p>
               <p>未保存の判定：{pendingJudgements.length}件（このページのメモリ上に保持）</p>
-              <p>手動進捗・マップ配置：{mapStateStatusLabel}{!mapStateUnavailable ? `（手動完了 ${manualCompletedCount} / ${lessonRegistry.lessons.length}）` : ''}</p>
-              <p>データはこのブラウザー内に保存され、サーバーへ送信されません。統合バックアップは手動進捗、マップ配置、保存済み演習判定を含みます。</p>
+              <p>手動進捗：{mapStateStatusLabel}{!mapStateUnavailable ? `（手動完了 ${manualCompletedCount} / ${lessonRegistry.lessons.length}）` : ''}</p>
+              <p>データはこのブラウザー内に保存され、サーバーへ送信されません。統合バックアップは手動進捗と保存済み演習判定を含みます。</p>
+              <p>保存形式は v2 です。旧 v1 の手動完了は引き継がれず、手動進捗は未完了から始まります。旧 v1 raw は読み取り・削除せず保全し、旧 version 1 backup は読み込めません。</p>
               {pendingJudgements.length > 0 && <p className="storage-alert" role="status">このバックアップには未保存の判定{pendingJudgements.length}件が含まれません。</p>}
               <div className="data-actions">
                 <button type="button" onClick={handleExport} disabled={busy || !canExportCombined}>
@@ -1067,9 +1027,9 @@ function App() {
                   disabled={busy || !!pendingBackupImport?.pending || !!pendingLearningWrite || pendingJudgements.some((item) => item.status === 'unknown')}
                 />
               </div>
-              {pendingLearningWrite && <p className="storage-alert" role="status">未確定の手動進捗・配置変更が1件あります。候補はこのページのメモリに保持しています。</p>}
+              {pendingLearningWrite && <p className="storage-alert" role="status">未確定の手動進捗変更が1件あります。候補はこのページのメモリに保持しています。</p>}
               {mapStateUnavailable && !pendingLearningWrite && <button type="button" onClick={refreshMapState}>手動進捗の保存状態を再確認</button>}
-              <p className="data-limit">手動進捗・マップ配置は64 KiB、演習判定は最大25件・8 KiBです。</p>
+              <p className="data-limit">手動進捗は64 KiB、演習判定は最大25件・8 KiBです。</p>
               <p className="data-message" role="status" aria-live="polite">{dataMessage}</p>
             </section>
           ) : screen === 'lesson' && view.route.kind === 'course-lesson' ? (

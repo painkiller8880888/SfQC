@@ -1,51 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import {
-  applyNodeChanges,
-  Background,
-  Controls,
-  MarkerType,
-  ReactFlow,
-  ReactFlowProvider,
-  useEdgesState,
-  type NodeChange,
-  useReactFlow,
-  type OnMove,
-  type NodeMouseHandler,
-  type OnSelectionChangeFunc,
-  type Viewport,
-} from '@xyflow/react'
-import '@xyflow/react/dist/style.css'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import './lesson-map-view.css'
-import { createMapPocGraph, type MapPocNode } from './map-poc-graph.mjs'
+import { deriveLessonGraph } from './lesson-graph.mjs'
 import { lessonDomainColors, lessonDomains, type LessonDomain } from './lesson-contract.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import type { ManualProgressCommand, ManualProgressState } from './manual-progress.mjs'
-import type { LearningState } from './learning-state.mjs'
 import type { CourseProgress } from './course-progress.mjs'
 import { LessonDetailCard } from './lesson-view'
 
-export type Positions = LearningState['positions']
-export type LayoutSaveResult = { ok: true; positions: Positions } | { ok: false; positions: Positions }
-
-export function applyMapNodeChanges(nodes: MapPocNode[], changes: NodeChange<MapPocNode>[]) {
-  return applyNodeChanges(changes, nodes)
-}
-
-export function mapPositions(nodes: MapPocNode[]): Positions {
-  return Object.fromEntries(nodes.map(({ id, position }) => [id, { x: position.x, y: position.y }]))
-}
-
-export function samePositions(left: Positions, right: Positions) {
-  const leftIds = Object.keys(left)
-  const rightIds = Object.keys(right)
-  return leftIds.length === rightIds.length
-    && leftIds.every((id) => right[id] && left[id].x === right[id].x && left[id].y === right[id].y)
-}
-
-export function shouldSaveMapLayout(changes: NodeChange<MapPocNode>[], candidate: Positions, confirmed: Positions) {
-  return changes.some((change) => change.type === 'position' && change.dragging !== true)
-    && !samePositions(confirmed, candidate)
-}
+const lessonGraph = deriveLessonGraph(lessonRegistry)
 
 export function getMapProgressSummary(progress: CourseProgress | null, lessonId: string) {
   const observation = progress?.lessons.find((item) => item.lessonId === lessonId)
@@ -65,50 +27,20 @@ export function getMapProgressSummary(progress: CourseProgress | null, lessonId:
   }
 }
 
-const mapDirectionLabels: Record<string, string> = { left: '左', right: '右', up: '上', down: '下' }
-
-function scrollFocusTargetIntoView(element: HTMLElement) {
-  const rect = element.getBoundingClientRect()
-  const stickyHeader = element.ownerDocument.querySelector<HTMLElement>('.map-app-shell > .site-header')
-  const headerBottom = stickyHeader && window.getComputedStyle(stickyHeader).position === 'sticky'
-    ? Math.max(0, Math.min(window.innerHeight, stickyHeader.getBoundingClientRect().bottom))
-    : 0
-  const visibleTop = headerBottom + 8
-  const visibleBottom = window.innerHeight - 8
-  const scrollOffset = rect.top < visibleTop
-    ? rect.top - visibleTop
-    : rect.bottom > visibleBottom ? rect.bottom - visibleBottom : 0
-  if (scrollOffset) window.scrollBy({ top: scrollOffset, behavior: 'instant' })
-}
-
 type LessonMapViewProps = {
-  theme: 'light' | 'dark'
-  viewport: Viewport | null
   selectedLessonId: string | null
   progress: CourseProgress | null
   manualProgress: ManualProgressState
   manualProgressDisabled?: boolean
-  positions: Positions
-  positionSyncRevision: number
-  onLayoutSave: (positions: Positions, changedPositions: Positions) => LayoutSaveResult
   onManualProgressAction: (lessonId: string, action: ManualProgressCommand) => void
-  onViewportChange: (viewport: Viewport) => void
   onSelectionChange: (lessonId: string | null) => void
-  onAuthorModeChange: (open: boolean) => void
   onAuthorExport: (json: string) => boolean
   clearSelectionRef: { current: (() => void) | null }
 }
 
-function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonId, progress, manualProgress, manualProgressDisabled, positions, positionSyncRevision, onLayoutSave, onManualProgressAction, onViewportChange, onSelectionChange, onAuthorModeChange, onAuthorExport, clearSelectionRef }: LessonMapViewProps) {
-  const graph = useMemo(() => createMapPocGraph(), [])
-  const dagrePositions = useMemo(() => mapPositions(graph.nodes), [graph])
-  const [nodes, setNodes] = useState<MapPocNode[]>(() => graph.nodes.map((node) => ({
-    ...node,
-    position: positions[node.id] ?? node.position,
-    selected: node.id === initialSelectedLessonId,
-  })))
-  const [edges, , onEdgesChange] = useEdgesState(graph.edges)
-  const [layoutEditing, setLayoutEditing] = useState(false)
+function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manualProgress, manualProgressDisabled,
+  onManualProgressAction, onSelectionChange, onAuthorExport, clearSelectionRef }: LessonMapViewProps) {
+  const [selectedLessonId, setSelectedLessonId] = useState(initialSelectedLessonId)
   const [authorEditorOpen, setAuthorEditorOpen] = useState(false)
   const [draftDomains, setDraftDomains] = useState<Record<string, LessonDomain>>(() =>
     Object.fromEntries(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, lesson.domain])))
@@ -121,176 +53,76 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
   const [authorExportMessage, setAuthorExportMessage] = useState('')
   const authorEditorButtonRef = useRef<HTMLButtonElement>(null)
   const firstAuthorControlRef = useRef<HTMLInputElement>(null)
-  const nodeSnapshotRef = useRef(nodes)
-  const confirmedNodePositionsRef = useRef(mapPositions(nodes))
-  const positionsPropRef = useRef(positions)
-  const layoutEditingRef = useRef(false)
-  positionsPropRef.current = positions
-  const { fitView, getNodes, getViewport, setViewport } = useReactFlow()
-  const mapCanvasRef = useRef<HTMLElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
-  const fitViewButtonRef = useRef<HTMLButtonElement>(null)
-  const keyboardSelectedNodeIdRef = useRef<string | null>(null)
-  const pendingKeyboardFocusRef = useRef<string | null>(null)
-  const keyboardFocusFrameRef = useRef<number | null>(null)
-  const focusRestoreFrameRef = useRef<number | null>(null)
-  const commitNodes = useCallback((next: MapPocNode[]) => {
-    nodeSnapshotRef.current = next
-    setNodes(next)
-  }, [])
-  const setLayoutEditingMode = useCallback((next: boolean) => {
-    layoutEditingRef.current = next
-    setLayoutEditing(next)
-  }, [])
-  const applyConfirmedPositions = useCallback((candidate: Positions) => {
-    const resolved = Object.fromEntries(graph.nodes.map(({ id }) => [id, candidate[id] ?? dagrePositions[id]])) as Positions
-    confirmedNodePositionsRef.current = resolved
-    const current = nodeSnapshotRef.current
-    const next = current.map((node) => {
-      const position = resolved[node.id]
-      return node.position.x === position.x && node.position.y === position.y ? node : { ...node, position }
-    })
-    if (next.some((node, index) => node !== current[index])) commitNodes(next)
-  }, [commitNodes, dagrePositions, graph.nodes])
-  const handleNodesChange = useCallback((changes: NodeChange<MapPocNode>[]) => {
-    const allowPositionChanges = !manualProgressDisabled && layoutEditingRef.current
-    const acceptedChanges = allowPositionChanges ? changes : changes.filter((change) => change.type !== 'position')
-    const next = applyMapNodeChanges(nodeSnapshotRef.current, acceptedChanges)
-    commitNodes(next)
-    if (!allowPositionChanges) return
-    const candidate = mapPositions(next)
-    if (!shouldSaveMapLayout(changes, candidate, confirmedNodePositionsRef.current)) return
-    const changedPositions = Object.fromEntries(Object.entries(candidate).filter(([id, position]) => {
-      const confirmed = confirmedNodePositionsRef.current[id] ?? dagrePositions[id]
-      return position.x !== confirmed.x || position.y !== confirmed.y
-    }))
-    applyConfirmedPositions(onLayoutSave(candidate, changedPositions).positions)
-  }, [applyConfirmedPositions, commitNodes, manualProgressDisabled, onLayoutSave])
-  const handleLayoutEditingToggle = () => {
-    if (manualProgressDisabled) return
-    setLayoutEditingMode(!layoutEditingRef.current)
-  }
-  const selectedTitle = String(nodes.find((node) => node.selected)?.data.label ?? '')
-  const selectedLessonId = nodes.find((node) => node.selected)?.id
+  const selectedButtonLessonIdRef = useRef<string | null>(initialSelectedLessonId)
+  const focusFrameRef = useRef<number | null>(null)
+
   const selectedLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === selectedLessonId)
-  const nodeKeyboardDescription = layoutEditing
-    ? 'EnterまたはSpaceで単元の詳細を開きます。矢印キーで選択した単元の配置を動かせます。Escapeまたは閉じるボタンで戻ります。'
-    : 'EnterまたはSpaceで単元の詳細を開きます。Escapeまたは閉じるボタンでマップに戻ります。'
-  const ariaLabelConfig = {
-    'node.a11yDescription.default': nodeKeyboardDescription,
-    'node.a11yDescription.keyboardDisabled': nodeKeyboardDescription,
-    'node.a11yDescription.ariaLiveMessage': ({ direction, x, y }: { direction: string; x: number; y: number }) =>
-      `選択した単元を${mapDirectionLabels[direction] ?? direction}へ動かしました。新しい位置はx ${x}、y ${y}です。`,
-    'edge.a11yDescription.default': 'この線は共通必須前提を表します。単元の詳細カードから前提を確認できます。',
-    'controls.ariaLabel': 'グラフ操作',
-    'controls.zoomIn.ariaLabel': '拡大',
-    'controls.zoomOut.ariaLabel': '縮小',
-    'controls.fitView.ariaLabel': 'グラフ全体を表示',
-  }
+  const selectedTitle = selectedLesson?.title ?? ''
+  const directPrerequisiteIds = new Set(lessonGraph.commonPrerequisiteEdges
+    .filter((edge) => edge.target === selectedLessonId)
+    .map((edge) => edge.source))
   const selectedDomain = selectedLesson ? draftDomains[selectedLesson.lessonId] ?? selectedLesson.domain : null
   const selectedDomainLabel = selectedDomain ? lessonDomains[selectedDomain] : null
-  const directPrerequisiteEdges = graph.commonPrerequisiteEdges.filter((edge) => edge.target === selectedLessonId)
-  const directPrerequisiteIds = new Set(directPrerequisiteEdges.map((edge) => edge.source))
-  const directPrerequisiteEdgeIds = new Set(directPrerequisiteEdges.map((edge) => edge.id))
-  const lessonTitles = Object.fromEntries(graph.nodes.map(({ id, data }) => [id, String(data.label)]))
-  const displayNodes = nodes.map((node) => {
-    const title = String(node.data.label)
-    const domain = draftDomains[node.id] ?? node.data.domain
-    const domainLabel = lessonDomains[domain]
-    const lesson = lessonRegistry.lessons.find((item) => item.lessonId === node.id)
-    const isPlanned = lesson?.availability === 'planned'
-    const progressSummary = getMapProgressSummary(progress, node.id)
-    const manualStatus = manualProgress[node.id]?.status ?? 'not-started'
-    const manualStatusLabel = manualStatus === 'completed' ? '完了'
-      : manualStatus === 'started' ? '学習中' : '未開始'
-    const isCompleted = manualStatus === 'completed'
-    const relation = node.selected ? '選択中'
-      : directPrerequisiteIds.has(node.id) ? `「${selectedTitle}」の直接の共通必須前提` : null
-    const classNames = (node.className ?? '').split(/\s+/u)
-      .filter((className) => className && !className.startsWith('map-domain-'))
-    return {
-      ...node,
-      className: [...classNames, `map-domain-${domain}`,
-        directPrerequisiteIds.has(node.id) ? 'map-prerequisite' : null].filter(Boolean).join(' '),
-      ariaLabel: `${title}（分野：${domainLabel}${isPlanned ? '、未収録' : ''}、${progressSummary.ariaLabel}、手動進捗：${manualStatusLabel}${relation ? `、${relation}` : ''}）`,
-      data: {
-        ...node.data,
-        label: <>
-          <span className="map-node-title">{title}</span>
-          <span className="map-node-domain">{domainLabel}</span>
-          <span className="map-node-progress-row">
-            {isPlanned && <span className="map-node-availability">未収録</span>}
-            <span className="map-node-progress">{progressSummary.label}</span>
-          </span>
-          <span className="map-node-completed" aria-hidden="true">{isCompleted ? '✓' : ''}</span>
-        </>,
-      },
-    }
-  })
-  const domainColorStyle = authorEditorOpen ? Object.fromEntries(Object.entries(draftColors)
-    .map(([domain, color]) => [`--map-author-domain-${domain}`, color])) as CSSProperties : undefined
   const draftSnapshot = JSON.stringify({ domains: draftDomains, colors: draftColors })
   const hasUnexportedChanges = draftSnapshot !== lastExportSnapshot
-  const displayEdges = edges.map((edge) => {
-    const highlighted = directPrerequisiteEdgeIds.has(edge.id)
-    const sourceTitle = lessonTitles[edge.source] ?? edge.source
-    const targetTitle = lessonTitles[edge.target] ?? edge.target
-    return {
-      ...edge,
-      className: highlighted
-        ? [edge.className, 'map-prerequisite-edge'].filter(Boolean).join(' ')
-        : edge.className,
-      markerEnd: highlighted
-        ? { type: MarkerType.ArrowClosed, color: 'var(--map-prerequisite)' }
-        : edge.markerEnd,
-      ariaLabel: `${sourceTitle}から${targetTitle}への共通必須前提${highlighted ? '（選択教材の直接前提）' : ''}`,
+  const domainColorStyle = authorEditorOpen ? Object.fromEntries(Object.entries(draftColors)
+    .map(([domain, color]) => [`--map-author-domain-${domain}`, color])) as CSSProperties : undefined
+
+  const scrollFocusTargetIntoView = useCallback((element: HTMLElement) => {
+    const grid = gridRef.current
+    if (grid?.contains(element) && grid.scrollHeight > grid.clientHeight) {
+      const gridRect = grid.getBoundingClientRect()
+      const elementRect = element.getBoundingClientRect()
+      const delta = elementRect.top < gridRect.top
+        ? elementRect.top - gridRect.top
+        : elementRect.bottom > gridRect.bottom ? elementRect.bottom - gridRect.bottom : 0
+      if (delta) grid.scrollTop += delta
+      return
     }
-  })
-  const handleMove: OnMove = useCallback((_, nextViewport) => onViewportChange(nextViewport), [onViewportChange])
-  const cancelKeyboardFocus = useCallback(() => {
-    pendingKeyboardFocusRef.current = null
-    if (keyboardFocusFrameRef.current !== null) window.cancelAnimationFrame(keyboardFocusFrameRef.current)
-    keyboardFocusFrameRef.current = null
+    const stickyHeader = element.ownerDocument.querySelector<HTMLElement>('.map-app-shell > .site-header')
+    const headerBottom = stickyHeader && ['fixed', 'sticky'].includes(window.getComputedStyle(stickyHeader).position)
+      ? Math.max(0, Math.min(window.innerHeight, stickyHeader.getBoundingClientRect().bottom))
+      : 0
+    const rect = element.getBoundingClientRect()
+    const visibleTop = headerBottom + 8
+    const delta = rect.top < visibleTop ? rect.top - visibleTop : rect.bottom > window.innerHeight - 8 ? rect.bottom - window.innerHeight + 8 : 0
+    if (delta) window.scrollBy({ top: delta, behavior: 'instant' })
   }, [])
-  const cancelFocusRestore = useCallback(() => {
-    if (focusRestoreFrameRef.current !== null) window.cancelAnimationFrame(focusRestoreFrameRef.current)
-    focusRestoreFrameRef.current = null
-  }, [])
+
+  const showDetail = useCallback((moveFocus = true) => {
+    if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current)
+    focusFrameRef.current = window.requestAnimationFrame(() => {
+      focusFrameRef.current = null
+      const heading = detailHeadingRef.current
+      if (moveFocus) heading?.focus({ preventScroll: true })
+      const target = moveFocus ? heading : heading?.closest<HTMLElement>('.lesson-detail-header')
+      if (target) scrollFocusTargetIntoView(target)
+    })
+  }, [scrollFocusTargetIntoView])
+
+  const selectLesson = (lessonId: string, moveFocus: boolean) => {
+    selectedButtonLessonIdRef.current = lessonId
+    setSelectedLessonId(lessonId)
+    onSelectionChange(lessonId)
+    if (moveFocus || window.innerWidth <= 768) showDetail(moveFocus)
+  }
+
   const clearSelection = useCallback((restoreFocus = false) => {
-    const keyboardSelectedNodeId = restoreFocus ? keyboardSelectedNodeIdRef.current : null
-    keyboardSelectedNodeIdRef.current = null
-    cancelKeyboardFocus()
-    cancelFocusRestore()
-    commitNodes(nodeSnapshotRef.current.map((node) => node.selected ? { ...node, selected: false } : node))
+    if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current)
+    focusFrameRef.current = null
+    setSelectedLessonId(null)
     onSelectionChange(null)
     if (restoreFocus) {
-      const node = keyboardSelectedNodeId
-        ? mapCanvasRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${keyboardSelectedNodeId}"]`)
-        : null
-      let focusTarget: HTMLElement | null = node?.isConnected && node.tabIndex >= 0 ? node : null
-      focusTarget?.focus({ preventScroll: true })
-      if (!focusTarget || focusTarget.ownerDocument.activeElement !== focusTarget) {
-        focusTarget = fitViewButtonRef.current
-        focusTarget?.focus({ preventScroll: true })
-      }
-      if (focusTarget?.isConnected && focusTarget.ownerDocument.activeElement === focusTarget) {
-        const target = focusTarget
-        focusRestoreFrameRef.current = window.requestAnimationFrame(() => {
-          focusRestoreFrameRef.current = null
-          if (target.isConnected && target.ownerDocument.activeElement === target) scrollFocusTargetIntoView(target)
-        })
+      const button = Array.from(gridRef.current?.querySelectorAll<HTMLButtonElement>('[data-lesson-id]') ?? [])
+        .find((candidate) => candidate.dataset.lessonId === selectedButtonLessonIdRef.current)
+      if (button) {
+        button.focus({ preventScroll: true })
+        scrollFocusTargetIntoView(button)
       }
     }
-  }, [cancelFocusRestore, cancelKeyboardFocus, commitNodes, onSelectionChange])
-
-  useEffect(() => {
-    if (manualProgressDisabled) setLayoutEditingMode(false)
-  }, [manualProgressDisabled, setLayoutEditingMode])
-
-  useEffect(() => {
-    onAuthorModeChange(import.meta.env.DEV && authorEditorOpen)
-    return () => onAuthorModeChange(false)
-  }, [authorEditorOpen, onAuthorModeChange])
+  }, [onSelectionChange, scrollFocusTargetIntoView])
 
   useEffect(() => {
     if (!import.meta.env.DEV || !authorEditorOpen) return
@@ -299,121 +131,12 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
   }, [authorEditorOpen])
 
   useEffect(() => {
-    const nextPositions = Object.fromEntries(graph.nodes.map(({ id }) => [
-      id, positionsPropRef.current[id] ?? dagrePositions[id],
-    ])) as Positions
-    const previousPositions = confirmedNodePositionsRef.current
-    const changedIds = new Set(graph.nodes.filter(({ id }) => {
-      const previous = previousPositions[id]
-      const next = nextPositions[id]
-      return previous.x !== next.x || previous.y !== next.y
-    }).map(({ id }) => id))
-    confirmedNodePositionsRef.current = nextPositions
-    if (!changedIds.size) return
-    const current = nodeSnapshotRef.current
-    commitNodes(current.map((node) => changedIds.has(node.id)
-      ? { ...node, position: nextPositions[node.id] }
-      : node))
-  }, [commitNodes, dagrePositions, graph.nodes, positionSyncRevision])
-
-  useEffect(() => {
-    const clearAndRestoreFocus = () => clearSelection(true)
-    clearSelectionRef.current = clearAndRestoreFocus
+    clearSelectionRef.current = () => clearSelection(true)
     return () => {
-      if (clearSelectionRef.current === clearAndRestoreFocus) clearSelectionRef.current = null
-      keyboardSelectedNodeIdRef.current = null
-      cancelKeyboardFocus()
-      cancelFocusRestore()
+      if (clearSelectionRef.current) clearSelectionRef.current = null
+      if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current)
     }
-  }, [cancelFocusRestore, cancelKeyboardFocus, clearSelection, clearSelectionRef])
-
-  const handleSelectionChange: OnSelectionChangeFunc<MapPocNode> = useCallback(({ nodes: selectedNodes }) => {
-    const notifiedId = selectedNodes[0]?.id ?? null
-    const latestId = getNodes().find((node) => node.selected)?.id ?? null
-    if (notifiedId === latestId) onSelectionChange(latestId)
-  }, [getNodes, onSelectionChange])
-  const handleNodeClick: NodeMouseHandler<MapPocNode> = useCallback((event, node) => {
-    keyboardSelectedNodeIdRef.current = null
-    cancelKeyboardFocus()
-    cancelFocusRestore()
-    if (event.shiftKey && node.selected) {
-      clearSelection()
-    }
-  }, [cancelFocusRestore, cancelKeyboardFocus, clearSelection])
-  const handlePaneClick = useCallback(() => clearSelection(), [clearSelection])
-  const handleKeyDownCapture = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter' && event.key !== ' ' && event.code !== 'Space') return
-    const target = event.target
-    if (!(target instanceof Element)) return
-    const node = target.closest<HTMLElement>('.react-flow__node[data-id]')
-    const lessonId = node?.dataset.id
-    if (!lessonId) return
-    cancelKeyboardFocus()
-    cancelFocusRestore()
-    keyboardSelectedNodeIdRef.current = lessonId
-    pendingKeyboardFocusRef.current = lessonId
-    keyboardFocusFrameRef.current = window.requestAnimationFrame(() => {
-      keyboardFocusFrameRef.current = null
-      if (pendingKeyboardFocusRef.current !== lessonId) return
-      pendingKeyboardFocusRef.current = null
-      if (getNodes().some((currentNode) => currentNode.id === lessonId && currentNode.selected)) {
-        const heading = detailHeadingRef.current
-        heading?.focus({ preventScroll: true })
-        if (heading) {
-          keyboardFocusFrameRef.current = window.requestAnimationFrame(() => {
-            keyboardFocusFrameRef.current = null
-            if (keyboardSelectedNodeIdRef.current === lessonId && heading.ownerDocument.activeElement === heading) {
-              scrollFocusTargetIntoView(heading)
-            }
-          })
-        }
-      } else if (keyboardSelectedNodeIdRef.current === lessonId) {
-        keyboardSelectedNodeIdRef.current = null
-      }
-    })
-  }, [cancelFocusRestore, cancelKeyboardFocus, getNodes])
-  const handleInit = useCallback(() => {
-    if (viewport === null) void fitView({ padding: 0.14 })
-  }, [fitView, viewport])
-
-  useEffect(() => {
-    if (!selectedLessonId) return
-    const frame = window.requestAnimationFrame(() => {
-      const canvas = mapCanvasRef.current
-      const node = canvas?.querySelector<HTMLElement>(`.react-flow__node[data-id="${selectedLessonId}"]`)
-      if (!canvas || !node) return
-      const canvasRect = canvas.getBoundingClientRect()
-      const nodeRect = node.getBoundingClientRect()
-      const offset = (start: number, end: number, visibleStart: number, visibleEnd: number) => {
-        if (end - start > visibleEnd - visibleStart) return visibleStart - start
-        if (start < visibleStart) return visibleStart - start
-        if (end > visibleEnd) return visibleEnd - end
-        return 0
-      }
-      const x = offset(nodeRect.left, nodeRect.right, canvasRect.left, canvasRect.right)
-      const y = offset(nodeRect.top, nodeRect.bottom, canvasRect.top, canvasRect.bottom)
-      if (x === 0 && y === 0) return
-      const currentViewport = getViewport()
-      void setViewport({
-        x: currentViewport.x + x,
-        y: currentViewport.y + y,
-        zoom: currentViewport.zoom,
-      })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [getViewport, selectedLessonId, setViewport])
-
-  const resetLayout = () => {
-    if (manualProgressDisabled || !window.confirm('手動で変更した配置を破棄し、自動配置に戻しますか？')) return
-    const candidate = dagrePositions
-    const changedPositions = Object.fromEntries(Object.entries(candidate).filter(([id, position]) => {
-      const confirmed = confirmedNodePositionsRef.current[id] ?? position
-      return position.x !== confirmed.x || position.y !== confirmed.y
-    }))
-    const result = onLayoutSave(candidate, changedPositions)
-    applyConfirmedPositions(result.positions)
-    if (result.ok) window.requestAnimationFrame(() => void fitView({ padding: 0.14 }))
-  }
+  }, [clearSelection, clearSelectionRef])
 
   const exportDomainDraft = () => {
     const json = JSON.stringify({
@@ -446,125 +169,69 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
   }
 
   return (
-    <div className={`map-graph-layout${selectedLesson && !authorEditorOpen ? ' has-detail' : ''}${authorEditorOpen ? ' map-author-open' : ''}`} style={domainColorStyle}>
-      <div className={`map-graph-view${authorEditorOpen ? ' map-author-open' : ''}`} onKeyDownCapture={handleKeyDownCapture}>
-        {import.meta.env.DEV && authorEditorOpen ? (
-          <section className="map-author-editor" aria-label="教材分野と色の編集">
-            <header className="map-author-header">
-              <div className="map-author-summary" aria-live="polite">
-                <span>{selectedLesson?.title ?? '教材を選択すると、現在の分野を表示します。'}</span>
-                {selectedDomainLabel && <span>{selectedDomainLabel}</span>}
-              </div>
-              <div className="map-author-actions">
-                <button type="button" aria-pressed={layoutEditing} disabled={manualProgressDisabled} onClick={handleLayoutEditingToggle}>配置編集</button>
-                <button type="button" onClick={closeAuthorEditor}>閉じる</button>
-              </div>
-            </header>
-            <div className="map-author-content">
-              <p className="map-author-warning">draftは一時保存です。マップ/一覧の切替、画面移動、再読み込みで失われます。</p>
-              <div className="map-author-actions">
-                <button type="button" onClick={() => void fitView({ padding: 0.14 })}>全体表示</button>
-                <button type="button" disabled={manualProgressDisabled} onClick={resetLayout}>Re-layout</button>
-              </div>
-              <fieldset className="map-author-color-fields">
-                <legend>分野の色（全体に反映）</legend>
-                {Object.entries(lessonDomains).map(([domain, label], index) => (
-                  <label key={domain}>
-                    <span>{label}</span>
-                    <input
-                      ref={index === 0 ? firstAuthorControlRef : undefined}
-                      type="color"
-                      value={draftColors[domain as LessonDomain]}
-                      onChange={(event) => {
-                        const color = event.currentTarget.value
-                        setDraftColors((current) => ({ ...current, [domain]: color }))
-                        setAuthorExportMessage('')
-                      }}
-                    />
-                  </label>
-                ))}
-              </fieldset>
-              <fieldset className="map-author-domain-fields">
-                <legend>単元の分野</legend>
-                {lessonRegistry.lessons.map((lesson) => (
-                  <label key={lesson.lessonId}>
-                    <span>{lesson.title}</span>
-                    <select value={draftDomains[lesson.lessonId] ?? lesson.domain}
-                      onChange={(event) => updateDraftDomain(lesson.lessonId, event.currentTarget.value)}>
-                      {Object.entries(lessonDomains).map(([domain, label]) => (
-                        <option key={domain} value={domain}>{label}</option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </fieldset>
-              <p className="map-author-dirty" role="status" aria-live="polite">
-                {hasUnexportedChanges ? '未書き出しの変更があります。' : '変更はありません。'}
-              </p>
-              <button type="button" onClick={exportDomainDraft}>レビュー用JSONを書き出す</button>
-              <p className="map-author-export-message" role="status" aria-live="polite">{authorExportMessage}</p>
-            </div>
-          </section>
-        ) : (
-          <div className="map-graph-toolbar">
-            <p className="map-selection" aria-live="polite">選択中: {selectedTitle || 'なし'}{selectedDomainLabel
-              ? `。分野: ${selectedDomainLabel}` : ''}{selectedLessonId
-              ? directPrerequisiteEdges.length
-                ? `。直接の共通必須前提 ${directPrerequisiteEdges.length} 件を強調しています`
-                : '。直接の共通必須前提はありません'
-              : ''}</p>
-            <div className="map-graph-actions">
-              <button type="button" aria-pressed={layoutEditing} disabled={manualProgressDisabled} onClick={handleLayoutEditingToggle}>配置編集</button>
-              <button ref={fitViewButtonRef} type="button" onClick={() => void fitView({ padding: 0.14 })}>全体表示</button>
-              <button type="button" disabled={manualProgressDisabled} onClick={resetLayout}>Re-layout</button>
-              {import.meta.env.DEV && <button ref={authorEditorButtonRef} type="button" aria-expanded={authorEditorOpen}
-                onClick={() => setAuthorEditorOpen(true)}>分野編集</button>}
-            </div>
-            <ul className="map-domain-legend" aria-label="教材分野の凡例">
-              {Object.entries(lessonDomains).map(([domain, label]) => (
-                <li key={domain}><span className={`map-domain-swatch map-domain-${domain}`} aria-hidden="true" />{label}</li>
-              ))}
-            </ul>
+    <div className={`map-graph-layout${selectedLesson ? ' has-detail' : ''}${authorEditorOpen ? ' map-author-open' : ''}`} style={domainColorStyle}>
+      <section className="map-graph-view" aria-label="分野別学習マップ">
+        <div className="map-graph-toolbar">
+          <p className="map-selection" aria-live="polite">
+            {selectedLesson ? `選択中: ${selectedTitle}。分野: ${selectedDomainLabel}。` : '分野ごとの単元です。'}
+            {' '}分類内の表示順は、おすすめの学習順を示しません。
+            {selectedLesson && (directPrerequisiteIds.size
+              ? ` 選択した単元の直接の共通必須前提 ${directPrerequisiteIds.size} 件を強調しています。`
+              : ' 選択した単元に直接の共通必須前提はありません。')}
+          </p>
+          {import.meta.env.DEV && <div className="map-graph-actions">
+            <button ref={authorEditorButtonRef} type="button" aria-expanded={authorEditorOpen}
+              onClick={() => setAuthorEditorOpen((open) => !open)}>{authorEditorOpen ? '分野編集を閉じる' : '分野編集'}</button>
+          </div>}
+          <ul className="map-domain-legend" aria-label="教材分野の凡例">
+            {Object.entries(lessonDomains).map(([domain, label]) => (
+              <li key={domain}><span className={`map-domain-swatch map-domain-${domain}`} aria-hidden="true" />{label}</li>
+            ))}
+          </ul>
+        </div>
+        <div ref={gridRef} className="map-grid-scroll">
+          <div className="map-domain-grid" aria-label="5分類の学習マップ">
+            {Object.entries(lessonDomains).map(([domain, label]) => {
+              const lessons = lessonRegistry.lessons.filter((lesson) => (draftDomains[lesson.lessonId] ?? lesson.domain) === domain)
+              return <section className={`map-domain-column map-domain-${domain}`} key={domain} aria-labelledby={`map-domain-${domain}`}>
+                <h2 id={`map-domain-${domain}`}><span className="map-domain-swatch" aria-hidden="true" />{label}<span className="map-domain-count">{lessons.length}単元</span></h2>
+                <ul>
+                  {lessons.map((lesson) => {
+                    const selected = lesson.lessonId === selectedLessonId
+                    const prerequisite = directPrerequisiteIds.has(lesson.lessonId)
+                    const status = manualProgress[lesson.lessonId]?.status ?? 'not-started'
+                    const statusLabel = status === 'completed' ? '完了' : status === 'started' ? '学習中' : '未開始'
+                    const progressSummary = getMapProgressSummary(progress, lesson.lessonId)
+                    return <li key={lesson.lessonId}>
+                      <button
+                        type="button"
+                        className={`map-lesson-button${selected ? ' is-selected' : ''}${prerequisite ? ' is-prerequisite' : ''}${status === 'completed' ? ' is-completed' : ''}`}
+                        data-lesson-id={lesson.lessonId}
+                        aria-label={`${lesson.title}（${lesson.availability === 'planned' ? '未収録、' : ''}手動進捗：${statusLabel}）`}
+                        aria-pressed={selected}
+                        aria-describedby={prerequisite ? `map-prerequisite-${lesson.lessonId}` : undefined}
+                        onClick={(event) => selectLesson(lesson.lessonId, event.detail === 0)}
+                      >
+                        <span className="map-lesson-title">{lesson.title}</span>
+                        <span className="map-lesson-status">
+                          {lesson.availability === 'planned' && <span className="map-lesson-availability">未収録</span>}
+                          <span className={`map-manual-status${status === 'completed' ? ' is-completed' : ''}`}>{statusLabel}</span>
+                          <span className="map-progress-summary" aria-label={progressSummary.ariaLabel}>{progressSummary.label}</span>
+                        </span>
+                        {prerequisite && <span className="map-prerequisite-badge" aria-hidden="true">前提</span>}
+                        {prerequisite && <span className="visually-hidden" id={`map-prerequisite-${lesson.lessonId}`}>
+                          「{selectedTitle}」の直接の共通必須前提です。
+                        </span>}
+                      </button>
+                    </li>
+                  })}
+                </ul>
+              </section>
+            })}
           </div>
-        )}
-        <section ref={mapCanvasRef} className="map-canvas" aria-label="教材単元の依存関係">
-          <ReactFlow<MapPocNode>
-            nodes={displayNodes}
-            edges={displayEdges}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={onEdgesChange}
-            onMove={handleMove}
-            onNodeClick={handleNodeClick}
-            onPaneClick={handlePaneClick}
-            onSelectionChange={handleSelectionChange}
-            onInit={handleInit}
-            colorMode={theme}
-            defaultMarkerColor={null}
-            zoomOnScroll
-            panOnScroll={false}
-            zoomOnPinch
-            panOnDrag
-            nodesFocusable={true}
-            edgesFocusable={false}
-            nodesConnectable={false}
-            nodesDraggable={layoutEditing && !manualProgressDisabled}
-            edgesReconnectable={false}
-            deleteKeyCode={null}
-            multiSelectionKeyCode={null}
-            selectionKeyCode={null}
-            selectionOnDrag={false}
-            fitView={false}
-            defaultViewport={viewport ?? undefined}
-            minZoom={0.05}
-            maxZoom={2}
-            ariaLabelConfig={ariaLabelConfig}
-          >
-            <Background gap={24} />
-            <Controls showInteractive={false} aria-label="グラフ操作" />
-          </ReactFlow>
-        </section>
-      </div>
-      {selectedLesson && !authorEditorOpen && <LessonDetailCard
+        </div>
+      </section>
+      {selectedLesson && <LessonDetailCard
         key={selectedLesson.lessonId}
         lesson={selectedLesson}
         manualProgress={manualProgress[selectedLesson.lessonId]}
@@ -573,10 +240,53 @@ function LessonGraph({ theme, viewport, selectedLessonId: initialSelectedLessonI
         headingRef={detailHeadingRef}
         onClose={() => clearSelection(true)}
       />}
+      {import.meta.env.DEV && authorEditorOpen && <section className="map-author-editor" aria-label="教材分野と色の編集">
+        <header className="map-author-header">
+          <div className="map-author-summary" aria-live="polite">
+            <span>{selectedLesson?.title ?? '教材を選択すると、現在の分野を表示します。'}</span>
+            {selectedDomainLabel && <span>{selectedDomainLabel}</span>}
+          </div>
+          <button type="button" onClick={closeAuthorEditor}>閉じる</button>
+        </header>
+        <div className="map-author-content">
+          <p className="map-author-warning">draftは一時保存です。画面移動、表示切替、再読み込みで失われます。</p>
+          <fieldset className="map-author-color-fields">
+            <legend>分野の色（全体に反映）</legend>
+            {Object.entries(lessonDomains).map(([domain, label], index) => (
+              <label key={domain}>
+                <span>{label}</span>
+                <input ref={index === 0 ? firstAuthorControlRef : undefined} type="color" value={draftColors[domain as LessonDomain]}
+                  onChange={(event) => {
+                    const color = event.currentTarget.value
+                    setDraftColors((current) => ({ ...current, [domain]: color }))
+                    setAuthorExportMessage('')
+                  }} />
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="map-author-domain-fields">
+            <legend>単元の分野</legend>
+            {lessonRegistry.lessons.map((lesson) => (
+              <label key={lesson.lessonId}>
+                <span>{lesson.title}</span>
+                <select value={draftDomains[lesson.lessonId] ?? lesson.domain}
+                  onChange={(event) => updateDraftDomain(lesson.lessonId, event.currentTarget.value)}>
+                  {Object.entries(lessonDomains).map(([domain, domainLabel]) => <option key={domain} value={domain}>{domainLabel}</option>)}
+                </select>
+              </label>
+            ))}
+          </fieldset>
+          <p className="map-author-dirty" role="status" aria-live="polite">
+            {hasUnexportedChanges ? '未書き出しの変更があります。' : '変更はありません。'}
+          </p>
+          <button type="button" onClick={exportDomainDraft}>レビュー用JSONを書き出す</button>
+          <p className="map-author-export-message" role="status" aria-live="polite">{authorExportMessage}</p>
+        </div>
+      </section>}
     </div>
   )
 }
 
 export function LessonMapView(props: LessonMapViewProps) {
-  return <ReactFlowProvider><LessonGraph {...props} /></ReactFlowProvider>
+  return <LessonGraph {...props} />
 }

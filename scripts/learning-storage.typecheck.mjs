@@ -13,7 +13,7 @@ export async function checkLearningStorageTypes(storage, file) {
   const learning = readLearningState(lessonRegistry, () => storage)
   const practice = readPracticeResults(() => storage)
   const state = learning.status === 'missing' || learning.status === 'ok'
-    ? learning.state : { schemaVersion: 1, lessons: {}, positions: {} }
+    ? learning.state : { schemaVersion: 2, lessons: {} }
   const expectedLearningRaw = learning.status === 'missing' || learning.status === 'ok' ? learning.raw : null
   const expectedPracticeRaw = practice.status === 'missing' || practice.status === 'ok' ? practice.raw : null
   const saved = saveLearningState(state, expectedLearningRaw, lessonRegistry, () => storage)

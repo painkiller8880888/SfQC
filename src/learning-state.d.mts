@@ -1,17 +1,16 @@
 import type { LessonRegistry } from './lesson-contract.mjs'
 
-export const LEARNING_STATE_KEY: 'sfqc:learning-state:v1'
+export const LEARNING_STATE_KEY: 'sfqc:learning-state:v2'
 export const LEARNING_STATE_MAX_BYTES: 65_536
 export type LearningStateStorage = {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
 }
 export type LearningState = {
-  schemaVersion: 1
+  schemaVersion: 2
   lessons: Record<string, { completedAt: string | null }>
-  positions: Record<string, { x: number; y: number }>
 }
-export type LearningStateUnresolvedIds = { lessons: string[]; positions: string[] }
+export type LearningStateUnresolvedIds = { lessons: string[] }
 export type LearningStateErrorCode = 'invalid-json' | 'invalid-schema' | 'unsupported-version' | 'too-large'
   | 'storage-unavailable' | 'storage-write-failed' | 'unresolved-changed'
 export class LearningStateError extends Error { code: LearningStateErrorCode }
