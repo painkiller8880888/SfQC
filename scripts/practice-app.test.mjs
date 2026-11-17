@@ -6,7 +6,7 @@ import { act, createElement, StrictMode } from 'react'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
 import { serializeLearningBackup } from '../src/backup.mjs'
-import { createMapPocGraph } from '../src/map-poc-graph.mjs'
+import { deriveLessonGraph } from '../src/lesson-graph.mjs'
 import { lessonDomainColors, lessonDomains } from '../src/lesson-contract.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 import {
@@ -24,24 +24,8 @@ const MAP_STATE_KEY = 'sfqc:map-state:v1'
 
 const globalKeys = [
   'window', 'document', 'navigator', 'Element', 'HTMLElement', 'Node', 'Event', 'MouseEvent',
-  'ResizeObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'getComputedStyle', 'IS_REACT_ACT_ENVIRONMENT',
+  'requestAnimationFrame', 'cancelAnimationFrame', 'getComputedStyle', 'IS_REACT_ACT_ENVIRONMENT',
 ]
-
-class TestResizeObserver {
-  constructor(callback, measureFlowNodes = false) {
-    this.callback = callback
-    this.measureFlowNodes = measureFlowNodes
-  }
-
-  observe(target) {
-    if (!this.measureFlowNodes || !target.classList?.contains('react-flow__node')) return
-    const width = target.offsetWidth
-    const height = target.offsetHeight
-    if (width && height) this.callback([{ target, contentRect: { width, height } }], this)
-  }
-  unobserve() {}
-  disconnect() {}
-}
 
 function installMatchMedia(window, initialTheme = 'light', available = true, listenersAvailable = true) {
   let systemTheme = initialTheme
@@ -94,23 +78,21 @@ function createAppTestServer() {
 async function createHarness({
   strict = false,
   confirm = () => true,
-  measureFlowNodes = false,
   systemTheme = 'light',
   supportsMatchMedia = true,
   supportsMatchMediaListeners = true,
   url = 'https://sfqc.test/SfQC/#/course/descriptive-statistics/practice',
   historyState,
   sharedServer,
+  localStorageEntries = {},
 } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url,
     pretendToBeVisual: true,
   })
+  for (const [key, value] of Object.entries(localStorageEntries)) dom.window.localStorage.setItem(key, value)
   if (historyState !== undefined) dom.window.history.replaceState(historyState, '', url)
   const previousGlobals = new Map(globalKeys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
-  const previousMetrics = new Map(['offsetWidth', 'offsetHeight'].map((key) => [
-    key, Object.getOwnPropertyDescriptor(dom.window.HTMLElement.prototype, key),
-  ]))
   const media = installMatchMedia(dom.window, systemTheme, supportsMatchMedia, supportsMatchMediaListeners)
   const globals = {
     window: dom.window,
@@ -121,13 +103,6 @@ async function createHarness({
     Node: dom.window.Node,
     Event: dom.window.Event,
     MouseEvent: dom.window.MouseEvent,
-    ResizeObserver: measureFlowNodes
-      ? class extends TestResizeObserver {
-        constructor(callback) {
-          super(callback, true)
-        }
-      }
-      : TestResizeObserver,
     requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
     cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
     getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
@@ -139,25 +114,7 @@ async function createHarness({
   dom.window.scrollTo = () => {}
   dom.window.scrollBy = () => {}
   dom.window.HTMLElement.prototype.scrollIntoView = () => {}
-  if (measureFlowNodes) Object.defineProperty(dom.window, 'DOMMatrixReadOnly', {
-    configurable: true,
-    value: class {
-      constructor(transform) {
-        this.m22 = Number(/scale\(\s*([-+.\deE]+)/u.exec(transform ?? '')?.[1] ?? 1)
-      }
-    },
-  })
   dom.window.confirm = confirm
-  dom.window.document.head.insertAdjacentHTML('beforeend', '<style>.react-flow__pane { z-index: 1 }</style>')
-  for (const [key, dimension] of [['offsetWidth', 1024], ['offsetHeight', 640]]) {
-    Object.defineProperty(dom.window.HTMLElement.prototype, key, {
-      configurable: true,
-      get() {
-        const inlineSize = Number.parseFloat(this.style?.[key === 'offsetWidth' ? 'width' : 'height'] ?? '')
-        return Number.isFinite(inlineSize) ? inlineSize : this.classList?.contains('react-flow') ? dimension : 0
-      },
-    })
-  }
   const ownsServer = sharedServer === undefined
   const server = sharedServer ?? await createAppTestServer()
   const { default: App } = await server.ssrLoadModule('/src/App.tsx')
@@ -204,10 +161,6 @@ async function createHarness({
         const descriptor = previousGlobals.get(key)
         if (descriptor) Object.defineProperty(globalThis, key, descriptor)
         else delete globalThis[key]
-      }
-      for (const [key, descriptor] of previousMetrics) {
-        if (descriptor) Object.defineProperty(dom.window.HTMLElement.prototype, key, descriptor)
-        else delete dom.window.HTMLElement.prototype[key]
       }
     },
   }
@@ -284,27 +237,6 @@ async function pressKey(window, target, key) {
     await new Promise((resolve) => window.requestAnimationFrame(resolve))
   })
   return event
-}
-
-async function dispatchReactFlowMouseEvent(window, target, type, x, y, buttons) {
-  await act(async () => {
-    target.dispatchEvent(new window.MouseEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-      button: 0,
-      buttons,
-      clientX: x,
-      clientY: y,
-    }))
-    await new Promise((resolve) => window.requestAnimationFrame(resolve))
-  })
-}
-
-function renderedPosition(node) {
-  const match = node.style.transform.match(/translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/u)
-  assert.ok(match, `expected node position transform, got: ${node.style.transform}`)
-  return { x: Number(match[1]), y: Number(match[2]) }
 }
 
 function savedMap(window) {
@@ -579,16 +511,16 @@ test('theme follows the system, saves manual choices, and stays separate from le
     await click(linkFor(app.host, '学習マップ'))
     await settleEffects(window)
     const routeBefore = window.location.hash
-    assert.ok(app.host.querySelector('.react-flow').classList.contains('light'))
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'light')
 
     await app.setSystemTheme('dark')
     assert.equal(theme(), 'dark')
     assert.equal(documentTheme(), 'dark')
-    assert.ok(app.host.querySelector('.react-flow').classList.contains('dark'))
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
     await changeControl(window, themeSelect(), 'light')
     assert.equal(theme(), 'light')
     assert.equal(documentTheme(), 'light')
-    assert.ok(app.host.querySelector('.react-flow').classList.contains('light'))
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'light')
     assert.equal(app.mediaListenerCount, 0)
     assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), 'light')
     await app.setSystemTheme('dark')
@@ -601,7 +533,7 @@ test('theme follows the system, saves manual choices, and stays separate from le
     await changeControl(window, themeSelect(), 'dark')
     assert.equal(theme(), 'dark')
     assert.equal(documentTheme(), 'dark')
-    assert.ok(app.host.querySelector('.react-flow').classList.contains('dark'))
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
     assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), 'dark')
     await app.setSystemTheme('light')
     assert.equal(theme(), 'dark')
@@ -615,12 +547,12 @@ test('theme follows the system, saves manual choices, and stays separate from le
     assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), null)
     assert.equal(theme(), 'light')
     assert.equal(documentTheme(), 'light')
-    assert.ok(app.host.querySelector('.react-flow').classList.contains('light'))
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'light')
     assert.equal(app.mediaListenerCount, 1)
     await app.setSystemTheme('dark')
     assert.equal(theme(), 'dark')
     assert.equal(documentTheme(), 'dark')
-    assert.ok(app.host.querySelector('.react-flow').classList.contains('dark'))
+    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
     await app.remount()
     assert.equal(themeSelect().value, 'system')
     assert.equal(theme(), 'dark')
@@ -738,1032 +670,175 @@ test('theme stays usable when storage writes fail or matchMedia is unavailable',
   }
 })
 
-
-
-
-
-
-
-
-test('integrated learning map switches views and restores graph selection and viewport across navigation', async () => {
-  const app = await createHarness()
+test('integrated learning map renders all registry lessons in five categories with accessible direct prerequisites', async () => {
+  const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
   try {
-    const { window } = app.dom
-    await click(linkFor(app.host, '学習マップ'))
+    const buttons = [...app.host.querySelectorAll('.map-lesson-button')]
+    const ids = buttons.map((button) => button.dataset.lessonId)
+    const graph = deriveLessonGraph(lessonRegistry)
+    const columns = [...app.host.querySelectorAll('.map-domain-column')]
+    assert.equal(columns.length, 5)
+    assert.equal(buttons.length, 34)
+    assert.equal(new Set(ids).size, 34)
+    assert.deepEqual([...ids].sort(), lessonRegistry.lessons.map((lesson) => lesson.lessonId).sort())
+    assert.equal(lessonRegistry.lessons.filter((lesson) => lesson.availability === 'included').length, 6)
+    assert.equal(lessonRegistry.lessons.filter((lesson) => lesson.availability === 'planned').length, 28)
+    assert.equal(app.host.querySelectorAll('.map-lesson-availability').length, 28)
+    assert.equal(app.host.querySelector('.map-selection').textContent.includes('おすすめの学習順を示しません'), true)
+    assert.equal(app.host.querySelectorAll('.map-domain-grid svg').length, 0)
+    assert.equal(buttonFor(app.host, '配置編集'), undefined)
+    assert.equal(buttonFor(app.host, 'Re-layout'), undefined)
 
-    assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
-    assert.ok(app.host.querySelector('#page-title'))
-
-    const lessonNode = [...app.host.querySelectorAll('.react-flow__node')]
-      .find((node) => node.textContent.includes('基本統計量'))
-    assert.ok(lessonNode)
-    assert.equal(app.host.querySelector('.lesson-detail-card'), null)
-    const selectedId = lessonNode.dataset.id
-    await click(lessonNode)
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
-    assert.equal(app.host.querySelector('.map-selection').textContent,
-      `選択中: ${lessonNode.querySelector('.map-node-title').textContent}。分野: ${lessonNode.querySelector('.map-node-domain').textContent}。直接の共通必須前提 3 件を強調しています`)
-
-    const viewport = app.host.querySelector('.react-flow__viewport')
-    const beforeZoom = viewport.style.transform
-    await click(app.host.querySelector('.react-flow__controls-zoomin'))
-    const zoomedTransform = viewport.style.transform
-    assert.notEqual(zoomedTransform, beforeZoom)
-
-    const listButton = buttonFor(app.host, '教材一覧')
-    await click(listButton)
-    await click(buttonFor(app.host, 'マップ表示'))
-    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, zoomedTransform)
-
-    await click(app.host.querySelector('.react-flow__controls-zoomin'))
-    await click(app.host.querySelector('.react-flow__controls-zoomin'))
-    await click(buttonFor(app.host, '全体表示'))
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 220)))
-    const fitViewTransform = app.host.querySelector('.react-flow__viewport').style.transform
-
-    listButton.focus()
-    await click(listButton)
-    assert.equal(window.document.activeElement, listButton)
-    assert.ok(app.host.querySelector('.lesson-card'))
-    await click(buttonFor(app.host, 'マップ表示'))
-    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, fitViewTransform)
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
-    assert.equal(app.host.querySelector('.react-flow__node.selected').dataset.id, selectedId)
-
-    await click(buttonFor(app.host, 'Re-layout'))
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 220)))
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
-    assert.equal(app.host.querySelector('.react-flow__node.selected').dataset.id, selectedId)
-    const relayoutTransform = app.host.querySelector('.react-flow__viewport').style.transform
-
-    await click(linkFor(app.host, '進捗'))
-    await click(linkFor(app.host, '学習マップ'))
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
-    assert.equal(app.host.querySelector('.react-flow__node.selected').dataset.id, selectedId)
-    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, relayoutTransform)
-  } finally {
-    await app.close()
-  }
-})
-
-test('integrated learning map details use available lesson references and existing routes', async () => {
-  const app = await createHarness()
-  try {
-    await click(linkFor(app.host, '学習マップ'))
-    const descriptiveNode = [...app.host.querySelectorAll('.react-flow__node')]
-      .find((node) => node.dataset.id === 'descriptive-statistics')
-    await click(descriptiveNode)
-    const detail = app.host.querySelector('.lesson-detail-card')
-    assert.ok(detail)
-    assert.match(detail.textContent, /学習目標/u)
-    assert.match(detail.textContent, /共通必須前提/u)
-    assert.match(detail.textContent, /任意復習/u)
-    assert.equal(linkFor(detail, '解説を読む')?.getAttribute('href'), '#/course/descriptive-statistics/lesson/mean')
-    assert.equal(linkFor(detail, '演習問題一覧を開く')?.getAttribute('href'), '#/course/descriptive-statistics/practice')
-    assert.equal(linkFor(detail, '進捗を見る')?.getAttribute('href'), '#/progress')
-
-    await click(linkFor(detail, '演習問題一覧を開く'))
-    assert.equal(app.dom.window.location.hash, '#/course/descriptive-statistics/practice')
-    assert.equal(app.host.querySelectorAll('.ds-practice-question').length, 5)
-    await click(linkFor(app.host, '学習マップ'))
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
+    const selectedId = 'descriptive-statistics'
+    await click(app.host.querySelector(`[data-lesson-id="${selectedId}"]`))
+    const selected = app.host.querySelector(`[data-lesson-id="${selectedId}"]`)
+    assert.equal(selected.getAttribute('aria-pressed'), 'true')
+    assert.match(selected.getAttribute('aria-label'), /^基本統計量/u)
     assert.ok(app.host.querySelector('.lesson-detail-card'))
+    const expectedPrerequisiteIds = graph.commonPrerequisiteEdges
+      .filter((edge) => edge.target === selectedId).map((edge) => edge.source).sort()
+    const highlighted = [...app.host.querySelectorAll('.map-lesson-button.is-prerequisite')]
+      .map((button) => button.dataset.lessonId).sort()
+    assert.deepEqual(highlighted, expectedPrerequisiteIds)
+    assert.equal(app.host.querySelectorAll('.map-prerequisite-badge').length, expectedPrerequisiteIds.length)
+    for (const id of expectedPrerequisiteIds) {
+      const prerequisite = app.host.querySelector(`[data-lesson-id="${id}"]`)
+      assert.equal(prerequisite.getAttribute('aria-pressed'), 'false')
+      const description = app.host.querySelector(`#${prerequisite.getAttribute('aria-describedby')}`)
+      assert.match(description.textContent, /基本統計量/u)
+      assert.match(description.textContent, /直接の共通必須前提/u)
+    }
 
-    await click(linkFor(app.host.querySelector('.lesson-detail-card'), '解説を読む'))
+    await click(buttonFor(app.host, '教材一覧'))
+    assert.ok(app.host.querySelector('.map-list-content'))
+    await click(buttonFor(app.host, 'マップ表示'))
+    assert.equal(app.dom.window.location.hash, '#/map')
+    assert.equal(app.host.querySelector(`[data-lesson-id="${selectedId}"]`).getAttribute('aria-pressed'), 'true')
+
+    app.host.querySelector('.map-grid-scroll').scrollTop = 220
+    await click(linkFor(app.host, '解説を読む'))
     assert.equal(app.dom.window.location.hash, '#/course/descriptive-statistics/lesson/mean')
-    assert.match(app.host.querySelector('.lesson-panel').textContent, /量的データの平均/u)
-    await click(linkFor(app.host, '学習マップ'))
-    assert.ok(app.host.querySelector('.lesson-detail-card'))
-
-    await click(linkFor(app.host.querySelector('.lesson-detail-card'), '進捗を見る'))
-    assert.equal(app.dom.window.location.hash, '#/progress')
+    assert.equal(app.dom.window.history.state.scrollY, 0, 'the grid scroll stays separate from route window scroll')
+    await waitForHistory(app.dom.window, 'back')
+    assert.equal(app.dom.window.location.hash, '#/map')
+    assert.equal(app.dom.window.history.state.scrollY, 0)
   } finally {
     await app.close()
   }
 })
 
-
-
-
-
-
-
-
-
-test('integrated learning map resets detail scrolling when the selected lesson changes', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(linkFor(app.host, '学習マップ'))
-    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
-    const firstContent = app.host.querySelector('.lesson-detail-content')
-    firstContent.scrollTop = 400
-    assert.equal(firstContent.scrollTop, 400)
-
-    await click(app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
-    const secondContent = app.host.querySelector('.lesson-detail-content')
-    assert.notEqual(secondContent, firstContent)
-    assert.equal(secondContent.scrollTop, 0)
-
-    secondContent.scrollTop = 400
-    const nextNode = app.host.querySelector('.react-flow__node[data-id="math-arithmetic"]')
-    nextNode.focus()
-    await pressKey(window, nextNode, 'Enter')
-    assert.equal(window.document.activeElement, app.host.querySelector('.lesson-detail-header h2'))
-    assert.equal(app.host.querySelector('.lesson-detail-content').scrollTop, 0)
-  } finally {
-    await app.close()
-  }
-})
-
-test('integrated learning map shifts the viewport only when the selected node is clipped', async () => {
-  const app = await createHarness()
-  try {
-    await click(linkFor(app.host, '学習マップ'))
-    await settleEffects(app.dom.window)
-    const canvas = app.host.querySelector('.map-canvas')
-    const viewport = app.host.querySelector('.react-flow__viewport')
-    const canvasRect = (width) => ({ left: 0, top: 0, right: width, bottom: 600, width, height: 600 })
-    canvas.getBoundingClientRect = () => canvasRect(app.host.querySelector('.map-graph-layout.has-detail') ? 900 : 1200)
-
-    const visibleNode = app.host.querySelector('.react-flow__node[data-id="math-arithmetic"]')
-    visibleNode.getBoundingClientRect = () => ({ left: 300, top: 100, right: 572, bottom: 160, width: 272, height: 60 })
-    const beforeVisibleSelection = viewport.style.transform
-    await click(visibleNode)
-    await settleEffects(app.dom.window)
-    assert.equal(viewport.style.transform, beforeVisibleSelection)
-
-    await click(buttonFor(app.host, '閉じる'))
-    await settleEffects(app.dom.window)
-    const clippedNode = app.host.querySelector('.react-flow__node[data-id="control-charts"]')
-    clippedNode.getBoundingClientRect = () => ({ left: 880, top: 100, right: 1152, bottom: 160, width: 272, height: 60 })
-    const beforeCorrection = viewport.style.transform
-    await click(clippedNode)
-    await settleEffects(app.dom.window)
-    const afterCorrection = viewport.style.transform
-    const transformValues = (value) => value.match(/translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\) scale\(([\d.]+)\)/u)
-    const beforeValues = transformValues(beforeCorrection)
-    const afterValues = transformValues(afterCorrection)
-    assert.ok(beforeValues, beforeCorrection)
-    assert.ok(afterValues, afterCorrection)
-    assert.equal(afterValues[3], beforeValues[3])
-    assert.ok(Number(afterValues[1]) < Number(beforeValues[1]))
-  } finally {
-    await app.close()
-  }
-})
-
-test('integrated learning map highlights only direct common prerequisites and clears stale highlights', async () => {
-  const app = await createHarness({ measureFlowNodes: true })
-  try {
-    const { window } = app.dom
-    Object.defineProperty(window, 'DOMMatrixReadOnly', {
-      configurable: true,
-      value: class {
-        constructor(transform) {
-          this.m22 = Number(/scale\(\s*([-+.\deE]+)/u.exec(transform)?.[1] ?? 1)
-        }
-      },
-    })
-    await click(linkFor(app.host, '学習マップ'))
-    await settleEffects(window)
-
-    const graph = createMapPocGraph()
-    const node = (id) => app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    const edgeMarker = (id) => {
-      const edge = [...app.host.querySelectorAll('.react-flow__edge')].find((item) => item.dataset.id === id)
-      const reference = edge?.querySelector('.react-flow__edge-path').getAttribute('marker-end')
-      const markerId = /^url\(['"]?#(.+?)['"]?\)$/u.exec(reference ?? '')?.[1]
-      const symbol = markerId && window.document.getElementById(markerId)?.querySelector('.arrowclosed')
-      assert.ok(symbol, `expected an arrow marker for edge ${id}`)
-      return { reference, fill: symbol.style.fill }
-    }
-    const highlightedNodeIds = () => [...app.host.querySelectorAll('.react-flow__node.map-prerequisite')]
-      .map((item) => item.dataset.id).sort()
-    const highlightedEdgeIds = () => [...app.host.querySelectorAll('.react-flow__edge.map-prerequisite-edge')]
-      .map((item) => item.dataset.id).sort()
-    const defaultMarkers = new Map(graph.commonPrerequisiteEdges.map((edge) => [edge.id, edgeMarker(edge.id)]))
-    const expectSelection = async (id, expectedPrerequisites) => {
-      await click(node(id))
-      await settleEffects(window)
-      const directEdges = graph.commonPrerequisiteEdges.filter((edge) => edge.target === id)
-      assert.deepEqual(highlightedNodeIds(), [...expectedPrerequisites].sort())
-      assert.deepEqual(highlightedEdgeIds(), directEdges.map((edge) => edge.id).sort())
-      assert.equal(app.host.querySelectorAll('.react-flow__edge').length, 64)
-      assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, id)
-    }
-
-    const mapStateBeforeSelection = window.localStorage.getItem(MAP_STATE_KEY)
-    await expectSelection('math-arithmetic', [])
-    assert.match(node('math-arithmetic').getAttribute('aria-label'), /選択中/u)
-    assert.match(app.host.querySelector('.map-selection').textContent, /直接の共通必須前提はありません/u)
-    await expectSelection('math-ratios-percentages', ['math-arithmetic'])
-    await expectSelection('mean-inference', [
-      'inference-basics', 'descriptive-statistics', 'sampling-distributions',
-    ])
-    const meanInferenceEdges = new Set(graph.commonPrerequisiteEdges
-      .filter((edge) => edge.target === 'mean-inference').map((edge) => edge.id))
-    for (const edge of graph.commonPrerequisiteEdges) {
-      assert.equal(edgeMarker(edge.id).fill, meanInferenceEdges.has(edge.id) ? 'var(--map-prerequisite)' : defaultMarkers.get(edge.id).fill)
-    }
-
-    assert.match(node('descriptive-statistics').getAttribute('aria-label'), /直接の共通必須前提/u)
-    assert.match(app.host.querySelector('.map-selection').textContent, /直接の共通必須前提 3 件/u)
-    const highlightedEdge = app.host.querySelector('.react-flow__edge.map-prerequisite-edge')
-    assert.match(highlightedEdge.getAttribute('aria-label'), /選択教材の直接前提/u)
-    for (const id of [
-      'population-sample', 'normal-distribution', 'law-large-numbers-clt', 'mean-difference-inference',
-    ]) assert.equal(node(id).classList.contains('map-prerequisite'), false)
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), mapStateBeforeSelection)
-
-    const selectedNode = node('mean-inference')
-    const positionBefore = renderedPosition(selectedNode)
-    await click(buttonFor(app.host, '配置編集'))
-    selectedNode.focus()
-    await pressKey(window, selectedNode, 'ArrowRight')
-    await settleEffects(window)
-    assert.notDeepEqual(renderedPosition(node('mean-inference')), positionBefore)
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'mean-inference')
-    assert.deepEqual(highlightedNodeIds(), ['descriptive-statistics', 'inference-basics', 'sampling-distributions'])
-
-    assert.equal(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'), undefined)
-    assert.match(app.host.querySelector('.lesson-detail-card .manual-progress-notice').textContent, /教材未収録のため完了登録できません/u)
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'mean-inference')
-    assert.deepEqual(highlightedNodeIds(), ['descriptive-statistics', 'inference-basics', 'sampling-distributions'])
-
-    await expectSelection('descriptive-statistics', [
-      'data-types', 'math-powers-roots', 'math-ratios-percentages',
-    ])
-    assert.equal(node('qc-seven-tools').classList.contains('map-prerequisite'), false)
-    assert.equal(node('mean-inference').classList.contains('map-prerequisite'), false)
-
-    const selected = node('descriptive-statistics')
-    selected.focus()
-    await pressKey(window, selected, 'Escape')
-    for (const edge of graph.commonPrerequisiteEdges) {
-      assert.deepEqual(edgeMarker(edge.id), defaultMarkers.get(edge.id))
-    }
-    assert.equal(highlightedNodeIds().length, 0)
-    assert.equal(highlightedEdgeIds().length, 0)
-    assert.equal(selected.getAttribute('aria-label'), '基本統計量（分野：データ・記述統計、正答率未記録、正答数/試行数 0/0回、手動進捗：未開始）')
-    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
-
-    await click(node('mean-inference'))
-    await click(app.host.querySelector('.react-flow__pane'))
-    assert.equal(highlightedNodeIds().length, 0)
-    assert.equal(highlightedEdgeIds().length, 0)
-
-    await app.remountAt('#/map')
-    assert.equal(highlightedNodeIds().length, 0)
-    assert.equal(highlightedEdgeIds().length, 0)
-    assert.equal(app.host.querySelectorAll('.react-flow__edge').length, 64)
-  } finally {
-    await app.close()
-  }
-})
-
-test('development domain editor keeps a reviewable in-memory draft and exports only registry changes', async () => {
-  // StrictMode replays state updaters after the input event to catch retained SyntheticEvent reads.
-  const app = await createHarness({ strict: true })
+test('keyboard-style map selection focuses details and Escape restores tile focus', async () => {
+  const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
   const { window } = app.dom
-  const urlCreate = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
-  const urlRevoke = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
-  const anchorClick = Object.getOwnPropertyDescriptor(window.HTMLAnchorElement.prototype, 'click')
-  const downloads = []
-  let exportedBlob = null
-  let failDownload = true
-  const restoreDownloadMocks = () => {
-    if (urlCreate) Object.defineProperty(URL, 'createObjectURL', urlCreate)
-    else delete URL.createObjectURL
-    if (urlRevoke) Object.defineProperty(URL, 'revokeObjectURL', urlRevoke)
-    else delete URL.revokeObjectURL
-    if (anchorClick) Object.defineProperty(window.HTMLAnchorElement.prototype, 'click', anchorClick)
-    else delete window.HTMLAnchorElement.prototype.click
-  }
   try {
-    Object.defineProperty(window, 'DOMMatrixReadOnly', {
-      configurable: true,
-      value: class {
-        constructor(transform) {
-          this.m22 = Number(/scale\(\s*([-+.\deE]+)/u.exec(transform)?.[1] ?? 1)
-        }
-      },
+    const button = app.host.querySelector('[data-lesson-id="descriptive-statistics"]')
+    button.focus()
+    await act(async () => {
+      button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, detail: 0 }))
     })
-    assert.equal(buttonFor(app.host, '分野編集'), undefined)
-    await click(linkFor(app.host, '学習マップ'))
     await settleEffects(window)
-    assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
-    const mapLayout = () => app.host.querySelector('.map-graph-layout')
-    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'light')
-    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '')
-    await app.setSystemTheme('dark')
-    await settleEffects(window)
-    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
-    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '')
-    await app.setSystemTheme('light')
-    await settleEffects(window)
-    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'light')
-
-    const nodeFor = (id) => app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    const nodePosition = renderedPosition(nodeFor('math-arithmetic'))
-    const lessonTitle = (id) => lessonRegistry.lessons.find((lesson) => lesson.lessonId === id).title
-    const selectFor = (id) => [...app.host.querySelectorAll('.map-author-domain-fields label')]
-      .find((label) => label.querySelector('span').textContent === lessonTitle(id)).querySelector('select')
-    const domainClasses = (id) => [...nodeFor(id).classList].filter((name) => name.startsWith('map-domain-'))
-
-    await click(nodeFor('descriptive-statistics'))
-    await click(buttonFor(app.host, '分野編集'))
-    await settleEffects(window)
-    assert.ok(app.host.querySelector('.map-app-shell.map-author-mode'))
-    assert.equal(app.host.querySelector('.map-graph-layout.has-detail'), null)
-    assert.equal(app.host.querySelector('.lesson-detail-card'), null)
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
-    assert.match(app.host.querySelector('.map-author-summary').textContent, /基本統計量/u)
-    assert.match(app.host.querySelector('.map-author-summary').textContent, /データ・記述統計/u)
-    assert.equal(window.document.activeElement, app.host.querySelector('.map-author-color-fields input'))
-    assert.equal(app.host.querySelectorAll('.map-author-domain-fields select').length, 34)
-    assert.equal(app.host.querySelectorAll('.map-author-color-fields input[type="color"]').length, 5)
-    const mathFoundationColor = app.host.querySelector('.map-author-color-fields input[type="color"]')
-    assert.equal(mathFoundationColor.value, lessonDomainColors['math-foundations'])
-    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), mathFoundationColor.value)
-    await changeControl(window, mathFoundationColor, '#000000')
-    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '#000000')
-    await changeControl(window, mathFoundationColor, lessonDomainColors['math-foundations'])
-    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), lessonDomainColors['math-foundations'])
-    assert.deepEqual([...app.host.querySelectorAll('.map-author-color-fields label > span')].map((item) => item.textContent),
-      Object.values(lessonDomains))
-
-    for (const domain of ['data-description', 'probability-distributions', 'math-foundations']) {
-      await changeControl(window, selectFor('math-arithmetic'), domain)
-      assert.deepEqual(domainClasses('math-arithmetic'), [`map-domain-${domain}`])
-      assert.equal(nodeFor('math-arithmetic').querySelector('.map-node-domain').textContent, lessonDomains[domain])
-    }
-    assert.equal(app.host.querySelector('.map-author-dirty').textContent, '変更はありません。')
-    assert.deepEqual(renderedPosition(nodeFor('math-arithmetic')), nodePosition)
-
-    for (const color of app.host.querySelectorAll('.map-author-color-fields input[type="color"]')) {
-      await changeControl(window, color, '#000000')
-    }
-    const draftColorsBeforeTheme = [...app.host.querySelectorAll('.map-author-color-fields input[type="color"]')]
-      .map((input) => input.value)
-    await changeControl(window, selectFor('descriptive-statistics'), 'quality-methods')
-    assert.match(app.host.querySelector('.map-author-dirty').textContent, /未書き出し/u)
-    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '#000000')
-    await changeControl(window, app.host.querySelector('#theme-preference'), 'dark')
-    assert.equal(app.host.querySelector('.app-shell').dataset.theme, 'dark')
-    assert.deepEqual([...app.host.querySelectorAll('.map-author-color-fields input[type="color"]')]
-      .map((input) => input.value), draftColorsBeforeTheme)
-    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '#000000')
-    assert.deepEqual(domainClasses('descriptive-statistics'), ['map-domain-quality-methods'])
-    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, '品質管理手法')
-    assert.equal(nodeFor('descriptive-statistics').getAttribute('aria-label'), '基本統計量（分野：品質管理手法、正答率未記録、正答数/試行数 0/0回、手動進捗：未開始、選択中）')
-    for (const lesson of lessonRegistry.lessons) {
-      const current = lesson.lessonId === 'descriptive-statistics' ? 'quality-methods' : lesson.domain
-      assert.equal(nodeFor(lesson.lessonId).querySelector('.map-node-domain').textContent, lessonDomains[current])
-    }
-
-    Object.defineProperty(URL, 'createObjectURL', {
-      configurable: true,
-      writable: true,
-      value(blob) {
-        if (failDownload) throw new Error('download unavailable')
-        exportedBlob = blob
-        return 'blob:sfqc-test'
-      },
-    })
-    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value() {} })
-    Object.defineProperty(window.HTMLAnchorElement.prototype, 'click', {
-      configurable: true,
-      writable: true,
-      value() { downloads.push({ filename: this.download, href: this.href }) },
-    })
-    const exportButton = buttonFor(app.host, 'レビュー用JSONを書き出す')
-    assert.ok(exportButton, [...app.host.querySelectorAll('.map-author-editor button')].map((button) => button.textContent))
-    await click(exportButton)
-    assert.match(app.host.querySelector('.map-author-export-message').textContent, /変更は保持/u)
-    assert.match(app.host.querySelector('.map-author-dirty').textContent, /未書き出し/u)
-
-    failDownload = false
-    await click(buttonFor(app.host, 'レビュー用JSONを書き出す'))
-    await new Promise((resolve) => window.setTimeout(resolve, 0))
-    assert.match(app.host.querySelector('.map-author-export-message').textContent, /書き出し操作を開始/u)
-    assert.equal(app.host.querySelector('.map-author-dirty').textContent, '変更はありません。')
-    assert.equal(downloads[0].filename, 'sfqc-lesson-domain-draft.json')
-    const review = JSON.parse(await exportedBlob.text())
-    assert.equal(review.schemaVersion, 1)
-    assert.equal(review.curriculumRevision, lessonRegistry.curriculumRevision)
-    assert.deepEqual(Object.keys(review.domainColors), Object.keys(lessonDomains))
-    assert.ok(Object.values(review.domainColors).every((color) => color === '#000000'))
-    assert.deepEqual(review.lessonDomainChanges, [{
-      lessonId: 'descriptive-statistics', from: 'data-description', to: 'quality-methods',
-    }])
-    restoreDownloadMocks()
-
-    await click(buttonFor(app.host, '閉じる'))
-    await settleEffects(window)
-    assert.equal(app.host.querySelector('.map-app-shell.map-author-mode'), null)
-    assert.equal(mapLayout().style.getPropertyValue('--map-author-domain-math-foundations'), '')
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
-    assert.ok(app.host.querySelector('.lesson-detail-card'))
-    assert.equal(window.document.activeElement, buttonFor(app.host, '分野編集'))
-
-    await click(buttonFor(app.host, '分野編集'))
-    await click(buttonFor(app.host, '教材一覧'))
-    assert.equal(app.host.querySelector('.map-app-shell.map-author-mode'), null)
-    await click(buttonFor(app.host, 'マップ表示'))
-    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, 'データ・記述統計')
-    assert.equal(buttonFor(app.host, '分野編集').getAttribute('aria-expanded'), 'false')
-    assert.equal(window.localStorage.getItem(MAP_STATE_KEY), null)
-
-    await click(buttonFor(app.host, '分野編集'))
-    await click(linkFor(app.host, '進捗'))
-    assert.equal(app.host.querySelector('.map-app-shell.map-author-mode'), null)
-    await click(linkFor(app.host, '学習マップ'))
-    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, 'データ・記述統計')
-    await app.remountAt('#/map')
-    assert.equal(nodeFor('descriptive-statistics').querySelector('.map-node-domain').textContent, 'データ・記述統計')
-  } finally {
-    restoreDownloadMocks()
-    await app.close()
-  }
-})
-
-test('integrated learning map keyboard focus and Escape work throughout the map', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(linkFor(app.host, '学習マップ'))
-    const node = [...app.host.querySelectorAll('.react-flow__node')]
-      .find((item) => item.dataset.id === 'mean-inference')
-    assert.ok(node)
-    const nodes = [...app.host.querySelectorAll('.react-flow__node')]
-    assert.equal(nodes.length, lessonRegistry.lessons.length)
-    assert.ok(nodes.every((item) => item.getAttribute('tabindex') === '0'))
-    const nodeHelp = app.host.querySelector('[id^="react-flow__node-desc-"]')
-    assert.match(nodeHelp.textContent, /EnterまたはSpace/u)
-    assert.match(nodeHelp.textContent, /Escape/u)
-    assert.doesNotMatch(nodeHelp.textContent, /矢印キー|Delete|削除/u)
-    assert.equal(app.host.querySelector('.react-flow__controls').getAttribute('aria-label'), 'グラフ操作')
-    assert.equal(app.host.querySelector('.react-flow__controls-zoomin').getAttribute('aria-label'), '拡大')
-    assert.equal(app.host.querySelector('.react-flow__controls-zoomout').getAttribute('aria-label'), '縮小')
-    assert.equal(app.host.querySelector('.react-flow__controls-fitview').getAttribute('aria-label'), 'グラフ全体を表示')
-    node.focus()
-    await pressKey(window, node, 'Enter')
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
-    assert.equal(window.document.activeElement, app.host.querySelector('.lesson-detail-header h2'))
-    assert.match(app.host.querySelector('.lesson-detail-card').textContent, /未収録/u)
-    assert.match(app.host.querySelector('.lesson-detail-card').textContent, /方法条件付き必須/u)
-    assert.doesNotMatch(app.host.querySelector('.lesson-detail-card').innerHTML, /href="#\/lesson\/mean-inference/u)
-    assert.equal(linkFor(app.host.querySelector('.lesson-detail-card'), '演習問題一覧を開く'), undefined)
-
-    await pressKey(window, node, ' ')
-    assert.equal(window.document.activeElement, app.host.querySelector('.lesson-detail-header h2'))
-
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
-    await settleEffects(window)
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
-    assert.equal(window.document.activeElement, app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
-
-    const keyboardNode = app.host.querySelector('.react-flow__node[data-id="mean-inference"]')
-    keyboardNode.focus()
-    await pressKey(window, keyboardNode, 'Enter')
-    const escapeEvent = await pressKey(window, app.host.querySelector('.lesson-detail-header h2'), 'Escape')
-    await settleEffects(window)
-    assert.equal(escapeEvent.defaultPrevented, true)
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
-    assert.equal(window.document.activeElement, app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
-
-    const escapeFrom = async (getTarget) => {
-      const selected = app.host.querySelector('.react-flow__node[data-id="mean-inference"]')
-      await click(selected)
-      const target = getTarget()
-      target.focus()
-      const event = await pressKey(window, target, 'Escape')
-      assert.equal(event.defaultPrevented, true)
-      assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
-      assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
-    }
-
-    await escapeFrom(() => app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
-    await escapeFrom(() => linkFor(app.host.querySelector('.lesson-detail-card'), '進捗を見る'))
-    await escapeFrom(() => buttonFor(app.host, 'Re-layout'))
-    await escapeFrom(() => buttonFor(app.host, 'マップ表示'))
-
-    await click(buttonFor(app.host, '配置編集'))
-    assert.match(nodeHelp.textContent, /矢印キー/u)
-    await click(buttonFor(app.host, '配置編集'))
-
-    await click(app.host.querySelector('.react-flow__node[data-id="mean-inference"]'))
-    await click(buttonFor(app.host, '閉じる'))
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
-    assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
-
-    keyboardNode.focus()
-    await pressKey(window, keyboardNode, 'Enter')
-    const pointerReselectedNode = app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]')
-    await click(pointerReselectedNode)
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, 'descriptive-statistics')
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
-    await settleEffects(window)
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
-    assert.equal(window.document.activeElement, buttonFor(app.host, '全体表示'))
-    assert.notEqual(window.document.activeElement, keyboardNode)
-  } finally {
-    await app.close()
-  }
-})
-
-test('integrated learning map keeps keyboard and fallback focus visible without scrolling on pointer open', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    let pageScrollY = 100
-    let headingDocumentY = 120
-    let fitViewDocumentY = 120
-    const scrollCalls = []
-    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 240 })
-    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => pageScrollY })
-    window.scrollBy = (options) => {
-      scrollCalls.push(options)
-      pageScrollY += options.top
-    }
-    await click(linkFor(app.host, '学習マップ'))
-    const header = app.host.querySelector('.site-header')
-    const fitViewButton = buttonFor(app.host, '全体表示')
-    header.style.position = 'sticky'
-    const originalGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect
-    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
-      configurable: true,
-      value() {
-        if (this === header) return { top: 0, right: 320, bottom: 76, left: 0, width: 320, height: 76 }
-        if (this === fitViewButton) {
-          const top = fitViewDocumentY - pageScrollY
-          return { top, right: 120, bottom: top + 40, left: 0, width: 120, height: 40 }
-        }
-        if (this.matches('.lesson-detail-header h2')) {
-          const top = headingDocumentY - pageScrollY
-          return { top, right: 300, bottom: top + 24, left: 0, width: 300, height: 24 }
-        }
-        if (this.classList?.contains('react-flow__node')) {
-          const top = 330 - pageScrollY
-          return { top, right: 180, bottom: top + 60, left: 0, width: 180, height: 60 }
-        }
-        return originalGetBoundingClientRect.call(this)
-      },
-    })
-    const settleFocusFrames = () => act(async () => new Promise((resolve) => {
-      window.requestAnimationFrame(() => window.requestAnimationFrame(resolve))
-    }))
-
-    const node = app.host.querySelector('.react-flow__node[data-id="mean-inference"]')
-    node.focus()
-    await pressKey(window, node, 'Enter')
-    await settleFocusFrames()
-    const heading = app.host.querySelector('.lesson-detail-header h2')
+    const heading = app.host.querySelector('#lesson-detail-title-descriptive-statistics')
+    assert.equal(button.getAttribute('aria-pressed'), 'true')
     assert.equal(window.document.activeElement, heading)
-    assert.equal(pageScrollY, 36, 'keyboard opening scrolls the heading below the sticky header')
-    assert.equal(heading.getBoundingClientRect().top, 84)
 
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
-    await settleFocusFrames()
-    assert.equal(window.document.activeElement, node)
-    assert.equal(pageScrollY, 158, 'keyboard close scrolls the restored node into the page viewport')
-    assert.equal(node.getBoundingClientRect().bottom, 232)
-
-    pageScrollY = 100
-    headingDocumentY = 500
-    scrollCalls.length = 0
-    await click(node)
-    assert.equal(scrollCalls.length, 0, 'pointer selection does not scroll the page to the card heading')
-    assert.equal(pageScrollY, 100)
-    assert.equal(app.host.querySelector('.lesson-detail-header h2').getBoundingClientRect().top, 400)
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
-    await settleFocusFrames()
-    assert.equal(window.document.activeElement, fitViewButton)
-    assert.equal(pageScrollY, 36, 'pointer close scrolls the fallback focus below the sticky header')
-    assert.equal(fitViewButton.getBoundingClientRect().top, 84)
-    assert.deepEqual(scrollCalls, [{ top: -64, behavior: 'instant' }])
+    const event = await pressKey(window, heading, 'Escape')
+    assert.equal(event.defaultPrevented, true)
+    assert.equal(button.getAttribute('aria-pressed'), 'false')
+    assert.equal(window.document.activeElement, button)
   } finally {
     await app.close()
   }
 })
 
-test('integrated learning map cancels pending focus on close, view change, and route change', async () => {
-  const app = await createHarness()
+test('development domain and color editor remains attached to the grid', async () => {
+  const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
+  try {
+    await click(buttonFor(app.host, '分野編集'))
+    assert.equal(app.host.querySelectorAll('.map-lesson-button').length, 34)
+    assert.ok(app.host.querySelector('.map-author-editor'))
+    const lessonId = 'math-arithmetic'
+    const lessonEditor = [...app.host.querySelectorAll('.map-author-domain-fields label')]
+      .find((label) => label.textContent.includes(lessonRegistry.lessons.find((lesson) => lesson.lessonId === lessonId).title))
+    const select = lessonEditor.querySelector('select')
+    await changeControl(app.dom.window, select, 'quality-methods')
+    assert.equal(app.host.querySelector(`[data-lesson-id="${lessonId}"]`).closest('.map-domain-column').querySelector('h2').textContent.includes('品質管理手法'), true)
+    assert.equal(app.host.querySelector(`[data-lesson-id="${lessonId}"]`).dataset.lessonId, lessonId)
+    const colors = app.host.querySelectorAll('.map-author-color-fields input[type="color"]')
+    await changeControl(app.dom.window, colors[0], '#123456')
+    assert.equal(app.host.querySelector('.map-graph-layout').style.getPropertyValue('--map-author-domain-math-foundations'), '#123456')
+    assert.ok(buttonFor(app.host, 'レビュー用JSONを書き出す'))
+    assert.equal(buttonFor(app.host, 'Re-layout'), undefined)
+  } finally {
+    await app.close()
+  }
+})
+
+test('old manual completion stays untouched while new v2 progress starts unfinished and saves without positions', async () => {
+  const oldRaw = '{"schemaVersion":1,"lessons":{"descriptive-statistics":{"completedAt":"2026-11-12T12:34:56.789Z"}},"positions":{"descriptive-statistics":{"x":15,"y":20}}}'
+  const practiceRaw = '{"schemaVersion":1,"records":[]}'
+  const app = await createHarness({
+    url: 'https://sfqc.test/SfQC/#/map',
+    localStorageEntries: { 'sfqc:learning-state:v1': oldRaw, [PRACTICE_RESULTS_KEY]: practiceRaw },
+  })
   try {
     const { window } = app.dom
+    assert.ok([...app.host.querySelectorAll('.map-manual-status')].every((node) => node.textContent === '未開始'))
+    assert.equal(savedMap(window).schemaVersion, 2)
+    assert.equal(savedMap(window).positions, undefined)
+    assert.equal(window.localStorage.getItem('sfqc:learning-state:v1'), oldRaw)
+
+    await click(linkFor(app.host, 'データ管理'))
+    assert.match(app.host.textContent, /旧 v1 の手動完了は引き継がれず/u)
+    assert.match(app.host.textContent, /旧 v1 raw は読み取り・削除せず保全/u)
+    assert.match(app.host.textContent, /旧 version 1 backup は読み込めません/u)
+
     await click(linkFor(app.host, '学習マップ'))
-    const node = app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]')
-    await click(node)
-    node.focus()
-    await act(async () => {
-      const detailHeading = app.host.querySelector('.lesson-detail-header h2')
-      node.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))
-      buttonFor(app.host, '閉じる').click()
-      await new Promise((resolve) => window.requestAnimationFrame(resolve))
-      assert.notEqual(window.document.activeElement, detailHeading)
-    })
-    assert.equal(window.document.activeElement, app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
-
-    await click(node)
-    node.focus()
-    await act(async () => {
-      const detailHeading = app.host.querySelector('.lesson-detail-header h2')
-      node.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))
-      buttonFor(app.host, '教材一覧').click()
-      await new Promise((resolve) => window.setTimeout(resolve, 30))
-      assert.notEqual(window.document.activeElement, detailHeading)
-    })
-    assert.equal(app.host.querySelector('.lesson-detail-card'), null)
-    assert.equal(window.document.activeElement, buttonFor(app.host, '教材一覧'))
-
-    await click(buttonFor(app.host, 'マップ表示'))
-    const selectedNode = app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]')
-    selectedNode.focus()
-    await act(async () => {
-      const detailHeading = app.host.querySelector('.lesson-detail-header h2')
-      selectedNode.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))
-      linkFor(app.host, '進捗').click()
-      await new Promise((resolve) => window.setTimeout(resolve, 30))
-      assert.notEqual(window.document.activeElement, detailHeading)
-    })
-    assert.equal(app.dom.window.location.hash, '#/progress')
-  } finally {
-    await app.close()
-  }
-})
-
-test('integrated learning map Re-layout keeps an empty selection empty', async () => {
-  const app = await createHarness()
-  try {
-    await click(linkFor(app.host, '学習マップ'))
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
-    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
-
-    await click(buttonFor(app.host, '教材一覧'))
-    await click(buttonFor(app.host, 'マップ表示'))
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
-    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
-
-    await click(buttonFor(app.host, 'Re-layout'))
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
-    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
-  } finally {
-    await app.close()
-  }
-})
-
-test('map position snapshot helpers keep dragging live until a confirmed position change', async () => {
-  const app = await createHarness()
-  try {
-    const { applyMapNodeChanges, mapPositions, samePositions, shouldSaveMapLayout } = await app.loadModule('/src/lesson-map-view.tsx')
-    const nodes = createMapPocGraph().nodes
-    const id = 'descriptive-statistics'
-    const original = nodes.find((node) => node.id === id).position
-    const live = applyMapNodeChanges(nodes, [{
-      type: 'position', id, position: { x: original.x + 17, y: original.y + 9 }, dragging: true,
-    }])
-    assert.deepEqual(live.find((node) => node.id === id).position, { x: original.x + 17, y: original.y + 9 })
-    assert.notDeepEqual(mapPositions(live), mapPositions(nodes))
-    assert.equal(shouldSaveMapLayout([{ type: 'position', id, dragging: true }], mapPositions(live), mapPositions(nodes)), false)
-    assert.equal(shouldSaveMapLayout([{ type: 'select', id, selected: true }], mapPositions(live), mapPositions(nodes)), false)
-    assert.equal(shouldSaveMapLayout([{ type: 'dimensions', id }], mapPositions(live), mapPositions(nodes)), false)
-    assert.equal(shouldSaveMapLayout([{ type: 'position', id, dragging: false }], mapPositions(nodes), mapPositions(nodes)), false)
-
-    const confirmed = applyMapNodeChanges(live, [{
-      type: 'position', id, position: { x: original.x + 17, y: original.y + 9 }, dragging: false,
-    }])
-    assert.deepEqual(confirmed.find((node) => node.id === id).position, { x: original.x + 17, y: original.y + 9 })
-    assert.equal(shouldSaveMapLayout([{ type: 'position', id, dragging: false }], mapPositions(confirmed), mapPositions(nodes)), true)
-    assert.equal(samePositions(mapPositions(confirmed), mapPositions(live)), true)
-  } finally {
-    await app.close()
-  }
-})
-
-test('React Flow mouse drags that return to confirmed positions do not save layout', async () => {
-  const app = await createHarness({ measureFlowNodes: true })
-  const { window } = app.dom
-  const storagePrototype = Object.getPrototypeOf(window.localStorage)
-  const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
-  const originalSet = storagePrototype.setItem
-  let mapWriteCount = 0
-  try {
-    Object.defineProperty(window, 'DOMMatrixReadOnly', {
-      configurable: true,
-      value: class {
-        constructor(transform) {
-          this.m22 = Number(/scale\(\s*([-+.\deE]+)/u.exec(transform)?.[1] ?? 1)
-        }
-      },
-    })
-    const positions = Object.fromEntries(createMapPocGraph().nodes.map(({ id, position }) => [id, position]))
-    const nodeId = 'math-arithmetic'
-    const confirmedPosition = { x: positions[nodeId].x + 40, y: positions[nodeId].y + 20 }
-    positions[nodeId] = confirmedPosition
-    const state = readLearningState(lessonRegistry, () => window.localStorage).state
-    state.positions = positions
-    window.localStorage.setItem(LEARNING_STATE_KEY, serializeLearningState(state))
-    const rawBaseline = window.localStorage.getItem(LEARNING_STATE_KEY)
-
-    await app.remountAt('#/map')
-    await settleEffects(window)
-    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
-
-    Object.defineProperty(storagePrototype, 'setItem', {
-      configurable: true,
-      writable: true,
-      value: function (key, value) {
-        if (key === LEARNING_STATE_KEY) mapWriteCount += 1
-        return originalSet.call(this, key, value)
-      },
-    })
-
-    await click(buttonFor(app.host, '配置編集'))
-    await settleEffects(window)
-    const node = app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
-    assert.ok(node.classList.contains('draggable'))
-    const flowBounds = () => ({
-      x: 0, y: 0, left: 0, top: 0, right: 1024, bottom: 640, width: 1024, height: 640,
-    })
-    app.host.querySelector('.react-flow').getBoundingClientRect = flowBounds
-    app.host.querySelector('.react-flow__pane').getBoundingClientRect = flowBounds
-    node.getBoundingClientRect = () => ({
-      x: 0, y: 0, left: 0, top: 0, right: 1024, bottom: 640, width: 1024, height: 640,
-    })
-
-    const [startX, startY] = [320, 240]
-    const dragOrigin = [startX + 4, startY]
-    const dragNode = app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
-    await dispatchReactFlowMouseEvent(window, dragNode, 'mousedown', startX, startY, 1)
-    await dispatchReactFlowMouseEvent(window, window, 'mousemove', dragOrigin[0], dragOrigin[1], 1)
-    await dispatchReactFlowMouseEvent(window, window, 'mousemove', startX + 40, startY + 18, 1)
-    await settleEffects(window)
-
-    const outwardNode = app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
-    assert.ok(outwardNode.classList.contains('dragging'))
-    const outwardPosition = renderedPosition(outwardNode)
-    assert.notDeepEqual(outwardPosition, confirmedPosition, 'the React Flow drag must move the node outward')
-    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawBaseline)
-    assert.equal(mapWriteCount, 0)
-
-    await dispatchReactFlowMouseEvent(window, window, 'mousemove', dragOrigin[0], dragOrigin[1], 1)
-    await settleEffects(window)
-    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
-    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawBaseline)
-    assert.equal(mapWriteCount, 0)
-
-    await dispatchReactFlowMouseEvent(window, window, 'mouseup', dragOrigin[0], dragOrigin[1], 0)
-    await settleEffects(window)
-    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
-    assert.deepEqual(savedMap(window).positions, positions)
-    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawBaseline)
-    assert.equal(mapWriteCount, 0)
-
-    const zeroNode = app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
-    await dispatchReactFlowMouseEvent(window, zeroNode, 'mousedown', startX, startY, 1)
-    await dispatchReactFlowMouseEvent(window, window, 'mousemove', startX, startY, 1)
-    await dispatchReactFlowMouseEvent(window, window, 'mouseup', startX, startY, 0)
-    await settleEffects(window)
-    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${nodeId}"]`)), confirmedPosition)
-    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawBaseline)
-    assert.equal(mapWriteCount, 0)
-  } finally {
-    if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
-    await app.close()
-  }
-})
-
-test('layout editing gates keyboard movement, saves all positions, confirms Re-layout, and restores after reload', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(linkFor(app.host, '学習マップ'))
-    const id = 'descriptive-statistics'
-    const node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    await click(node)
-    node.focus()
-    const before = renderedPosition(node)
-    const originalPosition = createMapPocGraph().nodes.find((candidate) => candidate.id === id).position
-
-    await pressKey(window, node, 'ArrowRight')
-    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), before)
-    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), null)
-
-    const editButton = buttonFor(app.host, '配置編集')
-    assert.equal(editButton.getAttribute('aria-pressed'), 'false')
-    await click(editButton)
-    assert.equal(editButton.getAttribute('aria-pressed'), 'true')
-    const activeNode = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    activeNode.focus()
-    await pressKey(window, activeNode, 'ArrowRight')
-    await pressKey(window, app.host.querySelector(`.react-flow__node[data-id="${id}"]`), 'ArrowRight')
-
-    let map = savedMap(window)
-    assert.equal(Object.keys(map.positions).length, 34)
-    assert.deepEqual(map.positions[id], { x: originalPosition.x + 10, y: originalPosition.y })
-    const rawAfterMoves = window.localStorage.getItem(LEARNING_STATE_KEY)
-    await click(buttonFor(app.host, '全体表示'))
-    await settleEffects(window)
-    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawAfterMoves)
-
-    window.confirm = () => false
-    const beforeCancelPosition = renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
-    const beforeCancelViewport = app.host.querySelector('.react-flow__viewport').style.transform
-    const beforeCancelSelection = app.host.querySelector('.react-flow__node.selected')?.dataset.id
-    await click(buttonFor(app.host, 'Re-layout'))
-    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), rawAfterMoves)
-    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), beforeCancelPosition)
-    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, beforeCancelViewport)
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, beforeCancelSelection)
-
-    window.confirm = () => true
-    await click(buttonFor(app.host, 'Re-layout'))
-    await settleEffects(window)
-    map = savedMap(window)
-    const automatic = createMapPocGraph().nodes.find((candidate) => candidate.id === id).position
-    assert.deepEqual(map.positions[id], automatic)
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, beforeCancelSelection)
-    const savedPosition = renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
-    await app.remountAt('#/map')
-    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), savedPosition)
-    assert.deepEqual(savedMap(window).positions[id], automatic)
-  } finally {
-    await app.close()
-  }
-})
-
-test('successful layout saves preserve consecutive moves on different nodes', async () => {
-  const app = await createHarness()
-  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
-  const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
-  const originalSet = storagePrototype.setItem
-  let mapWriteCount = 0
-  try {
-    const { window } = app.dom
-    Object.defineProperty(storagePrototype, 'setItem', {
-      configurable: true,
-      writable: true,
-      value: function (key, value) {
-        if (key === LEARNING_STATE_KEY) mapWriteCount += 1
-        return originalSet.call(this, key, value)
-      },
-    })
-    await click(linkFor(app.host, '学習マップ'))
-    const defaults = Object.fromEntries(createMapPocGraph().nodes.map(({ id, position }) => [id, position]))
-    const firstId = 'descriptive-statistics'
-    const secondId = 'math-arithmetic'
-
-    await click(buttonFor(app.host, '配置編集'))
-    await click(app.host.querySelector(`.react-flow__node[data-id="${firstId}"]`))
-    let node = app.host.querySelector(`.react-flow__node[data-id="${firstId}"]`)
-    node.focus()
-    await pressKey(window, node, 'ArrowRight')
-    assert.equal(mapWriteCount, 1)
-    assert.equal(Object.keys(savedMap(window).positions).length, 34)
-    assert.deepEqual(savedMap(window).positions[firstId], { x: defaults[firstId].x + 5, y: defaults[firstId].y })
-    assert.deepEqual(savedMap(window).positions[secondId], defaults[secondId])
-
-    await click(app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`))
-    node = app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`)
-    node.focus()
-    await pressKey(window, node, 'ArrowRight')
-    const expected = Object.fromEntries(Object.entries(defaults).map(([id, position]) => [id, { ...position }]))
-    expected[firstId].x += 5
-    expected[secondId].x += 5
-    assert.equal(mapWriteCount, 2)
-    assert.deepEqual(savedMap(window).positions, expected)
-  } finally {
-    if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
-    await app.close()
-  }
-})
-
-test('failed layout save retains the target change for explicit retry', async () => {
-  const app = await createHarness()
-  const storagePrototype = Object.getPrototypeOf(app.dom.window.localStorage)
-  const originalDescriptor = Object.getOwnPropertyDescriptor(storagePrototype, 'setItem')
-  const originalSet = storagePrototype.setItem
-  let failMapWrite = true
-  try {
-    const { window } = app.dom
-    Object.defineProperty(storagePrototype, 'setItem', {
-      configurable: true,
-      writable: true,
-      value: function (key, value) {
-        if (key === LEARNING_STATE_KEY && failMapWrite) {
-          failMapWrite = false
-          throw new Error('quota')
-        }
-        return originalSet.call(this, key, value)
-      },
-    })
-    await click(linkFor(app.host, '学習マップ'))
-    const id = 'descriptive-statistics'
-    const originalPosition = createMapPocGraph().nodes.find((candidate) => candidate.id === id).position
-    await click(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
-    await click(buttonFor(app.host, '配置編集'))
-    let node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    node.focus()
-    const original = renderedPosition(node)
-    await pressKey(window, node, 'ArrowRight')
-    assert.deepEqual(renderedPosition(app.host.querySelector(`.react-flow__node[data-id="${id}"]`)), original)
-    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), null)
-    assert.match(app.host.querySelector('.map-route-messages').textContent, /保存できませんでした/u)
-    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
-    assert.deepEqual(savedMap(window).positions[id], { x: originalPosition.x + 5, y: originalPosition.y })
-  } finally {
-    if (originalDescriptor) Object.defineProperty(storagePrototype, 'setItem', originalDescriptor)
-    await app.close()
-  }
-})
-
-test('layout conflict adopts external positions immediately and keeps them in the next save', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(linkFor(app.host, '学習マップ'))
-    const defaults = createMapPocGraph().nodes
-    const external = readLearningState(lessonRegistry, () => window.localStorage).state
-    external.positions = Object.fromEntries(defaults.map(({ id, position }) => [id, {
-      x: position.x + 30,
-      y: position.y - 20,
-    }]))
-    window.localStorage.setItem(LEARNING_STATE_KEY, serializeLearningState(external))
-    const firstId = 'descriptive-statistics'
-    const stylesBefore = Object.fromEntries([...app.host.querySelectorAll('.react-flow__node')]
-      .map((node) => [node.dataset.id, node.style.transform]))
-    await click(app.host.querySelector(`.react-flow__node[data-id="${firstId}"]`))
-    await click(buttonFor(app.host, '配置編集'))
-    let selected = app.host.querySelector(`.react-flow__node[data-id="${firstId}"]`)
-    selected.focus()
-    const viewportBefore = app.host.querySelector('.react-flow__viewport').style.transform
-    await pressKey(window, selected, 'ArrowRight')
-    assert.deepEqual(savedMap(window).positions, external.positions)
-    for (const id of Object.keys(external.positions)) {
-      assert.notEqual(app.host.querySelector(`.react-flow__node[data-id="${id}"]`).style.transform, stylesBefore[id])
-    }
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, firstId)
-    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, viewportBefore)
-
-    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
-    const afterFirstRetry = savedMap(window).positions
-    assert.equal(Object.keys(afterFirstRetry).length, 34)
-    await click(buttonFor(app.host, '配置編集'))
-
-    const secondId = 'math-arithmetic'
-    await click(app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`))
-    selected = app.host.querySelector(`.react-flow__node[data-id="${secondId}"]`)
-    selected.focus()
-    await pressKey(window, selected, 'ArrowRight')
-    const finalPositions = savedMap(window).positions
-    assert.equal(Object.keys(finalPositions).length, 34)
-    for (const [id, position] of Object.entries(external.positions)) {
-      assert.deepEqual(finalPositions[id], id === secondId ? { ...position, x: position.x + 5 }
-        : id === firstId ? afterFirstRetry[id] : position)
-    }
-  } finally {
-    await app.close()
-  }
-})
-
-test('manual completion detects an external learning-state update and keeps its map positions', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(linkFor(app.host, '学習マップ'))
-    const id = 'descriptive-statistics'
-    await click(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
-    const stylesBefore = Object.fromEntries([...app.host.querySelectorAll('.react-flow__node')]
-      .map((node) => [node.dataset.id, node.style.transform]))
-    const viewportBefore = app.host.querySelector('.react-flow__viewport').style.transform
-    const external = readLearningState(lessonRegistry, () => window.localStorage).state
-    external.positions = Object.fromEntries(createMapPocGraph().nodes.map(({ id: lessonId, position }) => [lessonId, {
-      x: position.x + 24,
-      y: position.y - 16,
-    }]))
-    window.localStorage.setItem(LEARNING_STATE_KEY, serializeLearningState(external))
-
+    await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
     await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
     await settleEffects(window)
-    assert.deepEqual(savedMap(window).positions, external.positions)
-    for (const lessonId of Object.keys(external.positions)) {
-      assert.notEqual(app.host.querySelector(`.react-flow__node[data-id="${lessonId}"]`).style.transform, stylesBefore[lessonId])
-    }
-    assert.equal(app.host.querySelector('.react-flow__node.selected')?.dataset.id, id)
-    assert.equal(app.host.querySelector('.react-flow__viewport').style.transform, viewportBefore)
+    const saved = savedMap(window)
+    assert.equal(saved.schemaVersion, 2)
+    assert.equal(saved.positions, undefined)
+    assert.ok(saved.lessons['descriptive-statistics'].completedAt)
+    assert.equal(window.localStorage.getItem('sfqc:learning-state:v1'), oldRaw)
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), practiceRaw)
 
-    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
-    assert.deepEqual(savedMap(window).positions, external.positions)
-    assert.ok(savedMap(window).lessons[id].completedAt)
+    const backup = JSON.parse(serializeLearningBackup(saved, { schemaVersion: 1, records: [] }))
+    assert.equal(backup.version, 2)
+    assert.equal(backup.learningState.schemaVersion, 2)
+    assert.equal(backup.learningState.positions, undefined)
+    assert.equal(backup.practiceResults.schemaVersion, 1)
   } finally {
     await app.close()
   }
 })
 
-test('unknown manual save keeps its candidate, blocks restore, and confirms it after repeated read failures', async () => {
-  let confirmations = 0
-  const app = await createHarness({ confirm: () => { confirmations += 1; return true } })
+test('manual completion rebases after a save conflict and preserves unresolved IDs', async () => {
+  const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
+  try {
+    const { window } = app.dom
+    const external = savedMap(window)
+    external.lessons['math-arithmetic'].completedAt = '2026-11-13T00:00:00.000Z'
+    external.lessons['retired-topic'] = { completedAt: '2026-11-13T01:00:00.000Z' }
+    const externalRaw = serializeLearningState(external)
+    window.localStorage.setItem(LEARNING_STATE_KEY, externalRaw)
+
+    await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
+    assert.match(app.host.textContent, /保存データが別の変更で更新されました/u)
+    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
+    const saved = savedMap(window)
+    assert.ok(saved.lessons['descriptive-statistics'].completedAt)
+    assert.equal(saved.lessons['math-arithmetic'].completedAt, external.lessons['math-arithmetic'].completedAt)
+    assert.equal(saved.lessons['retired-topic'].completedAt, external.lessons['retired-topic'].completedAt)
+    assert.equal(app.host.querySelector('.practice-recovery'), null)
+  } finally {
+    await app.close()
+  }
+})
+
+test('unknown manual save keeps its candidate until the stored result can be confirmed', async () => {
+  const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
   const { window } = app.dom
   const previousGet = window.Storage.prototype.getItem
   const previousSet = window.Storage.prototype.setItem
@@ -1785,23 +860,23 @@ test('unknown manual save keeps its candidate, blocks restore, and confirms it a
     return previousGet.call(this, key)
   }
   try {
-    await click(linkFor(app.host, '学習マップ'))
-    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
     await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
     assert.match(app.host.textContent, /手動進捗の変更をメモリ上に保持/u)
     assert.match(app.host.textContent, /再読み込みすると失われます/u)
     const unloadEvent = new window.Event('beforeunload', { cancelable: true })
     await act(async () => window.dispatchEvent(unloadEvent))
-    assert.equal(unloadEvent.defaultPrevented, true, 'warn before the in-memory candidate can be lost')
+    assert.equal(unloadEvent.defaultPrevented, true)
     assert.equal(learningWriteCount, 1)
     const candidateRaw = previousGet.call(window.localStorage, LEARNING_STATE_KEY)
     assert.ok(JSON.parse(candidateRaw).lessons['descriptive-statistics'].completedAt)
+    assert.equal(JSON.parse(candidateRaw).positions, undefined)
 
     await click(linkFor(app.host, 'データ管理'))
     const fileInput = app.host.querySelector('#backup-file')
     assert.equal(fileInput.disabled, true)
     const backup = serializeLearningBackup(
-      { schemaVersion: 1, lessons: {}, positions: {} }, { schemaVersion: 1, records: [] },
+      { schemaVersion: 2, lessons: {} }, { schemaVersion: 1, records: [] },
     )
     Object.defineProperty(fileInput, 'files', {
       configurable: true,
@@ -1809,15 +884,12 @@ test('unknown manual save keeps its candidate, blocks restore, and confirms it a
     })
     await act(async () => fileInput.dispatchEvent(new window.Event('change', { bubbles: true })))
     assert.match(app.host.querySelector('.data-message').textContent, /保存状態を確認してから、バックアップを復元/u)
-    assert.equal(confirmations, 0)
-    assert.equal(learningWriteCount, 1)
 
     await click(buttonFor(app.host.querySelector('.practice-recovery'), '手動進捗の保存状態を再確認'))
     assert.match(app.host.textContent, /再確認を続けてください/u)
-    assert.equal(learningWriteCount, 1)
     await click(buttonFor(app.host.querySelector('.practice-recovery'), '手動進捗の保存状態を再確認'))
     assert.equal(app.host.querySelector('.practice-recovery'), null)
-    assert.equal(learningWriteCount, 1, 'a matching candidate is confirmed without being applied twice')
+    assert.equal(learningWriteCount, 1)
     assert.equal(previousGet.call(window.localStorage, LEARNING_STATE_KEY), candidateRaw)
     assert.ok(savedMap(window).lessons['descriptive-statistics'].completedAt)
   } finally {
@@ -1827,114 +899,21 @@ test('unknown manual save keeps its candidate, blocks restore, and confirms it a
   }
 })
 
-test('unknown layout save rebases the retained node change after mismatch and can be retried', async () => {
-  const app = await createHarness()
-  const { window } = app.dom
-  const previousGet = window.Storage.prototype.getItem
-  const previousSet = window.Storage.prototype.setItem
-  const initial = readLearningState(lessonRegistry, () => window.localStorage).state
-  const external = { ...initial, positions: { 'external-layout': { x: 900, y: 800 } } }
-  const externalRaw = serializeLearningState(external)
-  let redirectWrite = true
-  let externalWasWritten = false
-  let hideFirstConfirmationRead = false
-  let learningWriteCount = 0
-  window.Storage.prototype.setItem = function (key, value) {
-    if (key === LEARNING_STATE_KEY) {
-      learningWriteCount += 1
-      if (redirectWrite) {
-        redirectWrite = false
-        externalWasWritten = true
-        return previousSet.call(this, key, externalRaw)
-      }
-    }
-    return previousSet.call(this, key, value)
-  }
-  window.Storage.prototype.getItem = function (key) {
-    if (key === LEARNING_STATE_KEY && externalWasWritten && hideFirstConfirmationRead) {
-      hideFirstConfirmationRead = false
-      throw new Error('temporary learning-state read failure')
-    }
-    return previousGet.call(this, key)
-  }
-  try {
-    await click(linkFor(app.host, '学習マップ'))
-    const id = 'descriptive-statistics'
-    const originalPosition = createMapPocGraph().nodes.find((candidate) => candidate.id === id).position
-    await click(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
-    await click(buttonFor(app.host, '配置編集'))
-    const node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    node.focus()
-    hideFirstConfirmationRead = true
-    await pressKey(window, node, 'ArrowRight')
-    assert.equal(learningWriteCount, 1)
-    assert.equal(previousGet.call(window.localStorage, LEARNING_STATE_KEY), externalRaw)
-    assert.match(app.host.textContent, /変更をメモリ上に保持/u)
-
-    await click(linkFor(app.host, 'データ管理'))
-    await click(buttonFor(app.host.querySelector('.practice-recovery'), '手動進捗の保存状態を再確認'))
-    assert.ok(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
-    assert.equal(previousGet.call(window.localStorage, LEARNING_STATE_KEY), externalRaw,
-      'recheck should not overwrite the newer external state')
-
-    await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
-    assert.equal(learningWriteCount, 2)
-    const saved = readLearningState(lessonRegistry, () => window.localStorage)
-    assert.equal(saved.status, 'ok')
-    assert.deepEqual(saved.state.positions['external-layout'], { x: 900, y: 800 })
-    assert.deepEqual(saved.state.positions[id], { x: originalPosition.x + 5, y: originalPosition.y },
-      'retry applies the retained node delta once onto the latest map state')
-    assert.equal(app.host.querySelector('.practice-recovery'), null)
-  } finally {
-    window.Storage.prototype.getItem = previousGet
-    window.Storage.prototype.setItem = previousSet
-    await app.close()
-  }
-})
-
-test('invalid map-state disables layout editing and preserves the damaged raw', async () => {
-  const app = await createHarness()
+test('invalid v2 learning state disables completion and preserves its damaged raw', async () => {
+  const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
   try {
     const { window } = app.dom
-    const damaged = '{"schemaVersion":1,"positions":{"descriptive-statistics":{"x":1e999,"y":0}}}'
+    const damaged = '{"schemaVersion":2,"lessons":{"descriptive-statistics":{"completedAt":"invalid"}}}'
     window.localStorage.setItem(LEARNING_STATE_KEY, damaged)
     await app.remountAt('#/map')
-    assert.equal(buttonFor(app.host, '配置編集').disabled, true)
-    assert.equal(buttonFor(app.host, 'Re-layout').disabled, true)
+    await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
+    assert.equal(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed').disabled, true)
     assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), damaged)
-    assert.equal(app.host.querySelectorAll('.react-flow__node').length, 34)
+    assert.equal(app.host.querySelectorAll('.map-lesson-button').length, 34)
   } finally {
     await app.close()
   }
 })
-
-test('integrated learning map Shift-click clears the selected node', async () => {
-  const app = await createHarness()
-  try {
-    const { window } = app.dom
-    await click(linkFor(app.host, '学習マップ'))
-    const lessonNode = [...app.host.querySelectorAll('.react-flow__node')]
-      .find((node) => node.textContent.includes('基本統計量'))
-    await click(lessonNode)
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 1)
-
-    await act(async () => {
-      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Shift', code: 'ShiftLeft', bubbles: true }))
-      lessonNode.dispatchEvent(new window.MouseEvent('click', { bubbles: true, shiftKey: true }))
-      window.dispatchEvent(new window.KeyboardEvent('keyup', { key: 'Shift', code: 'ShiftLeft', bubbles: true }))
-    })
-
-    assert.equal(app.host.querySelectorAll('.react-flow__node.selected').length, 0)
-    assert.equal(app.host.querySelector('.map-selection').textContent, '選択中: なし')
-  } finally {
-    await app.close()
-  }
-})
-
-
-
-
-
 test('published basic statistics figures remain interactive without saving measurement changes', async () => {
   const app = await createHarness()
   const { window } = app.dom
@@ -2044,8 +1023,6 @@ test('published basic statistics figures remain interactive without saving measu
   }
 })
 
-
-
 test('section checks stay local while independent judgments and manual completion remain separate', async () => {
   const app = await createHarness()
   const { window } = app.dom
@@ -2105,12 +1082,13 @@ test('section checks stay local while independent judgments and manual completio
     }
 
     await click(linkFor(app.host, '学習マップ'))
-    await click(app.host.querySelector('.react-flow__node[data-id="descriptive-statistics"]'))
+    await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
     await click(buttonFor(app.host, 'Mark completed'))
     const learning = readLearningState(undefined, () => window.localStorage)
     assert.equal(learning.status, 'ok')
     assert.ok(learning.state.lessons['descriptive-statistics'].completedAt)
-    assert.deepEqual(learning.state.positions, {})
+    assert.equal(learning.state.schemaVersion, 2)
+    assert.equal(learning.state.positions, undefined)
     assert.equal(previousGet.call(window.localStorage, LOCAL_DATA_KEY), legacyRaw)
     assert.equal(previousGet.call(window.localStorage, MAP_STATE_KEY), mapRaw)
     assert.deepEqual(legacyCalls, [])
@@ -2186,7 +1164,7 @@ test('backup export warns about unsaved judgments and restore explicitly retains
     assert.equal(buttonFor(app.host, '全データを書き出し').disabled, false)
 
     const backup = serializeLearningBackup(
-      { schemaVersion: 1, lessons: {}, positions: {} },
+      { schemaVersion: 2, lessons: {} },
       { schemaVersion: 1, records: [] },
     )
     const fileInput = app.host.querySelector('#backup-file')
@@ -2226,7 +1204,7 @@ test('backup restore can explicitly discard unsaved judgments after a second con
     window.Storage.prototype.setItem = previousSet
     await click(linkFor(app.host, 'データ管理'))
 
-    const backup = serializeLearningBackup({ schemaVersion: 1, lessons: {}, positions: {} }, { schemaVersion: 1, records: [] })
+    const backup = serializeLearningBackup({ schemaVersion: 2, lessons: {} }, { schemaVersion: 1, records: [] })
     const fileInput = app.host.querySelector('#backup-file')
     Object.defineProperty(fileInput, 'files', {
       configurable: true,
@@ -2413,48 +1391,6 @@ test('course section links update the hash and browser back and forward restore 
     assert.equal(window.location.hash, '#/course/descriptive-statistics/lesson/deviation')
     assert.ok(app.host.querySelector('#course-section-deviation'))
   } finally {
-    await app.close()
-  }
-})
-
-test('map layout saves to learning-state and leaves retired local data keys untouched', async () => {
-  const app = await createHarness()
-  const { window } = app.dom
-  const legacyLocal = 'legacy local-data sentinel'
-  const legacyMap = 'legacy map-state sentinel'
-  window.localStorage.setItem(LOCAL_DATA_KEY, legacyLocal)
-  window.localStorage.setItem(MAP_STATE_KEY, legacyMap)
-  const previousGet = window.Storage.prototype.getItem
-  const previousSet = window.Storage.prototype.setItem
-  const previousRemove = window.Storage.prototype.removeItem
-  const legacyCalls = []
-  const track = (operation, key) => {
-    if (key === LOCAL_DATA_KEY || key === MAP_STATE_KEY) legacyCalls.push([operation, key])
-  }
-  window.Storage.prototype.getItem = function (key) { track('getItem', key); return previousGet.call(this, key) }
-  window.Storage.prototype.setItem = function (key, value) { track('setItem', key); return previousSet.call(this, key, value) }
-  window.Storage.prototype.removeItem = function (key) { track('removeItem', key); return previousRemove.call(this, key) }
-  try {
-    await app.remountAt('#/map')
-    await click(buttonFor(app.host, '配置編集'))
-    const id = 'descriptive-statistics'
-    await click(app.host.querySelector(`.react-flow__node[data-id="${id}"]`))
-    const node = app.host.querySelector(`.react-flow__node[data-id="${id}"]`)
-    node.focus()
-    await pressKey(window, node, 'ArrowRight')
-
-    const state = readLearningState(lessonRegistry, () => window.localStorage)
-    assert.equal(state.status, 'ok')
-    assert.equal(Object.keys(state.state.positions).length, lessonRegistry.lessons.length)
-    const initial = createMapPocGraph().nodes.find((item) => item.id === id).position
-    assert.deepEqual(state.state.positions[id], { x: initial.x + 5, y: initial.y })
-    assert.equal(previousGet.call(window.localStorage, LOCAL_DATA_KEY), legacyLocal)
-    assert.equal(previousGet.call(window.localStorage, MAP_STATE_KEY), legacyMap)
-    assert.deepEqual(legacyCalls, [])
-  } finally {
-    window.Storage.prototype.getItem = previousGet
-    window.Storage.prototype.setItem = previousSet
-    window.Storage.prototype.removeItem = previousRemove
     await app.close()
   }
 })

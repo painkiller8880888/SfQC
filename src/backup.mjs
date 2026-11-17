@@ -54,7 +54,7 @@ export function serializeLearningBackup(learningState, practiceResults, registry
   const normalizedPracticeResults = JSON.parse(serializePracticeResults(practiceResults))
   const text = JSON.stringify({
     format: LEARNING_BACKUP_FORMAT,
-    version: 1,
+    version: 2,
     learningState: normalizedLearningState,
     practiceResults: normalizedPracticeResults,
   })
@@ -70,7 +70,7 @@ export function parseLearningBackup(text, registry = lessonRegistry) {
   if (!isRecord(value) || value.format !== LEARNING_BACKUP_FORMAT) {
     learningFail('invalid-schema', '新形式の統合バックアップではありません。')
   }
-  if (value.version !== 1) {
+  if (value.version !== 2) {
     if (typeof value.version === 'number') learningFail('unsupported-version', '未対応の統合バックアップ形式です。')
     learningFail('invalid-schema', '統合バックアップの形式が不正です。')
   }
@@ -88,7 +88,7 @@ export function parseLearningBackup(text, registry = lessonRegistry) {
     learningFail('invalid-schema', '統合バックアップの形式が不正です。')
   }
   const canonical = JSON.stringify({
-    format: LEARNING_BACKUP_FORMAT, version: 1, learningState, practiceResults,
+    format: LEARNING_BACKUP_FORMAT, version: 2, learningState, practiceResults,
   })
   checkLearningBackupSize(canonical, learningState, practiceResults)
   return { learningState, practiceResults }

@@ -18,9 +18,8 @@ function file(text) {
 
 function emptyLearningState() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     lessons: Object.fromEntries(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, { completedAt: null }])),
-    positions: {},
   }
 }
 
@@ -58,20 +57,20 @@ function learningBackup(state = emptyLearningState(), results = emptyPracticeRes
   return serializeLearningBackup(state, results)
 }
 
-test('new learning backup round-trips both strict schemas and preserves unresolved IDs', () => {
+test('version 2 learning backup round-trips strict schemas and preserves unresolved lesson IDs', () => {
   const first = lessonRegistry.lessons[0]
   const state = emptyLearningState()
   state.lessons[first.lessonId].completedAt = '2026-11-12T12:34:56.789Z'
   state.lessons['retired-lesson'] = { completedAt: '2026-11-11T00:00:00.000Z' }
-  state.positions['retired-lesson'] = { x: 4.5, y: -9 }
   const results = {
     schemaVersion: 1,
     records: [{ categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-11-12T12:34:56.789Z' }],
   }
   const backup = serializeLearningBackup(state, results)
   const parsed = parseLearningBackup(backup)
+  assert.equal(JSON.parse(backup).version, 2)
+  assert.equal(parsed.learningState.positions, undefined)
   assert.deepEqual(parsed.learningState.lessons['retired-lesson'], state.lessons['retired-lesson'])
-  assert.deepEqual(parsed.learningState.positions['retired-lesson'], state.positions['retired-lesson'])
   assert.deepEqual(parsed.practiceResults, results)
   assert.equal(new TextEncoder().encode(backup).byteLength <= LEARNING_BACKUP_MAX_BYTES, true)
   assert.equal(LEARNING_BACKUP_ENVELOPE_MAX_BYTES, 1_024)
@@ -85,11 +84,31 @@ test('new learning backup round-trips both strict schemas and preserves unresolv
   assert.equal(JSON.parse(serializeLearningRecoveryRaw('broken', null)).format, LEARNING_RECOVERY_FORMAT)
 })
 
+test('version 1 backup is rejected before reading or changing current v2 data', async () => {
+  const v1 = JSON.parse(learningBackup())
+  v1.version = 1
+  const legacyBackup = JSON.stringify(v1)
+  assert.throws(() => parseLearningBackup(legacyBackup), (error) => error.code === 'unsupported-version')
+
+  const state = emptyLearningState()
+  state.lessons[lessonRegistry.lessons[0].lessonId].completedAt = '2026-11-12T12:34:56.789Z'
+  const practice = { schemaVersion: 1, records: [
+    { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-11-12T12:34:56.789Z' },
+  ] }
+  const beforeLearning = serializeLearningState(state)
+  const beforePractice = serializePracticeResults(practice)
+  const fixture = learningStorage({ [LEARNING_STATE_KEY]: beforeLearning, [PRACTICE_RESULTS_KEY]: beforePractice })
+  await assert.rejects(importLearningBackup(file(legacyBackup), () => true, { getStorage: () => fixture.storage }),
+    (error) => error.code === 'unsupported-version')
+  assert.equal(fixture.values.get(LEARNING_STATE_KEY), beforeLearning)
+  assert.equal(fixture.values.get(PRACTICE_RESULTS_KEY), beforePractice)
+  assert.deepEqual(fixture.access, [])
+})
+
 test('new backup export and import use only new keys and preserve the existing storage fields', async () => {
   const first = lessonRegistry.lessons[0]
   const state = emptyLearningState()
   state.lessons[first.lessonId].completedAt = '2026-11-12T12:34:56.789Z'
-  state.positions[first.lessonId] = { x: 15, y: 20 }
   const results = { schemaVersion: 1, records: [{ categoryId: 'comprehensive', isCorrect: true, attemptedAt: '2026-11-12T12:34:56.789Z' }] }
   const source = learningStorage({
     [LEARNING_STATE_KEY]: serializeLearningState(state),
@@ -162,7 +181,6 @@ test('new backup cancellation reports a concurrent update instead of claiming un
 test('edited backup removes unresolved entries only after the replacement confirmation', async () => {
   const original = emptyLearningState()
   original.lessons['retired-lesson'] = { completedAt: '2026-11-12T12:34:56.789Z' }
-  original.positions['retired-lesson'] = { x: 7, y: 8 }
   const fixture = learningStorage({
     [LEARNING_STATE_KEY]: serializeLearningState(original),
     [PRACTICE_RESULTS_KEY]: serializePracticeResults(emptyPracticeResults()),
@@ -171,7 +189,6 @@ test('edited backup removes unresolved entries only after the replacement confir
   assert.equal(result.status, 'imported')
   const after = parseLearningBackup(exportLearningBackup(() => fixture.storage))
   assert.equal(after.learningState.lessons['retired-lesson'], undefined)
-  assert.equal(after.learningState.positions['retired-lesson'], undefined)
 })
 
 test('unchanged backup keys are not written during import', async () => {

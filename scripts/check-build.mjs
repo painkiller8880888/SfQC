@@ -25,14 +25,14 @@ const javascript = await Promise.all((await readdir(assetsDirectory, { recursive
   .map((file) => readFile(new URL(file.replaceAll('\\', '/'), assetsDirectory), 'utf8')))
 const allJavaScript = javascript.join('\n')
 const allStyles = `${stylesheets.join('\n')}\n${allJavaScript}`
-const stylesheet = await readFile(new URL(`../dist/${assets.find((url) => url.endsWith('.css')).slice('/SfQC/'.length)}`, import.meta.url), 'utf8')
-assert.match(allJavaScript, /map-graph-view/, 'production JavaScript should include the integrated lesson map')
+assert.match(allJavaScript, /map-domain-grid/, 'production JavaScript should include the integrated lesson map')
 assert.match(allJavaScript, /course-section/, 'production JavaScript should include the published basic statistics course')
 assert.match(allJavaScript, /course-practice|ds-practice-question/u, 'production JavaScript should include the five-category practice')
 assert.doesNotMatch(allJavaScript, /map-author-editor|分野編集/u, 'production JavaScript must not include the development-only domain editor')
 assert.doesNotMatch(allJavaScript, /sfqc-preview=descriptive-statistics|descriptive-statistics-preview-content|別の数値で試す|この考え方を理解できた|比較用モックを開く|一時的な比較用モック|操作中の測定値、平均、各偏差/u,
   'production JavaScript must not include the development-only comparison preview')
-assert.match(stylesheet, /react-flow/, 'production CSS should include React Flow styles')
+assert.doesNotMatch(allJavaScript, /@xyflow\/react|@dagrejs\/dagre|react-flow/u, 'production JavaScript must not include graph layout dependencies')
+assert.doesNotMatch(allStyles, /react-flow|xyflow/u, 'production assets must not include React Flow styles')
 assert.ok(stylesheets.length > 0, 'production assets should include at least one stylesheet')
 assert.match(allStyles, /\.course-practice-content/u, 'production CSS should include the course practice layout')
 assert.match(allStyles, /\.ds-practice-question/u, 'production CSS should include practice question styles')
@@ -49,8 +49,8 @@ for (const url of assets) {
 
 await access(new URL('../dist/third-party-licenses.txt', import.meta.url))
 const licenses = await readFile(new URL('../dist/third-party-licenses.txt', import.meta.url), 'utf8')
-assert.match(licenses, /@xyflow\/react@12\.12\.0/u, 'production graph dependencies should be listed')
-assert.match(licenses, /@dagrejs\/dagre@3\.1\.3/u, 'production graph dependencies should be listed')
+assert.doesNotMatch(licenses, /@xyflow|@dagrejs|d3-(?:drag|interpolate|selection|zoom|dispatch|ease|color|timer|transition)/u,
+  'removed graph dependencies should not remain in the production license notice')
 assert.match(licenses, /Solarized palette values \(not runtime code or a dependency\)/u, 'the Solarized palette source should be identified')
 assert.match(licenses, /https:\/\/github\.com\/altercation\/solarized/u, 'the Solarized source should be linked')
 assert.match(licenses, /Copyright \(c\) 2011 Ethan Schoonover/u, 'the Solarized MIT license should be included')
