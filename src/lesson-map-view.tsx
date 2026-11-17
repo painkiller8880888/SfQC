@@ -193,10 +193,11 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
                       manualStatus ? `手動進捗：${manualStatus}` : null,
                       accuracy.value !== null ? `直近正答率 ${accuracy.value} パーセント`
                         : lesson.availability === 'included' ? accuracy.label : null].filter(Boolean).join('、')
+                    const hasRate = accuracy.value !== null
                     return <li key={lesson.lessonId}>
                       <button
                         type="button"
-                        className={`map-lesson-button${selected ? ' is-selected' : ''}${prerequisite ? ' is-prerequisite' : ''}${completed ? ' is-completed' : ''}`}
+                        className={`map-lesson-button${hasRate ? ' has-rate' : ''}${selected ? ' is-selected' : ''}${prerequisite ? ' is-prerequisite' : ''}${completed ? ' is-completed' : ''}`}
                         data-lesson-id={lesson.lessonId}
                         aria-label={`${lesson.title}（${accessibleStatus}）`}
                         aria-pressed={selected}
@@ -215,7 +216,7 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
                             {prerequisite && <span className="map-prerequisite-badge" aria-hidden="true">前提</span>}
                           </span>
                         </span>
-                        {accuracy.value !== null && <span className="map-lesson-rate">
+                        {hasRate && <span className="map-lesson-rate">
                           <span>{accuracy.label}</span>
                           <strong aria-label={`直近正答率 ${accuracy.value} パーセント`}>{accuracy.value}</strong>
                         </span>}

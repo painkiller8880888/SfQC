@@ -754,10 +754,14 @@ test('map, list, and detail keep manual completion independent from recent accur
     const { host } = app
     const descriptiveTile = host.querySelector('[data-lesson-id="descriptive-statistics"]')
     assert.ok(descriptiveTile.classList.contains('is-completed'))
+    assert.ok(descriptiveTile.classList.contains('has-rate'))
     assert.equal(descriptiveTile.querySelector('.map-lesson-rate strong').textContent, '0')
     assert.match(descriptiveTile.querySelector('.map-lesson-rate').textContent, /直近正答率（%）/u)
     assert.doesNotMatch(descriptiveTile.querySelector('.map-lesson-rate').textContent, /試行|回/u)
-    assert.match(host.querySelector('[data-lesson-id="math-arithmetic"] .map-progress-summary').textContent, /演習成績：演習なし/u)
+    const noRateTile = host.querySelector('[data-lesson-id="math-arithmetic"]')
+    assert.ok(!noRateTile.classList.contains('has-rate'))
+    assert.equal(noRateTile.querySelector('.map-lesson-rate'), null)
+    assert.match(noRateTile.querySelector('.map-progress-summary').textContent, /演習成績：演習なし/u)
     assert.equal(host.querySelector('[data-lesson-id="mean-inference"] .map-lesson-rate'), null)
     assert.match(host.querySelector('[data-lesson-id="mean-inference"]').textContent, /未収録/u)
     await click(descriptiveTile)
@@ -1082,6 +1086,132 @@ test('unknown manual save keeps its candidate until the stored result can be con
     window.Storage.prototype.getItem = previousGet
     window.Storage.prototype.setItem = previousSet
     await app.close()
+  }
+})
+
+test('manual progress actions keep a visible focus target for every save outcome', async (t) => {
+  const server = await createAppTestServer()
+  const scenarios = [
+    { outcome: 'saved', actionLabel: '未完了に戻す', nextLabel: '完了にする' },
+    { outcome: 'conflict', actionLabel: '完了にする', nextLabel: '未完了に戻す' },
+    { outcome: 'failed', actionLabel: '完了にする', nextLabel: '未完了に戻す' },
+    { outcome: 'unknown', actionLabel: '完了にする', nextLabel: '未完了に戻す' },
+  ]
+  try {
+    for (const scenario of scenarios) {
+      await t.test(scenario.outcome, async () => {
+        const learningState = scenario.outcome === 'saved'
+          ? serializeLearningState({ schemaVersion: 2, lessons: {
+            'descriptive-statistics': { completedAt: '2026-11-14T00:00:00.000Z' },
+          } })
+          : undefined
+        const app = await createHarness({
+          url: 'https://sfqc.test/SfQC/#/map',
+          sharedServer: server,
+          localStorageEntries: learningState ? { [LEARNING_STATE_KEY]: learningState } : {},
+        })
+        const { window } = app.dom
+        const storagePrototype = window.Storage.prototype
+        const originalGetItem = storagePrototype.getItem
+        const originalSetItem = storagePrototype.setItem
+        const originalFocus = window.HTMLElement.prototype.focus
+        const originalGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect
+        let writeStarted = false
+        let unreadableReads = 2
+        try {
+          if (scenario.outcome === 'conflict') {
+            const external = savedMap(window)
+            external.lessons['math-arithmetic'].completedAt = '2026-11-13T00:00:00.000Z'
+            window.localStorage.setItem(LEARNING_STATE_KEY, serializeLearningState(external))
+          } else if (scenario.outcome === 'failed') {
+            storagePrototype.setItem = function (key, value) {
+              if (key === LEARNING_STATE_KEY) throw new Error('simulated storage write failure')
+              return originalSetItem.call(this, key, value)
+            }
+          } else if (scenario.outcome === 'unknown') {
+            storagePrototype.setItem = function (key, value) {
+              if (key === LEARNING_STATE_KEY) writeStarted = true
+              return originalSetItem.call(this, key, value)
+            }
+            storagePrototype.getItem = function (key) {
+              if (key === LEARNING_STATE_KEY && writeStarted && unreadableReads > 0) {
+                unreadableReads -= 1
+                throw new Error('simulated post-write read failure')
+              }
+              return originalGetItem.call(this, key)
+            }
+          }
+
+          await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
+          const detail = app.host.querySelector('.lesson-detail-card')
+          const heading = detail.querySelector('.lesson-detail-header h2')
+          const action = buttonFor(detail, scenario.actionLabel)
+          assert.ok(action)
+
+          let headingCanScrollIntoView = false
+          let focusedAction = null
+          const focusCalls = []
+          Object.defineProperty(window, 'innerHeight', { configurable: true, value: 220 })
+          window.HTMLElement.prototype.focus = function (options) {
+            if (this === heading) {
+              focusCalls.push({ target: 'heading', options })
+              if (!options?.preventScroll) headingCanScrollIntoView = true
+            } else if (this.matches('.manual-progress-actions button')) {
+              focusCalls.push({ target: this.textContent.trim(), options })
+              focusedAction = this
+            }
+            return originalFocus.call(this, options)
+          }
+          window.HTMLElement.prototype.getBoundingClientRect = function () {
+            const rect = (top, height) => ({
+              x: 0, y: top, top, right: 200, bottom: top + height, left: 0, width: 200, height,
+            })
+            if (this === heading) return rect(headingCanScrollIntoView ? 12 : 300, 24)
+            if (this.matches('.manual-progress-actions button')) return rect(this === focusedAction ? 48 : 300, 40)
+            return originalGetBoundingClientRect.call(this)
+          }
+
+          action.focus()
+          focusCalls.length = 0
+          focusedAction = null
+          await click(action)
+          await settleEffects(window)
+
+          const updatedDetail = app.host.querySelector('.lesson-detail-card')
+          const nextAction = buttonFor(updatedDetail, scenario.nextLabel)
+          if (scenario.outcome === 'saved') {
+            assert.ok(nextAction)
+            assert.equal(nextAction.disabled, false)
+            assert.equal(window.document.activeElement, nextAction)
+            assert.deepEqual(focusCalls.at(-1), {
+              target: scenario.nextLabel,
+              options: { preventScroll: true },
+            })
+          } else {
+            const disabledAction = buttonFor(updatedDetail, scenario.actionLabel)
+            assert.equal(nextAction, undefined)
+            assert.ok(disabledAction?.disabled)
+            assert.equal(window.document.activeElement, heading)
+            assert.deepEqual(focusCalls.at(-1), { target: 'heading', options: undefined })
+            assert.equal(headingCanScrollIntoView, true, 'fallback focus allows the browser to reveal the heading')
+            assert.ok(app.host.querySelector('.practice-recovery'))
+          }
+
+          const focused = window.document.activeElement
+          const rect = focused.getBoundingClientRect()
+          assert.ok(rect.top >= 0 && rect.bottom <= window.innerHeight,
+            `${scenario.outcome} focus target must be inside the viewport`)
+        } finally {
+          storagePrototype.getItem = originalGetItem
+          storagePrototype.setItem = originalSetItem
+          window.HTMLElement.prototype.focus = originalFocus
+          window.HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect
+          await app.close()
+        }
+      })
+    }
+  } finally {
+    await server.close()
   }
 })
 

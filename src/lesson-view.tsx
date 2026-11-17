@@ -222,18 +222,27 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
   const hasPractice = lesson.availability === 'included' && lesson.lessonId === 'descriptive-statistics'
   const markCompletedRef = useRef<HTMLButtonElement>(null)
   const reopenRef = useRef<HTMLButtonElement>(null)
+  const localHeadingRef = useRef<HTMLHeadingElement>(null)
   const accuracy = getLessonAccuracyDisplay(lesson, progress)
   const manualStatus = getManualProgressLabel(lesson, manualProgress, manualProgressConfirmed)
   const applyProgressAction = (action: ManualProgressCommand, nextActionRef: RefObject<HTMLButtonElement | null>) => {
     onManualProgressAction(action)
-    window.requestAnimationFrame(() => nextActionRef.current?.focus({ preventScroll: true }))
+    window.requestAnimationFrame(() => {
+      const nextAction = nextActionRef.current
+      if (nextAction && !nextAction.disabled) {
+        nextAction.focus({ preventScroll: true })
+        return
+      }
+      const detailHeading = headingRef?.current ?? localHeadingRef.current
+      detailHeading?.focus()
+    })
   }
   const completed = manualProgress.completedAt !== null
 
   return <aside className="lesson-detail-card" aria-labelledby={`lesson-detail-title-${lesson.lessonId}`}>
     <header className="lesson-detail-header">
       <div>
-        <h2 id={`lesson-detail-title-${lesson.lessonId}`} ref={headingRef} tabIndex={-1}>{lesson.title}</h2>
+        <h2 id={`lesson-detail-title-${lesson.lessonId}`} ref={headingRef ?? localHeadingRef} tabIndex={-1}>{lesson.title}</h2>
         <p className="lesson-status">{lesson.availability === 'included'
           ? `収録済み：${lesson.sections.length} / ${lesson.declaredSectionIds.length} 節`
           : '未収録'}</p>
