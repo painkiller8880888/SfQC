@@ -3,34 +3,17 @@ import './lesson-map-view.css'
 import { deriveLessonGraph } from './lesson-graph.mjs'
 import { lessonDomainColors, lessonDomains, type LessonDomain } from './lesson-contract.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
-import type { ManualProgressCommand, ManualProgressState } from './manual-progress.mjs'
+import { getManualProgressLabel, type ManualProgressCommand, type ManualProgressState } from './manual-progress.mjs'
 import type { CourseProgress } from './course-progress.mjs'
-import { LessonDetailCard } from './lesson-view'
+import { getLessonAccuracyDisplay, LessonDetailCard } from './lesson-view'
 
 const lessonGraph = deriveLessonGraph(lessonRegistry)
-
-export function getMapProgressSummary(progress: CourseProgress | null, lessonId: string) {
-  const observation = progress?.lessons.find((item) => item.lessonId === lessonId)
-  if (!observation) return {
-    label: '集計未確認',
-    ariaLabel: '演習集計未確認、正答数と試行数は不明',
-  }
-  const counts = `${observation.correctCount}/${observation.attemptCount}回`
-  if (observation.correctRate === null) return {
-    label: observation.hasPractice ? '未記録（試行0回）' : '演習なし',
-    ariaLabel: observation.hasPractice ? `正答率未記録、正答数/試行数 ${counts}` : 'この単元には現在、保存対象の演習がありません',
-  }
-  const percentage = Math.round(observation.correctRate * 100)
-  return {
-    label: `${percentage}%（${counts}）`,
-    ariaLabel: `正答率${percentage}%、正答数/試行数 ${counts}`,
-  }
-}
 
 type LessonMapViewProps = {
   selectedLessonId: string | null
   progress: CourseProgress | null
   manualProgress: ManualProgressState
+  manualProgressConfirmed: boolean
   manualProgressDisabled?: boolean
   onManualProgressAction: (lessonId: string, action: ManualProgressCommand) => void
   onSelectionChange: (lessonId: string | null) => void
@@ -38,7 +21,7 @@ type LessonMapViewProps = {
   clearSelectionRef: { current: (() => void) | null }
 }
 
-function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manualProgress, manualProgressDisabled,
+function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manualProgress, manualProgressConfirmed, manualProgressDisabled,
   onManualProgressAction, onSelectionChange, onAuthorExport, clearSelectionRef }: LessonMapViewProps) {
   const [selectedLessonId, setSelectedLessonId] = useState(initialSelectedLessonId)
   const [authorEditorOpen, setAuthorEditorOpen] = useState(false)
@@ -187,6 +170,10 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
             {Object.entries(lessonDomains).map(([domain, label]) => (
               <li key={domain}><span className={`map-domain-swatch map-domain-${domain}`} aria-hidden="true" />{label}</li>
             ))}
+            <li><span className="map-legend-completed" aria-hidden="true">✓</span>完了（手動）</li>
+            <li><span className="map-legend-selected" aria-hidden="true" />選択中</li>
+            <li><span className="map-legend-prerequisite" aria-hidden="true">前提</span>直接の共通必須</li>
+            <li>直近正答率（%）</li>
           </ul>
         </div>
         <div ref={gridRef} className="map-grid-scroll">
@@ -199,26 +186,40 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
                   {lessons.map((lesson) => {
                     const selected = lesson.lessonId === selectedLessonId
                     const prerequisite = directPrerequisiteIds.has(lesson.lessonId)
-                    const status = manualProgress[lesson.lessonId]?.status ?? 'not-started'
-                    const statusLabel = status === 'completed' ? '完了' : status === 'started' ? '学習中' : '未開始'
-                    const progressSummary = getMapProgressSummary(progress, lesson.lessonId)
+                    const manualStatus = getManualProgressLabel(lesson, manualProgress[lesson.lessonId], manualProgressConfirmed)
+                    const completed = manualStatus === '完了'
+                    const accuracy = getLessonAccuracyDisplay(lesson, progress)
+                    const accessibleStatus = [lesson.availability === 'planned' ? '未収録' : null,
+                      manualStatus ? `手動進捗：${manualStatus}` : null,
+                      accuracy.value !== null ? `直近正答率 ${accuracy.value} パーセント`
+                        : lesson.availability === 'included' ? accuracy.label : null].filter(Boolean).join('、')
+                    const hasRate = accuracy.value !== null
                     return <li key={lesson.lessonId}>
                       <button
                         type="button"
-                        className={`map-lesson-button${selected ? ' is-selected' : ''}${prerequisite ? ' is-prerequisite' : ''}${status === 'completed' ? ' is-completed' : ''}`}
+                        className={`map-lesson-button${hasRate ? ' has-rate' : ''}${selected ? ' is-selected' : ''}${prerequisite ? ' is-prerequisite' : ''}${completed ? ' is-completed' : ''}`}
                         data-lesson-id={lesson.lessonId}
-                        aria-label={`${lesson.title}（${lesson.availability === 'planned' ? '未収録、' : ''}手動進捗：${statusLabel}）`}
+                        aria-label={`${lesson.title}（${accessibleStatus}）`}
                         aria-pressed={selected}
                         aria-describedby={prerequisite ? `map-prerequisite-${lesson.lessonId}` : undefined}
                         onClick={(event) => selectLesson(lesson.lessonId, event.detail === 0)}
                       >
-                        <span className="map-lesson-title">{lesson.title}</span>
-                        <span className="map-lesson-status">
-                          {lesson.availability === 'planned' && <span className="map-lesson-availability">未収録</span>}
-                          <span className={`map-manual-status${status === 'completed' ? ' is-completed' : ''}`}>{statusLabel}</span>
-                          <span className="map-progress-summary" aria-label={progressSummary.ariaLabel}>{progressSummary.label}</span>
+                        <span className="map-lesson-main">
+                          <span className="map-lesson-title">{lesson.title}</span>
+                          <span className="map-lesson-status">
+                            {lesson.availability === 'planned' && <span className="map-lesson-availability">未収録</span>}
+                            {manualStatus && <span className={`map-manual-status${completed ? ' is-completed' : ''}`}>
+                              {completed && <span aria-hidden="true">✓</span>}手動進捗：{manualStatus}
+                            </span>}
+                            {lesson.availability === 'included' && accuracy.value === null && <span className="map-progress-summary">演習成績：{accuracy.label}</span>}
+                            {selected && <span className="map-selected-badge" aria-hidden="true">選択中</span>}
+                            {prerequisite && <span className="map-prerequisite-badge" aria-hidden="true">前提</span>}
+                          </span>
                         </span>
-                        {prerequisite && <span className="map-prerequisite-badge" aria-hidden="true">前提</span>}
+                        {hasRate && <span className="map-lesson-rate">
+                          <span>{accuracy.label}</span>
+                          <strong aria-label={`直近正答率 ${accuracy.value} パーセント`}>{accuracy.value}</strong>
+                        </span>}
                         {prerequisite && <span className="visually-hidden" id={`map-prerequisite-${lesson.lessonId}`}>
                           「{selectedTitle}」の直接の共通必須前提です。
                         </span>}
@@ -235,7 +236,9 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
         key={selectedLesson.lessonId}
         lesson={selectedLesson}
         manualProgress={manualProgress[selectedLesson.lessonId]}
+        manualProgressConfirmed={manualProgressConfirmed}
         manualProgressDisabled={manualProgressDisabled}
+        progress={progress}
         onManualProgressAction={(action) => onManualProgressAction(selectedLesson.lessonId, action)}
         headingRef={detailHeadingRef}
         onClose={() => clearSelection(true)}

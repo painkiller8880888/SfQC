@@ -4,8 +4,8 @@ import { parseLessonRef, type IncludedLessonDefinition, type LessonDefinition, t
 import { routeToHash, type AppRoute } from './resolve-screen.mjs'
 import type { NavigationIntent } from './route-history.mjs'
 import { FigureRef } from './figures/figure-ref'
-import type { CourseProgress } from './course-progress.mjs'
-import type { ManualLessonProgress, ManualProgressCommand } from './manual-progress.mjs'
+import { hasCoursePractice, type CourseProgress } from './course-progress.mjs'
+import { getManualProgressLabel, type ManualLessonProgress, type ManualProgressCommand, type ManualProgressState } from './manual-progress.mjs'
 
 export function resolveLessonRef(reference: string, registry: LessonRegistry = lessonRegistry): AppRoute | null {
   const parsed = parseLessonRef(reference)
@@ -147,21 +147,42 @@ function LessonBlock({ block, lesson, registry }: {
   return <p className="lesson-body-reference">確認問題は、学習マップから基本統計量のコースを開いてください。</p>
 }
 
-function LessonCard({ lesson, registry, progress }: {
+export function getLessonAccuracyDisplay(lesson: LessonDefinition, progress: CourseProgress | null) {
+  if (lesson.availability === 'planned') return { label: '未収録', value: null }
+  if (!hasCoursePractice(lesson.lessonId)) return { label: '演習なし', value: null }
+  if (!progress) return { label: '集計未確認', value: null }
+  const observation = progress.lessons.find((item) => item.lessonId === lesson.lessonId)
+  if (!observation) return { label: '集計未確認', value: null }
+  if (observation.attemptCount === 0 || observation.correctRate === null) return { label: '未記録', value: null }
+  return { label: '直近正答率（%）', value: Math.round(observation.correctRate * 100) }
+}
+
+function LessonCard({ lesson, registry, progress, manualProgress, manualProgressConfirmed }: {
   lesson: LessonDefinition
   registry: LessonRegistry
   progress: CourseProgress | null
+  manualProgress: ManualProgressState
+  manualProgressConfirmed: boolean
 }) {
-  const observation = progress?.lessons.find((item) => item.lessonId === lesson.lessonId)
-  const progressText = observation && <p className="lesson-observation">
-    手動進捗：{observation.completedAt ? '完了' : '未完了'} · 回答試行：{observation.attemptCount}回{observation.correctRate === null ? '' : ` · 正答率 ${Math.round(observation.correctRate * 100)}%`}
+  const accuracy = getLessonAccuracyDisplay(lesson, progress)
+  const manualStatus = getManualProgressLabel(lesson, manualProgress[lesson.lessonId], manualProgressConfirmed)
+  const progressText = manualStatus && <p className="lesson-observation">
+    手動進捗：{manualStatus}{accuracy.value === null ? <> · 演習成績：{accuracy.label}</> : null}
+  </p>
+  const rate = accuracy.value !== null && <p className="lesson-card-rate">
+    <span>{accuracy.label}</span><strong aria-label={`直近正答率 ${accuracy.value} パーセント`}>{accuracy.value}</strong>
   </p>
   const mainRoute: AppRoute = lesson.availability === 'included' && lesson.lessonId === 'descriptive-statistics'
     ? { kind: 'course-lesson', courseId: lesson.lessonId, sectionId: lesson.sections[0].sectionId }
     : { kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: null }
   if (lesson.availability === 'included') return <article className="lesson-card">
-    <h3><InternalLink route={mainRoute}>{lesson.title}</InternalLink></h3>
-    <p className="lesson-status">収録済み：{lesson.sections.length} / {lesson.declaredSectionIds.length} 節</p>
+    <header className="lesson-card-header">
+      <div>
+        <h3><InternalLink route={mainRoute}>{lesson.title}</InternalLink></h3>
+        <p className="lesson-status">収録済み：{lesson.sections.length} / {lesson.declaredSectionIds.length} 節</p>
+      </div>
+      {rate}
+    </header>
     {progressText}
     <p>学習目標：{lesson.learningObjectives.join(' ')}</p>
     <nav className="section-list" aria-label={`${lesson.title}の解説節`}>
@@ -179,7 +200,6 @@ function LessonCard({ lesson, registry, progress }: {
 
   return <article className="lesson-card lesson-card-planned">
     <h3>{lesson.title} <span className="lesson-status">未収録</span></h3>
-    {progressText}
     <p>学習目標：{lesson.learningObjectives.join(' ')}</p>
     <p>収録範囲：教材は未収録です。</p>
     <p>未収録の節ID：{lesson.declaredSectionIds.length ? lesson.declaredSectionIds.join('、') : '未登録'}</p>
@@ -187,11 +207,14 @@ function LessonCard({ lesson, registry, progress }: {
   </article>
 }
 
-export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProgress, manualProgressDisabled = false, onManualProgressAction, headingRef, onClose }: {
+export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProgress, manualProgressConfirmed,
+  manualProgressDisabled = false, progress, onManualProgressAction, headingRef, onClose }: {
   lesson: LessonDefinition
   registry?: LessonRegistry
   manualProgress: ManualLessonProgress
+  manualProgressConfirmed: boolean
   manualProgressDisabled?: boolean
+  progress: CourseProgress | null
   onManualProgressAction: (action: ManualProgressCommand) => void
   headingRef?: RefObject<HTMLHeadingElement | null>
   onClose: () => void
@@ -199,16 +222,27 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
   const hasPractice = lesson.availability === 'included' && lesson.lessonId === 'descriptive-statistics'
   const markCompletedRef = useRef<HTMLButtonElement>(null)
   const reopenRef = useRef<HTMLButtonElement>(null)
+  const localHeadingRef = useRef<HTMLHeadingElement>(null)
+  const accuracy = getLessonAccuracyDisplay(lesson, progress)
+  const manualStatus = getManualProgressLabel(lesson, manualProgress, manualProgressConfirmed)
   const applyProgressAction = (action: ManualProgressCommand, nextActionRef: RefObject<HTMLButtonElement | null>) => {
     onManualProgressAction(action)
-    window.requestAnimationFrame(() => nextActionRef.current?.focus({ preventScroll: true }))
+    window.requestAnimationFrame(() => {
+      const nextAction = nextActionRef.current
+      if (nextAction && !nextAction.disabled) {
+        nextAction.focus({ preventScroll: true })
+        return
+      }
+      const detailHeading = headingRef?.current ?? localHeadingRef.current
+      detailHeading?.focus()
+    })
   }
-  const manualStatus = manualProgress.status === 'completed' ? '完了' : '未完了'
+  const completed = manualProgress.completedAt !== null
 
   return <aside className="lesson-detail-card" aria-labelledby={`lesson-detail-title-${lesson.lessonId}`}>
     <header className="lesson-detail-header">
       <div>
-        <h2 id={`lesson-detail-title-${lesson.lessonId}`} ref={headingRef} tabIndex={-1}>{lesson.title}</h2>
+        <h2 id={`lesson-detail-title-${lesson.lessonId}`} ref={headingRef ?? localHeadingRef} tabIndex={-1}>{lesson.title}</h2>
         <p className="lesson-status">{lesson.availability === 'included'
           ? `収録済み：${lesson.sections.length} / ${lesson.declaredSectionIds.length} 節`
           : '未収録'}</p>
@@ -216,22 +250,6 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
       <button type="button" className="lesson-detail-close" onClick={onClose} aria-label={`${lesson.title}の詳細を閉じる`}>閉じる</button>
     </header>
     <div className="lesson-detail-content">
-      <section aria-labelledby={`lesson-detail-objectives-${lesson.lessonId}`}>
-        <h3 id={`lesson-detail-objectives-${lesson.lessonId}`}>学習目標</h3>
-        <ul className="lesson-objectives">{lesson.learningObjectives.map((objective) => <li key={objective}>{objective}</li>)}</ul>
-      </section>
-      <section className="manual-progress-controls" aria-labelledby={`manual-progress-title-${lesson.lessonId}`}>
-        <h3 id={`manual-progress-title-${lesson.lessonId}`}>手動進捗</h3>
-        {lesson.availability === 'included' ? <>
-          <p className="manual-progress-status" aria-live="polite">手動進捗：{manualStatus}</p>
-          <p className="manual-progress-notice">手動完了はこのブラウザーに保存され、演習記録とは別に集計されます。バックアップに含まれます。</p>
-          <div className="manual-progress-actions">
-            {manualProgress.status !== 'completed' && <button ref={markCompletedRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'complete' }, reopenRef)}>Mark completed</button>}
-            {manualProgress.status === 'completed' && <button ref={reopenRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'reopen' }, markCompletedRef)}>Reopen</button>}
-          </div>
-        </> : <p className="manual-progress-notice">教材未収録のため完了登録できません。</p>}
-      </section>
-      <ReferenceGroups lesson={lesson} registry={registry} />
       <nav className="lesson-detail-actions" aria-label={`${lesson.title}の関連画面`}>
         {lesson.availability === 'included' && <InternalLink route={lesson.lessonId === 'descriptive-statistics'
           ? { kind: 'course-lesson', courseId: lesson.lessonId, sectionId: lesson.sections[0].sectionId }
@@ -239,27 +257,51 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
         {hasPractice && <InternalLink route={{ kind: 'course-practice', courseId: lesson.lessonId }}>演習問題一覧を開く</InternalLink>}
         <InternalLink route={{ kind: 'progress' }}>進捗を見る</InternalLink>
       </nav>
+      {manualStatus && <section className="manual-progress-controls" aria-labelledby={`manual-progress-title-${lesson.lessonId}`}>
+        <h3 id={`manual-progress-title-${lesson.lessonId}`}>手動進捗</h3>
+        <p className="manual-progress-status" aria-live="polite">手動進捗：{manualStatus}</p>
+        <p className="manual-progress-notice">手動完了はこのブラウザーに保存され、演習記録とは別に集計されます。バックアップに含まれます。</p>
+        {manualProgressConfirmed && <div className="manual-progress-actions">
+          {!completed && <button ref={markCompletedRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'complete' }, reopenRef)}>完了にする</button>}
+          {completed && <button ref={reopenRef} type="button" disabled={manualProgressDisabled} onClick={() => applyProgressAction({ type: 'reopen' }, markCompletedRef)}>未完了に戻す</button>}
+        </div>}
+      </section>}
+      <section className="lesson-accuracy" aria-labelledby={`lesson-accuracy-title-${lesson.lessonId}`}>
+        <h3 id={`lesson-accuracy-title-${lesson.lessonId}`}>演習成績</h3>
+        {accuracy.value === null
+          ? <p>{accuracy.label}</p>
+          : <p className="lesson-accuracy-rate"><span>{accuracy.label}</span><strong aria-label={`直近正答率 ${accuracy.value} パーセント`}>{accuracy.value}</strong></p>}
+      </section>
+      <section aria-labelledby={`lesson-detail-objectives-${lesson.lessonId}`}>
+        <h3 id={`lesson-detail-objectives-${lesson.lessonId}`}>学習目標</h3>
+        <ul className="lesson-objectives">{lesson.learningObjectives.map((objective) => <li key={objective}>{objective}</li>)}</ul>
+      </section>
+      <ReferenceGroups lesson={lesson} registry={registry} />
     </div>
   </aside>
 }
 
-export function LessonMap({ registry = lessonRegistry, progress }: {
+export function LessonMap({ registry = lessonRegistry, progress, manualProgress, manualProgressConfirmed }: {
   registry?: LessonRegistry
   progress: CourseProgress | null
+  manualProgress: ManualProgressState
+  manualProgressConfirmed: boolean
 }) {
   const included = registry.lessons.filter((lesson) => lesson.availability === 'included')
   const planned = registry.lessons.filter((lesson) => lesson.availability === 'planned')
   return <div className="lesson-map">
-    {!progress && <p className="storage-alert">保存データを確認できないため、進捗は表示していません。</p>}
+    {!progress && <p className="storage-alert">演習データを確認できないため、演習成績を表示していません。</p>}
     <section aria-labelledby="included-lessons-title">
       <h2 id="included-lessons-title">収録済みの単元</h2>
       <p>リンクから単元の概要または収録済みの節を開けます。</p>
-      <div className="lesson-card-list">{included.map((lesson) => <LessonCard key={lesson.lessonId} lesson={lesson} registry={registry} progress={progress} />)}</div>
+      <div className="lesson-card-list">{included.map((lesson) => <LessonCard key={lesson.lessonId} lesson={lesson} registry={registry}
+        progress={progress} manualProgress={manualProgress} manualProgressConfirmed={manualProgressConfirmed} />)}</div>
     </section>
     <section aria-labelledby="planned-lessons-title">
       <h2 id="planned-lessons-title">未収録の単元</h2>
       <p>学習目標と予定節IDを示します。教材本文はなく、学習を開始するリンクもありません。</p>
-      <div className="lesson-card-list">{planned.map((lesson) => <LessonCard key={lesson.lessonId} lesson={lesson} registry={registry} progress={progress} />)}</div>
+      <div className="lesson-card-list">{planned.map((lesson) => <LessonCard key={lesson.lessonId} lesson={lesson} registry={registry}
+        progress={progress} manualProgress={manualProgress} manualProgressConfirmed={manualProgressConfirmed} />)}</div>
     </section>
   </div>
 }

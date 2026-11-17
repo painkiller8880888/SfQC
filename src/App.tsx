@@ -73,11 +73,7 @@ function emptyLearningState(): LearningState {
 function manualProgressFromLearning(state: LearningState): ManualProgressState {
   return Object.fromEntries(lessonRegistry.lessons.map((lesson) => {
     const completedAt = state.lessons[lesson.lessonId]?.completedAt ?? null
-    return [lesson.lessonId, {
-      status: completedAt ? 'completed' : 'not-started',
-      checks: lesson.learningObjectives.map(() => false),
-      completedAt,
-    }]
+    return [lesson.lessonId, { completedAt }]
   }))
 }
 
@@ -496,7 +492,13 @@ function App() {
       ? '手動進捗の保存状態を確認できません。画面には最後に確認した値を表示し、編集と保存を停止しています。'
       : '手動進捗の保存状態を確認できません。画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'
     : '手動完了はこのブラウザーに保存され、演習結果とは別に扱われます。バックアップに含まれます。'
-  const manualCompletedCount = Object.values(manualProgress).filter((item) => item.status === 'completed').length
+  const manualCompletedCount = mapStateConfirmed
+    ? lessonRegistry.lessons.filter((lesson) => Boolean(manualProgress[lesson.lessonId]?.completedAt)).length
+    : null
+  const mapPracticeProgress = useMemo(() => {
+    if (!isReadablePracticeResults(practiceResultsRead)) return null
+    return deriveCourseProgress(null, practiceResultsRead.results, lessonRegistry)
+  }, [practiceResultsRead])
   const progress = useMemo(() => {
     if (!isReadableLearningState(mapStateRead) || !isReadablePracticeResults(practiceResultsRead)) return null
     return deriveCourseProgress(mapStateRead.state, practiceResultsRead.results, lessonRegistry)
@@ -956,7 +958,7 @@ function App() {
             <div className="map-heading">
               <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
               <p>{current.description}</p>
-              <p className="manual-progress-count">手動完了 {manualCompletedCount} / {lessonRegistry.lessons.length}</p>
+              {manualCompletedCount !== null && <p className="manual-progress-count">手動完了 {manualCompletedCount} / {lessonRegistry.lessons.length}</p>}
               <p className="manual-progress-notice">{manualProgressNotice}</p>
             </div>
             <div className="map-toolbar-actions">
@@ -983,8 +985,9 @@ function App() {
             <div className="map-graph-content" ref={mapGraphContentRef}>
               <LessonMapView
                 selectedLessonId={selectedLessonIdRef.current}
-                progress={progress}
+                progress={mapPracticeProgress}
                 manualProgress={manualProgress}
+                manualProgressConfirmed={mapStateConfirmed}
                 manualProgressDisabled={manualProgressDisabled}
                 onManualProgressAction={onManualProgressAction}
                 onSelectionChange={onMapSelectionChange}
@@ -994,7 +997,11 @@ function App() {
             </div>
           ) : (
             <div className="map-list-content" ref={mapListContentRef}>
-              <article className="screen map-list-screen"><LessonMap progress={progress} /></article>
+              <article className="screen map-list-screen"><LessonMap
+                progress={mapPracticeProgress}
+                manualProgress={manualProgress}
+                manualProgressConfirmed={mapStateConfirmed}
+              /></article>
             </div>
           )}
         </main>

@@ -15,7 +15,7 @@ import {
 } from '../src/descriptive-statistics-preview-exercises.mjs'
 import { generateDescriptiveStatisticsExercisePreviewQuestion } from '../src/descriptive-statistics-exercise-preview-data.mjs'
 import { LEARNING_STATE_KEY, readLearningState, serializeLearningState } from '../src/learning-state.mjs'
-import { PRACTICE_RESULTS_KEY } from '../src/practice-results.mjs'
+import { PRACTICE_RESULTS_KEY, serializePracticeResults } from '../src/practice-results.mjs'
 
 const THEME_STORAGE_KEY = 'sfqc:theme-preference'
 const THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)'
@@ -736,6 +736,112 @@ test('integrated learning map renders all registry lessons in five categories wi
   }
 })
 
+test('map, list, and detail keep manual completion independent from recent accuracy', async () => {
+  const prerequisiteId = deriveLessonGraph(lessonRegistry).commonPrerequisiteEdges
+    .find((edge) => edge.target === 'descriptive-statistics').source
+  const learningState = serializeLearningState({ schemaVersion: 2, lessons: {
+    'descriptive-statistics': { completedAt: '2026-11-14T00:00:00.000Z' },
+    [prerequisiteId]: { completedAt: '2026-11-14T00:30:00.000Z' },
+  } })
+  const practiceResults = serializePracticeResults({ schemaVersion: 1, records: [
+    { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-11-14T01:00:00.000Z' },
+  ] })
+  const app = await createHarness({
+    url: 'https://sfqc.test/SfQC/#/map',
+    localStorageEntries: { [LEARNING_STATE_KEY]: learningState, [PRACTICE_RESULTS_KEY]: practiceResults },
+  })
+  try {
+    const { host } = app
+    const descriptiveTile = host.querySelector('[data-lesson-id="descriptive-statistics"]')
+    assert.ok(descriptiveTile.classList.contains('is-completed'))
+    assert.ok(descriptiveTile.classList.contains('has-rate'))
+    assert.equal(descriptiveTile.querySelector('.map-lesson-rate strong').textContent, '0')
+    assert.match(descriptiveTile.querySelector('.map-lesson-rate').textContent, /直近正答率（%）/u)
+    assert.doesNotMatch(descriptiveTile.querySelector('.map-lesson-rate').textContent, /試行|回/u)
+    const noRateTile = host.querySelector('[data-lesson-id="math-arithmetic"]')
+    assert.ok(!noRateTile.classList.contains('has-rate'))
+    assert.equal(noRateTile.querySelector('.map-lesson-rate'), null)
+    assert.match(noRateTile.querySelector('.map-progress-summary').textContent, /演習成績：演習なし/u)
+    assert.equal(host.querySelector('[data-lesson-id="mean-inference"] .map-lesson-rate'), null)
+    assert.match(host.querySelector('[data-lesson-id="mean-inference"]').textContent, /未収録/u)
+    await click(descriptiveTile)
+    assert.ok(host.querySelector('[data-lesson-id="descriptive-statistics"]').classList.contains('is-selected'))
+    assert.ok(host.querySelector('[data-lesson-id="descriptive-statistics"] .map-selected-badge'))
+    const completedPrerequisite = host.querySelector(`[data-lesson-id="${prerequisiteId}"]`)
+    assert.ok(completedPrerequisite.classList.contains('is-completed'))
+    assert.ok(completedPrerequisite.classList.contains('is-prerequisite'))
+    assert.ok(completedPrerequisite.querySelector('.map-prerequisite-badge'))
+    assert.ok(host.querySelector('.map-legend-completed'))
+    assert.ok(host.querySelector('.map-legend-selected'))
+    assert.ok(host.querySelector('.map-legend-prerequisite'))
+
+    let detail = host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /完了/u)
+    assert.equal(detail.querySelector('.lesson-accuracy-rate strong').textContent, '0')
+    await click(buttonFor(detail, '未完了に戻す'))
+    detail = host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /未完了/u)
+    assert.equal(detail.querySelector('.lesson-accuracy-rate strong').textContent, '0')
+    await click(buttonFor(detail, '完了にする'))
+    assert.equal(host.querySelector('.lesson-detail-card .lesson-accuracy-rate strong').textContent, '0')
+
+    await click(buttonFor(host, '教材一覧'))
+    const listCard = [...host.querySelectorAll('.lesson-card')]
+      .find((card) => card.textContent.includes('基本統計量'))
+    assert.equal(listCard.querySelector('.lesson-card-rate strong').textContent, '0')
+    assert.match(listCard.querySelector('.lesson-observation').textContent, /手動進捗：完了/u)
+    assert.doesNotMatch(host.querySelector('.map-list-content').textContent, /回答試行|試行数/u)
+  } finally {
+    await app.close()
+  }
+})
+
+test('map keeps confirmed learning state when practice data cannot be read', async () => {
+  const learningState = serializeLearningState({ schemaVersion: 2, lessons: {
+    'descriptive-statistics': { completedAt: '2026-11-14T00:00:00.000Z' },
+  } })
+  const app = await createHarness({
+    url: 'https://sfqc.test/SfQC/#/map',
+    localStorageEntries: { [LEARNING_STATE_KEY]: learningState, [PRACTICE_RESULTS_KEY]: '{broken' },
+  })
+  try {
+    const tile = app.host.querySelector('[data-lesson-id="descriptive-statistics"]')
+    assert.match(tile.querySelector('.map-manual-status').textContent, /手動進捗：完了/u)
+    assert.match(tile.querySelector('.map-progress-summary').textContent, /演習成績：集計未確認/u)
+    assert.equal(tile.querySelector('.map-lesson-rate'), null)
+    assert.equal(app.host.querySelector('.manual-progress-count').textContent, '手動完了 1 / 34')
+    await click(tile)
+    assert.match(app.host.querySelector('.lesson-detail-card .manual-progress-status').textContent, /完了/u)
+    assert.match(app.host.querySelector('.lesson-detail-card .lesson-accuracy').textContent, /集計未確認/u)
+  } finally {
+    await app.close()
+  }
+})
+
+test('map keeps recent accuracy when learning data is unconfirmed', async () => {
+  const practiceResults = serializePracticeResults({ schemaVersion: 1, records: [
+    { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-11-14T01:00:00.000Z' },
+  ] })
+  const damagedLearningState = '{"schemaVersion":2,"lessons":{"descriptive-statistics":{"completedAt":"invalid"}}}'
+  const app = await createHarness({
+    url: 'https://sfqc.test/SfQC/#/map',
+    localStorageEntries: { [LEARNING_STATE_KEY]: damagedLearningState, [PRACTICE_RESULTS_KEY]: practiceResults },
+  })
+  try {
+    const tile = app.host.querySelector('[data-lesson-id="descriptive-statistics"]')
+    assert.match(tile.querySelector('.map-manual-status').textContent, /手動進捗：未確認/u)
+    assert.equal(tile.querySelector('.map-lesson-rate strong').textContent, '0')
+    assert.equal(app.host.querySelector('.manual-progress-count'), null)
+    await click(tile)
+    const detail = app.host.querySelector('.lesson-detail-card')
+    assert.match(detail.querySelector('.manual-progress-status').textContent, /未確認/u)
+    assert.equal(buttonFor(detail, '完了にする'), undefined)
+    assert.equal(detail.querySelector('.lesson-accuracy-rate strong').textContent, '0')
+  } finally {
+    await app.close()
+  }
+})
+
 test('keyboard-style map selection restores tile focus below a sticky header', async () => {
   const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
   const { window } = app.dom
@@ -865,7 +971,7 @@ test('old manual completion stays untouched while new v2 progress starts unfinis
   })
   try {
     const { window } = app.dom
-    assert.ok([...app.host.querySelectorAll('.map-manual-status')].every((node) => node.textContent === '未開始'))
+    assert.ok([...app.host.querySelectorAll('.map-manual-status')].every((node) => node.textContent.includes('手動進捗：未完了')))
     assert.equal(savedMap(window).schemaVersion, 2)
     assert.equal(savedMap(window).positions, undefined)
     assert.equal(window.localStorage.getItem('sfqc:learning-state:v1'), oldRaw)
@@ -877,7 +983,7 @@ test('old manual completion stays untouched while new v2 progress starts unfinis
 
     await click(linkFor(app.host, '学習マップ'))
     await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '完了にする'))
     await settleEffects(window)
     const saved = savedMap(window)
     assert.equal(saved.schemaVersion, 2)
@@ -907,13 +1013,14 @@ test('manual completion rebases after a save conflict and preserves unresolved I
     window.localStorage.setItem(LEARNING_STATE_KEY, externalRaw)
 
     await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '完了にする'))
     assert.match(app.host.textContent, /保存データが別の変更で更新されました/u)
     await click(buttonFor(app.host.querySelector('.practice-recovery'), '未保存の変更を再試行'))
     const saved = savedMap(window)
     assert.ok(saved.lessons['descriptive-statistics'].completedAt)
     assert.equal(saved.lessons['math-arithmetic'].completedAt, external.lessons['math-arithmetic'].completedAt)
     assert.equal(saved.lessons['retired-topic'].completedAt, external.lessons['retired-topic'].completedAt)
+    assert.equal(app.host.querySelector('.manual-progress-count').textContent, '手動完了 2 / 34')
     assert.equal(app.host.querySelector('.practice-recovery'), null)
   } finally {
     await app.close()
@@ -944,7 +1051,7 @@ test('unknown manual save keeps its candidate until the stored result can be con
   }
   try {
     await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
-    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed'))
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '完了にする'))
     assert.match(app.host.textContent, /手動進捗の変更をメモリ上に保持/u)
     assert.match(app.host.textContent, /再読み込みすると失われます/u)
     const unloadEvent = new window.Event('beforeunload', { cancelable: true })
@@ -982,6 +1089,132 @@ test('unknown manual save keeps its candidate until the stored result can be con
   }
 })
 
+test('manual progress actions keep a visible focus target for every save outcome', async (t) => {
+  const server = await createAppTestServer()
+  const scenarios = [
+    { outcome: 'saved', actionLabel: '未完了に戻す', nextLabel: '完了にする' },
+    { outcome: 'conflict', actionLabel: '完了にする', nextLabel: '未完了に戻す' },
+    { outcome: 'failed', actionLabel: '完了にする', nextLabel: '未完了に戻す' },
+    { outcome: 'unknown', actionLabel: '完了にする', nextLabel: '未完了に戻す' },
+  ]
+  try {
+    for (const scenario of scenarios) {
+      await t.test(scenario.outcome, async () => {
+        const learningState = scenario.outcome === 'saved'
+          ? serializeLearningState({ schemaVersion: 2, lessons: {
+            'descriptive-statistics': { completedAt: '2026-11-14T00:00:00.000Z' },
+          } })
+          : undefined
+        const app = await createHarness({
+          url: 'https://sfqc.test/SfQC/#/map',
+          sharedServer: server,
+          localStorageEntries: learningState ? { [LEARNING_STATE_KEY]: learningState } : {},
+        })
+        const { window } = app.dom
+        const storagePrototype = window.Storage.prototype
+        const originalGetItem = storagePrototype.getItem
+        const originalSetItem = storagePrototype.setItem
+        const originalFocus = window.HTMLElement.prototype.focus
+        const originalGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect
+        let writeStarted = false
+        let unreadableReads = 2
+        try {
+          if (scenario.outcome === 'conflict') {
+            const external = savedMap(window)
+            external.lessons['math-arithmetic'].completedAt = '2026-11-13T00:00:00.000Z'
+            window.localStorage.setItem(LEARNING_STATE_KEY, serializeLearningState(external))
+          } else if (scenario.outcome === 'failed') {
+            storagePrototype.setItem = function (key, value) {
+              if (key === LEARNING_STATE_KEY) throw new Error('simulated storage write failure')
+              return originalSetItem.call(this, key, value)
+            }
+          } else if (scenario.outcome === 'unknown') {
+            storagePrototype.setItem = function (key, value) {
+              if (key === LEARNING_STATE_KEY) writeStarted = true
+              return originalSetItem.call(this, key, value)
+            }
+            storagePrototype.getItem = function (key) {
+              if (key === LEARNING_STATE_KEY && writeStarted && unreadableReads > 0) {
+                unreadableReads -= 1
+                throw new Error('simulated post-write read failure')
+              }
+              return originalGetItem.call(this, key)
+            }
+          }
+
+          await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
+          const detail = app.host.querySelector('.lesson-detail-card')
+          const heading = detail.querySelector('.lesson-detail-header h2')
+          const action = buttonFor(detail, scenario.actionLabel)
+          assert.ok(action)
+
+          let headingCanScrollIntoView = false
+          let focusedAction = null
+          const focusCalls = []
+          Object.defineProperty(window, 'innerHeight', { configurable: true, value: 220 })
+          window.HTMLElement.prototype.focus = function (options) {
+            if (this === heading) {
+              focusCalls.push({ target: 'heading', options })
+              if (!options?.preventScroll) headingCanScrollIntoView = true
+            } else if (this.matches('.manual-progress-actions button')) {
+              focusCalls.push({ target: this.textContent.trim(), options })
+              focusedAction = this
+            }
+            return originalFocus.call(this, options)
+          }
+          window.HTMLElement.prototype.getBoundingClientRect = function () {
+            const rect = (top, height) => ({
+              x: 0, y: top, top, right: 200, bottom: top + height, left: 0, width: 200, height,
+            })
+            if (this === heading) return rect(headingCanScrollIntoView ? 12 : 300, 24)
+            if (this.matches('.manual-progress-actions button')) return rect(this === focusedAction ? 48 : 300, 40)
+            return originalGetBoundingClientRect.call(this)
+          }
+
+          action.focus()
+          focusCalls.length = 0
+          focusedAction = null
+          await click(action)
+          await settleEffects(window)
+
+          const updatedDetail = app.host.querySelector('.lesson-detail-card')
+          const nextAction = buttonFor(updatedDetail, scenario.nextLabel)
+          if (scenario.outcome === 'saved') {
+            assert.ok(nextAction)
+            assert.equal(nextAction.disabled, false)
+            assert.equal(window.document.activeElement, nextAction)
+            assert.deepEqual(focusCalls.at(-1), {
+              target: scenario.nextLabel,
+              options: { preventScroll: true },
+            })
+          } else {
+            const disabledAction = buttonFor(updatedDetail, scenario.actionLabel)
+            assert.equal(nextAction, undefined)
+            assert.ok(disabledAction?.disabled)
+            assert.equal(window.document.activeElement, heading)
+            assert.deepEqual(focusCalls.at(-1), { target: 'heading', options: undefined })
+            assert.equal(headingCanScrollIntoView, true, 'fallback focus allows the browser to reveal the heading')
+            assert.ok(app.host.querySelector('.practice-recovery'))
+          }
+
+          const focused = window.document.activeElement
+          const rect = focused.getBoundingClientRect()
+          assert.ok(rect.top >= 0 && rect.bottom <= window.innerHeight,
+            `${scenario.outcome} focus target must be inside the viewport`)
+        } finally {
+          storagePrototype.getItem = originalGetItem
+          storagePrototype.setItem = originalSetItem
+          window.HTMLElement.prototype.focus = originalFocus
+          window.HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect
+          await app.close()
+        }
+      })
+    }
+  } finally {
+    await server.close()
+  }
+})
+
 test('invalid v2 learning state disables completion and preserves its damaged raw', async () => {
   const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
   try {
@@ -990,7 +1223,7 @@ test('invalid v2 learning state disables completion and preserves its damaged ra
     window.localStorage.setItem(LEARNING_STATE_KEY, damaged)
     await app.remountAt('#/map')
     await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
-    assert.equal(buttonFor(app.host.querySelector('.lesson-detail-card'), 'Mark completed').disabled, true)
+    assert.equal(buttonFor(app.host.querySelector('.lesson-detail-card'), '完了にする'), undefined)
     assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), damaged)
     assert.equal(app.host.querySelectorAll('.map-lesson-button').length, 34)
   } finally {
@@ -1166,7 +1399,7 @@ test('section checks stay local while independent judgments and manual completio
 
     await click(linkFor(app.host, '学習マップ'))
     await click(app.host.querySelector('[data-lesson-id="descriptive-statistics"]'))
-    await click(buttonFor(app.host, 'Mark completed'))
+    await click(buttonFor(app.host, '完了にする'))
     const learning = readLearningState(undefined, () => window.localStorage)
     assert.equal(learning.status, 'ok')
     assert.ok(learning.state.lessons['descriptive-statistics'].completedAt)
