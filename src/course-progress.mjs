@@ -15,6 +15,10 @@ export function sortCourseProgressByAccuracy(items) {
     .map(({ item }) => item)
 }
 
+export function hasCoursePractice(lessonId) {
+  return lessonId === 'descriptive-statistics'
+}
+
 export function deriveCourseProgress(learningState, practiceResults, registry = lessonRegistry) {
   const records = practiceResults?.records ?? []
   const progress = registry.lessons.map((lesson) => {
@@ -28,7 +32,7 @@ export function deriveCourseProgress(learningState, practiceResults, registry = 
       correctCount,
       incorrectCount: attemptCount - correctCount,
       correctRate: attemptCount === 0 ? null : correctCount / attemptCount,
-      hasPractice: lesson.lessonId === 'descriptive-statistics',
+      hasPractice: hasCoursePractice(lesson.lessonId),
     }
   })
   const categories = PRACTICE_CATEGORY_IDS.map((categoryId, index) => {

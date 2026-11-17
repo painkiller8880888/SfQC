@@ -5,8 +5,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 import { deriveCourseProgress } from '../src/course-progress.mjs'
-import { createInitialManualProgress } from '../src/manual-progress.mjs'
 import { deriveLessonGraph } from '../src/lesson-graph.mjs'
+
+function createManualProgress() {
+  return Object.fromEntries(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, { completedAt: null }]))
+}
 
 test('registry-driven map, references, lesson blocks, and app routes render only available lessons', async () => {
   const server = await createServer({
@@ -16,10 +19,11 @@ test('registry-driven map, references, lesson blocks, and app routes render only
   })
   const previousWindow = globalThis.window
   try {
-    const { LessonDetailCard, LessonMap, LessonReference, LessonRouteContent, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
+    const { getLessonAccuracyDisplay, LessonDetailCard, LessonMap, LessonReference, LessonRouteContent, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
     const render = (component, props = {}) => renderToStaticMarkup(createElement(component, props))
     const emptyProgress = deriveCourseProgress(null, { schemaVersion: 1, records: [] }, lessonRegistry)
-    const map = render(LessonMap, { progress: emptyProgress })
+    const manualProgress = createManualProgress()
+    const map = render(LessonMap, { progress: emptyProgress, manualProgress, manualProgressConfirmed: true })
     const included = lessonRegistry.lessons.filter((lesson) => lesson.availability === 'included')
     const expectedSectionRoutes = new Set(included.flatMap((lesson) => lesson.sections
       .map((section) => lesson.lessonId === 'descriptive-statistics'
@@ -53,29 +57,51 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     const courseProgress = deriveCourseProgress(null, { schemaVersion: 1, records: [
       { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-10-26T00:00:00.000Z' },
     ] }, lessonRegistry)
-    const progressMap = render(LessonMap, { progress: courseProgress })
-    assert.match(progressMap, /回答試行：1回 · 正答率 0%/u)
+    const descriptive = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'descriptive-statistics')
+    const accuracyFor = (values) => getLessonAccuracyDisplay(descriptive, deriveCourseProgress(null, {
+      schemaVersion: 1,
+      records: values.map((isCorrect, index) => ({
+        categoryId: 'mean-deviation', isCorrect, attemptedAt: `2026-10-27T00:00:${String(index).padStart(2, '0')}.000Z`,
+      })),
+    }, lessonRegistry))
+    assert.deepEqual(getLessonAccuracyDisplay(descriptive, null), { label: '集計未確認', value: null })
+    assert.deepEqual(getLessonAccuracyDisplay(descriptive, emptyProgress), { label: '未記録', value: null })
+    assert.deepEqual(getLessonAccuracyDisplay(lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'math-arithmetic'), null), {
+      label: '演習なし', value: null,
+    })
+    assert.deepEqual(accuracyFor([false]), { label: '直近正答率（%）', value: 0 })
+    assert.deepEqual(accuracyFor([true, true, true, false]), { label: '直近正答率（%）', value: 75 })
+    assert.deepEqual(accuracyFor([true]), { label: '直近正答率（%）', value: 100 })
+    const progressMap = render(LessonMap, { progress: courseProgress, manualProgress, manualProgressConfirmed: true })
+    assert.match(progressMap, /演習成績：演習なし/u)
+    assert.match(progressMap, /<p class="lesson-card-rate"><span>直近正答率（%）<\/span><strong aria-label="直近正答率 0 パーセント">0<\/strong><\/p>/u)
+    assert.doesNotMatch(progressMap, /回答試行|試行数/u)
 
     const conditional = render(LessonReference, { targetRef: 'mean-inference#z' })
     assert.match(conditional, /未収録/u)
     assert.doesNotMatch(conditional, /<a\b/u)
 
-    const descriptive = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'descriptive-statistics')
-    const manualProgress = createInitialManualProgress(lessonRegistry)
     const descriptiveCard = render(LessonDetailCard, {
       lesson: descriptive,
       manualProgress: manualProgress[descriptive.lessonId],
+      manualProgressConfirmed: true,
+      progress: courseProgress,
       onManualProgressAction: () => {},
       onClose: () => {},
     })
     assert.match(descriptiveCard, /<h2[^>]*>基本統計量<\/h2>/u)
     assert.match(descriptiveCard, /収録済み：4 \/ 4 節/u)
+    assert.ok(descriptiveCard.indexOf('演習問題一覧を開く') < descriptiveCard.indexOf('手動進捗'))
+    assert.ok(descriptiveCard.indexOf('手動進捗') < descriptiveCard.indexOf('演習成績'))
+    assert.ok(descriptiveCard.indexOf('演習成績') < descriptiveCard.indexOf('学習目標'))
     assert.match(descriptiveCard, /学習目標/u)
     assert.match(descriptiveCard, /手動進捗：未完了/u)
     assert.match(descriptiveCard, /手動完了はこのブラウザーに保存され、演習記録とは別に集計されます。バックアップに含まれます。/u)
     assert.equal((descriptiveCard.match(/type="checkbox"/gu) ?? []).length, 0)
     assert.doesNotMatch(descriptiveCard, />Start<\/button>/u)
-    assert.match(descriptiveCard, />Mark completed<\/button>/u)
+    assert.match(descriptiveCard, />完了にする<\/button>/u)
+    assert.match(descriptiveCard, />0<\/strong>/u)
+    assert.doesNotMatch(descriptiveCard, /回答試行|試行数/u)
     assert.match(descriptiveCard, /href="#\/course\/descriptive-statistics\/lesson\/mean" data-nav-intent="normal">解説を読む/u)
     assert.match(descriptiveCard, /href="#\/course\/descriptive-statistics\/practice" data-nav-intent="normal">演習問題一覧を開く/u)
     assert.match(descriptiveCard, /href="#\/progress" data-nav-intent="normal">進捗を見る/u)
@@ -87,15 +113,17 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     const plannedCard = render(LessonDetailCard, {
       lesson: planned,
       manualProgress: manualProgress[planned.lessonId],
+      manualProgressConfirmed: true,
+      progress: emptyProgress,
       onManualProgressAction: () => {},
       onClose: () => {},
     })
     assert.match(plannedCard, /母平均の区間推定・検定/u)
     assert.match(plannedCard, /未収録/u)
-    assert.match(plannedCard, /教材未収録のため完了登録できません/u)
+    assert.match(plannedCard, /<h3[^>]*>演習成績<\/h3><p>未収録<\/p>/u)
     assert.match(plannedCard, /方法条件付き必須/u)
     assert.match(plannedCard, /適用条件/u)
-    assert.doesNotMatch(plannedCard, />Mark completed<|>Reopen</u)
+    assert.doesNotMatch(plannedCard, />完了にする<|>未完了に戻す</u)
     assert.doesNotMatch(plannedCard, /href="#\/lesson\/mean-inference/u)
     assert.doesNotMatch(plannedCard, /href="#\/practice"/u)
 
@@ -103,6 +131,8 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     const arithmeticCard = render(LessonDetailCard, {
       lesson: arithmetic,
       manualProgress: manualProgress[arithmetic.lessonId],
+      manualProgressConfirmed: true,
+      progress: emptyProgress,
       onManualProgressAction: () => {},
       onClose: () => {},
     })
@@ -229,7 +259,8 @@ test('all common prerequisite edges are listed in the target lesson detail card'
   })
   try {
     const { LessonDetailCard } = await server.ssrLoadModule('/src/lesson-view.tsx')
-    const manualProgress = createInitialManualProgress(lessonRegistry)
+    const manualProgress = createManualProgress()
+    const emptyProgress = deriveCourseProgress(null, { schemaVersion: 1, records: [] }, lessonRegistry)
     const { commonPrerequisiteEdges } = deriveLessonGraph(lessonRegistry)
     assert.equal(commonPrerequisiteEdges.length, 64)
 
@@ -239,6 +270,8 @@ test('all common prerequisite edges are listed in the target lesson detail card'
       const card = renderToStaticMarkup(createElement(LessonDetailCard, {
         lesson: target,
         manualProgress: manualProgress[target.lessonId],
+        manualProgressConfirmed: true,
+        progress: emptyProgress,
         onManualProgressAction: () => {},
         onClose: () => {},
       }))

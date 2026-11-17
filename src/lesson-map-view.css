@@ -14,7 +14,6 @@
   --map-muted: var(--text-muted);
   --map-outline: var(--control-border);
   --map-border: var(--border);
-  --map-selected-surface: var(--surface-selected);
   --map-shadow: var(--shadow);
   --map-display-domain-math-foundations: #268bd2;
   --map-display-domain-data-description: #1d7470;
@@ -94,6 +93,28 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.map-legend-completed {
+  color: var(--success);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.map-legend-selected {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--accent);
+  border-radius: 0.25rem;
+}
+
+.map-legend-prerequisite {
+  padding: 0.08rem 0.3rem;
+  border-radius: 0.25rem;
+  background: var(--map-prerequisite-badge);
+  color: var(--map-prerequisite-badge-text);
+  font-size: 0.68rem;
+  font-weight: 700;
 }
 
 .map-graph-actions button,
@@ -191,7 +212,9 @@
 .map-lesson-button {
   position: relative;
   display: grid;
-  gap: 0.4rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
   width: 100%;
   min-height: 4rem;
   padding: 0.65rem 0.7rem;
@@ -214,17 +237,26 @@
   outline-offset: 2px;
 }
 
-.map-lesson-button.is-selected {
-  border: 2px solid var(--accent);
-  background: var(--map-selected-surface);
+.map-lesson-button.is-completed {
+  background: color-mix(in srgb, var(--map-accent-color) 16%, var(--map-surface));
 }
 
-.map-lesson-button.is-prerequisite:not(.is-selected) {
+.map-lesson-button.is-selected {
+  border: 2px solid var(--accent);
+}
+
+.map-lesson-button.is-prerequisite {
   border: 2px solid var(--map-prerequisite-badge);
+  border-style: dashed;
+}
+
+.map-lesson-main {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
 }
 
 .map-lesson-title {
-  padding-right: 2.8rem;
   font-weight: 700;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -251,13 +283,38 @@
 }
 
 .map-progress-summary {
+  overflow-wrap: anywhere;
+}
+
+.map-lesson-rate {
+  display: grid;
+  justify-items: end;
+  gap: 0.1rem;
+  max-width: 5.5rem;
+  color: var(--map-muted);
+  text-align: right;
+  font-size: 0.66rem;
+  line-height: 1.3;
+}
+
+.map-lesson-rate strong {
+  color: var(--map-text);
+  font-size: 1.5rem;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.map-selected-badge {
+  padding: 0.08rem 0.32rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.3rem;
+  color: var(--map-text);
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .map-prerequisite-badge {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
   padding: 0.16rem 0.42rem;
   border-radius: 0.35rem;
   background: var(--map-prerequisite-badge);
