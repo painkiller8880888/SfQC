@@ -219,6 +219,7 @@ function App() {
   const mapUiRef = useRef(mapUi)
   const mapEntrySnapshotsRef = useRef(new Map<string, MapEntrySnapshot>())
   const mapRestoreGenerationRef = useRef(0)
+  const mobileDetailScrollYRef = useRef<number | null>(null)
   const [isMobileViewport, setIsMobileViewport] = useState(() => window.innerWidth <= 768)
   const isMobileViewportRef = useRef(isMobileViewport)
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -334,6 +335,9 @@ function App() {
   }
   const updateMapUi = (patch: Partial<MapUiState>) => {
     const next = { ...mapUiRef.current, ...patch }
+    if (isMobileViewportRef.current && next.mobileDetailOpen && !mapUiRef.current.mobileDetailOpen) {
+      mobileDetailScrollYRef.current = window.scrollY
+    }
     if (next.selectedLessonId === null) {
       next.scope = 'all'
       next.mobileDetailOpen = false
@@ -993,20 +997,25 @@ function App() {
   const closeMapDetail = () => {
     const selectedLessonId = mapUiRef.current.selectedLessonId
     if (!selectedLessonId || mapUiRef.current.mapView !== 'graph') return
-    if (isMobileViewportRef.current) updateMapUi({ mobileDetailOpen: false })
-    else updateMapUi({ selectedLessonId: null })
-    window.requestAnimationFrame(() => focusGraphCard(selectedLessonId))
+    const restoreScrollY = isMobileViewportRef.current ? mobileDetailScrollYRef.current : null
+    if (isMobileViewportRef.current) {
+      updateMapUi({ mobileDetailOpen: false })
+      mobileDetailScrollYRef.current = null
+    } else updateMapUi({ selectedLessonId: null })
+    const generation = mapRestoreGenerationRef.current
+    window.requestAnimationFrame(() => {
+      if (generation !== mapRestoreGenerationRef.current || screenForRoute(viewRef.current.route) !== 'map') return
+      if (restoreScrollY !== null) window.scrollTo(window.scrollX, restoreScrollY)
+      focusGraphCard(selectedLessonId)
+    })
   }
 
   const handleMapPrerequisiteSelect = (targetRef: string) => {
     const parsed = parseLessonRef(targetRef)
     if (!parsed || !lessonRegistry.lessons.some((lesson) => lesson.lessonId === parsed.lessonId)) return
-    const mobile = isMobileViewportRef.current
     updateMapUi({ selectedLessonId: parsed.lessonId, mobileDetailOpen: false })
-    window.requestAnimationFrame(() => {
-      if (mobile) focusGraphCard(parsed.lessonId)
-      else focusMapDetailHeading()
-    })
+    mobileDetailScrollYRef.current = null
+    window.requestAnimationFrame(() => focusGraphCard(parsed.lessonId))
   }
 
   const handleMapGridScroll = () => {

@@ -127,6 +127,14 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.doesNotMatch(plannedCard, /href="#\/lesson\/mean-inference/u)
     assert.doesNotMatch(plannedCard, /href="#\/practice"/u)
 
+    const mapPrerequisiteControl = render(LessonReference, {
+      targetRef: 'sampling-distributions#common', onClick: () => {},
+    })
+    assert.match(mapPrerequisiteControl, /^<button type="button" class="lesson-reference-button">/u)
+    assert.doesNotMatch(mapPrerequisiteControl, /href=/u)
+    assert.match(render(LessonReference, { targetRef: 'descriptive-statistics' }),
+      /^<a href="#\/course\/descriptive-statistics\/lesson\/mean"/u)
+
     const arithmetic = lessonRegistry.lessons.find((lesson) => lesson.lessonId === 'math-arithmetic')
     const arithmeticCard = render(LessonDetailCard, {
       lesson: arithmetic,

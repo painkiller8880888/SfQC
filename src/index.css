@@ -590,6 +590,23 @@ h1 {
   margin-top: 0.5rem;
 }
 
+.lesson-reference-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.lesson-reference-button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .reference-group p,
 .route-summary p {
   line-height: 1.8;

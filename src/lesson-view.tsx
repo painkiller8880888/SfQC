@@ -40,16 +40,9 @@ export function LessonReference({ targetRef, label, intent = 'review', ariaLabel
   const parsed = parseLessonRef(targetRef)
   const lesson = parsed && registry.lessons.find((item) => item.lessonId === parsed.lessonId)
   const route = resolveLessonRef(targetRef, registry)
-  const mapRoute = onClick && lesson && parsed
-    ? { kind: 'lesson-id' as const, lessonId: parsed.lessonId, sectionId: parsed.sectionId }
-    : null
   const text = label ?? lessonRefLabel(targetRef, registry)
-  const linkRoute = route ?? mapRoute
-  if (linkRoute) return <a href={routeToHash(linkRoute)} data-nav-intent={intent} aria-label={ariaLabel} onClick={(event) => {
-    if (!onClick) return
-    event.preventDefault()
-    onClick()
-  }}>{text}</a>
+  if (onClick && lesson && parsed) return <button type="button" className="lesson-reference-button" onClick={onClick}>{text}</button>
+  if (route) return <a href={routeToHash(route)} data-nav-intent={intent} aria-label={ariaLabel}>{text}</a>
   const status = !lesson ? '教材未登録' : lesson.availability === 'planned' ? '未収録' : '節未収録'
   return <span className="lesson-reference-unavailable">{text}（{status}）</span>
 }

@@ -1020,14 +1020,17 @@ test('map detail follows the 768px breakpoint and restores focus when resizing h
   }
 })
 
-test('map detail prerequisite links select known planned lessons without leaving the map', async () => {
+test('map detail prerequisite buttons select known planned lessons without leaving the map', async () => {
   const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
   try {
     await click(app.host.querySelector('[data-lesson-id="mean-inference"]'))
     await click(buttonFor(app.host, '選択範囲'))
-    const samplingLink = app.host.querySelector('.lesson-detail-card a[href="#/lesson/sampling-distributions/common"]')
-    assert.ok(samplingLink, 'a planned prerequisite remains clickable in map detail')
-    await click(samplingLink)
+    const samplingButton = buttonFor(app.host.querySelector('.lesson-detail-card'), '標本分布')
+    assert.ok(samplingButton, 'a planned prerequisite can be selected in map detail')
+    assert.equal(samplingButton.tagName, 'BUTTON')
+    assert.equal(app.host.querySelector('.lesson-detail-card a[href="#/lesson/sampling-distributions/common"]'), null,
+      'map-only selection does not expose an unavailable lesson URL')
+    await click(samplingButton)
     await settleEffects(app.dom.window)
     assert.equal(app.dom.window.location.hash, '#/map')
     assert.equal(app.host.querySelector('[data-lesson-id="sampling-distributions"]').getAttribute('aria-pressed'), 'true')
@@ -1043,8 +1046,7 @@ test('map detail prerequisite links select known planned lessons without leaving
     await click(buttonFor(mobileApp.host.querySelector('.lesson-detail-card'), '閉じる'))
     await click(buttonFor(mobileApp.host, '選択範囲'))
     await click(mobileApp.host.querySelector('[data-lesson-id="mean-inference"]'))
-    const samplingLink = mobileApp.host.querySelector('.lesson-detail-card a[href="#/lesson/sampling-distributions/common"]')
-    await click(samplingLink)
+    await click(buttonFor(mobileApp.host.querySelector('.lesson-detail-card'), '標本分布'))
     await settleEffects(mobileApp.dom.window)
     assert.equal(mobileApp.dom.window.location.hash, '#/map')
     assert.equal(mobileApp.host.querySelector('.lesson-detail-card'), null)
@@ -1054,6 +1056,103 @@ test('map detail prerequisite links select known planned lessons without leaving
     assert.deepEqual(visibleIds, ['population-sample', 'descriptive-statistics', 'random-variables', 'sampling-distributions'].sort())
   } finally {
     await mobileApp.close()
+  }
+})
+
+test('desktop prerequisite selection scrolls and focuses its card in both map scopes', async () => {
+  for (const scope of ['all', 'selected']) {
+    const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map', viewportWidth: 1024, viewportHeight: 600 })
+    const { window } = app.dom
+    const originalGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect
+    try {
+      await click(app.host.querySelector('[data-lesson-id="mean-inference"]'))
+      await click(buttonFor(app.host, scope === 'all' ? '全体' : '選択範囲'))
+      assert.equal(buttonFor(app.host, scope === 'all' ? '全体' : '選択範囲').classList.contains('is-current'), true)
+
+      const grid = app.host.querySelector('.map-grid-scroll')
+      Object.defineProperties(grid, {
+        clientHeight: { configurable: true, value: 200 },
+        scrollHeight: { configurable: true, value: 1000 },
+        clientWidth: { configurable: true, value: 420 },
+        scrollWidth: { configurable: true, value: 1000 },
+      })
+      const prerequisite = app.host.querySelector('[data-lesson-id="sampling-distributions"]')
+      assert.ok(prerequisite, `${scope} scope includes the selected prerequisite card`)
+      Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+        configurable: true,
+        value() {
+          if (this === grid) return { top: 120, right: 500, bottom: 320, left: 80, width: 420, height: 200 }
+          if (this === prerequisite) {
+            const top = 350 - grid.scrollTop
+            const left = 520 - grid.scrollLeft
+            return { top, right: left + 120, bottom: top + 40, left, width: 120, height: 40 }
+          }
+          return originalGetBoundingClientRect.call(this)
+        },
+      })
+
+      await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '標本分布'))
+      await settleEffects(window)
+      const gridRect = grid.getBoundingClientRect()
+      const cardRect = prerequisite.getBoundingClientRect()
+      assert.ok(cardRect.top >= gridRect.top && cardRect.bottom <= gridRect.bottom,
+        `${scope} scope scrolls the target card into the grid viewport`)
+      assert.ok(cardRect.left >= gridRect.left && cardRect.right <= gridRect.right,
+        `${scope} scope scrolls the target card across into the grid viewport`)
+      assert.equal(window.document.activeElement, prerequisite)
+      assert.match(app.host.querySelector('.lesson-detail-card h2').textContent, /標本分布/u)
+    } finally {
+      Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+        configurable: true,
+        value: originalGetBoundingClientRect,
+      })
+      await app.close()
+    }
+  }
+})
+
+test('closing mobile detail restores the opening page scroll before focusing its card', async () => {
+  const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map', viewportWidth: 375, viewportHeight: 600 })
+  const { window } = app.dom
+  const originalGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect
+  try {
+    let pageScrollY = 500
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => pageScrollY })
+    window.scrollTo = (_x, y) => { pageScrollY = y }
+    window.scrollBy = ({ top }) => { pageScrollY += top }
+    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value() {
+        if (this.matches('.lesson-detail-header h2')) {
+          const top = 1210 - pageScrollY
+          return { top, right: 300, bottom: top + 24, left: 0, width: 300, height: 24 }
+        }
+        if (this.matches('[data-lesson-id="descriptive-statistics"]')) {
+          const top = 620 - pageScrollY
+          return { top, right: 300, bottom: top + 40, left: 0, width: 300, height: 40 }
+        }
+        return originalGetBoundingClientRect.call(this)
+      },
+    })
+    const openingScrollY = pageScrollY
+    const tile = app.host.querySelector('[data-lesson-id="descriptive-statistics"]')
+    await click(tile)
+    await settleEffects(window)
+    assert.notEqual(pageScrollY, openingScrollY, 'opening the detail changes the simulated page scroll')
+
+    pageScrollY = 760
+    await click(buttonFor(app.host.querySelector('.lesson-detail-card'), '閉じる'))
+    await settleEffects(window)
+    assert.equal(pageScrollY, openingScrollY, 'closing the detail restores the page scroll from before it opened')
+    assert.equal(window.document.activeElement, tile)
+    const cardRect = tile.getBoundingClientRect()
+    assert.ok(cardRect.top >= 0 && cardRect.bottom <= window.innerHeight, 'the focused map card stays visible')
+  } finally {
+    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value: originalGetBoundingClientRect,
+    })
+    await app.close()
   }
 })
 
