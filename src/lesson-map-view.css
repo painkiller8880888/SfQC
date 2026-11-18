@@ -118,7 +118,6 @@
 }
 
 .map-graph-actions button,
-.map-mode-button,
 .map-author-header > button,
 .map-author-content button,
 .map-author-content select {
@@ -133,13 +132,46 @@
 }
 
 .map-graph-actions button:focus-visible,
-.map-mode-button:focus-visible,
 .map-author-header > button:focus-visible,
 .map-author-content button:focus-visible,
 .map-author-content select:focus-visible,
 .map-author-content input:focus-visible {
   outline: 3px solid var(--map-focus);
   outline-offset: 2px;
+}
+
+.map-scope-button.is-current {
+  border-color: var(--accent);
+  background: var(--surface-selected);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+.map-graph-actions .map-scope-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.map-scope-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.map-scope-button .map-scope-icon-center {
+  fill: currentColor;
+}
+
+.map-scope-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .map-grid-scroll {
@@ -532,6 +564,15 @@
   .map-detail-card,
   .lesson-detail-card { min-height: 18rem; max-height: 24rem; border-top: 1px solid var(--map-border); border-left: 0; }
   .map-author-editor { min-height: 18rem; max-height: 24rem; border-top: 1px solid var(--map-border); border-left: 0; }
+
+  .map-graph-layout.is-mobile-detail-open .map-graph-view { display: none; }
+  .map-graph-layout.is-mobile-detail-open .lesson-detail-card {
+    min-height: 100vh;
+    max-height: none;
+    overflow: visible;
+    border-top: 0;
+  }
+  .map-graph-layout.is-mobile-detail-open .lesson-detail-content { overflow: visible; }
 }
 
 @media (max-width: 480px) {

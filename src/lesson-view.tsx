@@ -29,18 +29,27 @@ export function lessonRefLabel(reference: string, registry: LessonRegistry = les
   return section ? `${lesson.title}：${section.title}` : `${lesson.title}（節ID ${parsed.sectionId}）`
 }
 
-export function LessonReference({ targetRef, label, intent = 'review', ariaLabel, registry = lessonRegistry }: {
+export function LessonReference({ targetRef, label, intent = 'review', ariaLabel, registry = lessonRegistry, onClick }: {
   targetRef: string
   label?: string
   intent?: NavigationIntent
   ariaLabel?: string
   registry?: LessonRegistry
+  onClick?: () => void
 }) {
-  const route = resolveLessonRef(targetRef, registry)
-  const text = label ?? lessonRefLabel(targetRef, registry)
-  if (route) return <a href={routeToHash(route)} data-nav-intent={intent} aria-label={ariaLabel}>{text}</a>
   const parsed = parseLessonRef(targetRef)
   const lesson = parsed && registry.lessons.find((item) => item.lessonId === parsed.lessonId)
+  const route = resolveLessonRef(targetRef, registry)
+  const mapRoute = onClick && lesson && parsed
+    ? { kind: 'lesson-id' as const, lessonId: parsed.lessonId, sectionId: parsed.sectionId }
+    : null
+  const text = label ?? lessonRefLabel(targetRef, registry)
+  const linkRoute = route ?? mapRoute
+  if (linkRoute) return <a href={routeToHash(linkRoute)} data-nav-intent={intent} aria-label={ariaLabel} onClick={(event) => {
+    if (!onClick) return
+    event.preventDefault()
+    onClick()
+  }}>{text}</a>
   const status = !lesson ? '教材未登録' : lesson.availability === 'planned' ? '未収録' : '節未収録'
   return <span className="lesson-reference-unavailable">{text}（{status}）</span>
 }
@@ -55,11 +64,12 @@ function InternalLink({ route, intent = 'normal', children, current }: {
   return <a href={routeToHash(route)} data-nav-intent={intent}>{children}</a>
 }
 
-function ReferenceGroups({ lesson, currentRef, headingLevel = 3, registry = lessonRegistry }: {
+function ReferenceGroups({ lesson, currentRef, headingLevel = 3, registry = lessonRegistry, onMapPrerequisiteSelect }: {
   lesson: LessonDefinition
   currentRef?: string
   headingLevel?: 3 | 4
   registry?: LessonRegistry
+  onMapPrerequisiteSelect?: (targetRef: string) => void
 }) {
   const conditionals = lesson.conditionalPrerequisites.filter((item) => !currentRef || item.methodSectionRef === currentRef)
   const optionalReviews = lesson.optionalReviews.filter((item) => !currentRef || item.fromRef === currentRef)
@@ -70,7 +80,8 @@ function ReferenceGroups({ lesson, currentRef, headingLevel = 3, registry = less
       <Heading>共通必須前提</Heading>
       <p>この単元を学ぶ前に必要な内容です。</p>
       <ul>{lesson.commonPrerequisites.map((reference) => <li key={reference}>
-        <LessonReference targetRef={reference} registry={registry} />
+        <LessonReference targetRef={reference} registry={registry}
+          onClick={onMapPrerequisiteSelect ? () => onMapPrerequisiteSelect(reference) : undefined} />
       </li>)}</ul>
     </section>}
     {conditionals.length > 0 && <section className="reference-group">
@@ -178,7 +189,7 @@ function LessonCard({ lesson, registry, progress, manualProgress, manualProgress
   if (lesson.availability === 'included') return <article className="lesson-card">
     <header className="lesson-card-header">
       <div>
-        <h3><InternalLink route={mainRoute}>{lesson.title}</InternalLink></h3>
+        <h3 tabIndex={-1}><InternalLink route={mainRoute}>{lesson.title}</InternalLink></h3>
         <p className="lesson-status">収録済み：{lesson.sections.length} / {lesson.declaredSectionIds.length} 節</p>
       </div>
       {rate}
@@ -199,7 +210,7 @@ function LessonCard({ lesson, registry, progress, manualProgress, manualProgress
   </article>
 
   return <article className="lesson-card lesson-card-planned">
-    <h3>{lesson.title} <span className="lesson-status">未収録</span></h3>
+    <h3 tabIndex={-1}>{lesson.title} <span className="lesson-status">未収録</span></h3>
     <p>学習目標：{lesson.learningObjectives.join(' ')}</p>
     <p>収録範囲：教材は未収録です。</p>
     <p>未収録の節ID：{lesson.declaredSectionIds.length ? lesson.declaredSectionIds.join('、') : '未登録'}</p>
@@ -208,7 +219,7 @@ function LessonCard({ lesson, registry, progress, manualProgress, manualProgress
 }
 
 export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProgress, manualProgressConfirmed,
-  manualProgressDisabled = false, progress, onManualProgressAction, headingRef, onClose }: {
+  manualProgressDisabled = false, progress, onManualProgressAction, headingRef, onClose, onMapPrerequisiteSelect }: {
   lesson: LessonDefinition
   registry?: LessonRegistry
   manualProgress: ManualLessonProgress
@@ -218,6 +229,7 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
   onManualProgressAction: (action: ManualProgressCommand) => void
   headingRef?: RefObject<HTMLHeadingElement | null>
   onClose: () => void
+  onMapPrerequisiteSelect?: (targetRef: string) => void
 }) {
   const hasPractice = lesson.availability === 'included' && lesson.lessonId === 'descriptive-statistics'
   const markCompletedRef = useRef<HTMLButtonElement>(null)
@@ -276,7 +288,7 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
         <h3 id={`lesson-detail-objectives-${lesson.lessonId}`}>学習目標</h3>
         <ul className="lesson-objectives">{lesson.learningObjectives.map((objective) => <li key={objective}>{objective}</li>)}</ul>
       </section>
-      <ReferenceGroups lesson={lesson} registry={registry} />
+      <ReferenceGroups lesson={lesson} registry={registry} onMapPrerequisiteSelect={onMapPrerequisiteSelect} />
     </div>
   </aside>
 }
@@ -292,13 +304,13 @@ export function LessonMap({ registry = lessonRegistry, progress, manualProgress,
   return <div className="lesson-map">
     {!progress && <p className="storage-alert">演習データを確認できないため、演習成績を表示していません。</p>}
     <section aria-labelledby="included-lessons-title">
-      <h2 id="included-lessons-title">収録済みの単元</h2>
+      <h2 id="included-lessons-title" tabIndex={-1}>収録済みの単元</h2>
       <p>リンクから単元の概要または収録済みの節を開けます。</p>
       <div className="lesson-card-list">{included.map((lesson) => <LessonCard key={lesson.lessonId} lesson={lesson} registry={registry}
         progress={progress} manualProgress={manualProgress} manualProgressConfirmed={manualProgressConfirmed} />)}</div>
     </section>
     <section aria-labelledby="planned-lessons-title">
-      <h2 id="planned-lessons-title">未収録の単元</h2>
+      <h2 id="planned-lessons-title" tabIndex={-1}>未収録の単元</h2>
       <p>学習目標と予定節IDを示します。教材本文はなく、学習を開始するリンクもありません。</p>
       <div className="lesson-card-list">{planned.map((lesson) => <LessonCard key={lesson.lessonId} lesson={lesson} registry={registry}
         progress={progress} manualProgress={manualProgress} manualProgressConfirmed={manualProgressConfirmed} />)}</div>

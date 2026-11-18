@@ -11,19 +11,27 @@ const lessonGraph = deriveLessonGraph(lessonRegistry)
 
 type LessonMapViewProps = {
   selectedLessonId: string | null
+  scope: 'all' | 'selected'
+  mobileDetailOpen: boolean
+  isMobileViewport: boolean
   progress: CourseProgress | null
   manualProgress: ManualProgressState
   manualProgressConfirmed: boolean
   manualProgressDisabled?: boolean
   onManualProgressAction: (lessonId: string, action: ManualProgressCommand) => void
-  onSelectionChange: (lessonId: string | null) => void
+  onSelectionChange: (lessonId: string, moveFocus: boolean, openMobileDetail: boolean) => void
+  onScopeChange: (scope: 'all' | 'selected') => void
+  onDetailClose: () => void
+  onMapPrerequisiteSelect: (targetRef: string) => void
   onAuthorExport: (json: string) => boolean
-  clearSelectionRef: { current: (() => void) | null }
+  gridRef: { current: HTMLDivElement | null }
+  onGridScroll: () => void
+  detailHeadingRef: { current: HTMLHeadingElement | null }
 }
 
-function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manualProgress, manualProgressConfirmed, manualProgressDisabled,
-  onManualProgressAction, onSelectionChange, onAuthorExport, clearSelectionRef }: LessonMapViewProps) {
-  const [selectedLessonId, setSelectedLessonId] = useState(initialSelectedLessonId)
+function LessonGraph({ selectedLessonId, scope, mobileDetailOpen, isMobileViewport, progress, manualProgress, manualProgressConfirmed, manualProgressDisabled,
+  onManualProgressAction, onSelectionChange, onScopeChange, onDetailClose, onMapPrerequisiteSelect, onAuthorExport,
+  gridRef, onGridScroll, detailHeadingRef }: LessonMapViewProps) {
   const [authorEditorOpen, setAuthorEditorOpen] = useState(false)
   const [draftDomains, setDraftDomains] = useState<Record<string, LessonDomain>>(() =>
     Object.fromEntries(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, lesson.domain])))
@@ -36,9 +44,6 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
   const [authorExportMessage, setAuthorExportMessage] = useState('')
   const authorEditorButtonRef = useRef<HTMLButtonElement>(null)
   const firstAuthorControlRef = useRef<HTMLInputElement>(null)
-  const gridRef = useRef<HTMLDivElement>(null)
-  const detailHeadingRef = useRef<HTMLHeadingElement>(null)
-  const selectedButtonLessonIdRef = useRef<string | null>(initialSelectedLessonId)
   const focusFrameRef = useRef<number | null>(null)
 
   const selectedLesson = lessonRegistry.lessons.find((lesson) => lesson.lessonId === selectedLessonId)
@@ -48,6 +53,8 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
     .map((edge) => edge.source))
   const selectedDomain = selectedLesson ? draftDomains[selectedLesson.lessonId] ?? selectedLesson.domain : null
   const selectedDomainLabel = selectedDomain ? lessonDomains[selectedDomain] : null
+  const visibleLessonIds = scope === 'selected' && selectedLessonId
+    ? new Set([selectedLessonId, ...directPrerequisiteIds]) : null
   const draftSnapshot = JSON.stringify({ domains: draftDomains, colors: draftColors })
   const hasUnexportedChanges = draftSnapshot !== lastExportSnapshot
   const domainColorStyle = authorEditorOpen ? Object.fromEntries(Object.entries(draftColors)
@@ -86,26 +93,11 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
   }, [scrollFocusTargetIntoView])
 
   const selectLesson = (lessonId: string, moveFocus: boolean) => {
-    selectedButtonLessonIdRef.current = lessonId
-    setSelectedLessonId(lessonId)
-    onSelectionChange(lessonId)
-    if (moveFocus || window.innerWidth <= 768) showDetail(moveFocus)
+    const openMobileDetail = window.innerWidth <= 768
+    const focusIsInGrid = gridRef.current?.contains(document.activeElement) ?? false
+    onSelectionChange(lessonId, moveFocus, openMobileDetail)
+    if (moveFocus || openMobileDetail) showDetail(moveFocus || focusIsInGrid)
   }
-
-  const clearSelection = useCallback((restoreFocus = false) => {
-    if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current)
-    focusFrameRef.current = null
-    setSelectedLessonId(null)
-    onSelectionChange(null)
-    if (restoreFocus) {
-      const button = Array.from(gridRef.current?.querySelectorAll<HTMLButtonElement>('[data-lesson-id]') ?? [])
-        .find((candidate) => candidate.dataset.lessonId === selectedButtonLessonIdRef.current)
-      if (button) {
-        button.focus({ preventScroll: true })
-        scrollFocusTargetIntoView(button)
-      }
-    }
-  }, [onSelectionChange, scrollFocusTargetIntoView])
 
   useEffect(() => {
     if (!import.meta.env.DEV || !authorEditorOpen) return
@@ -113,13 +105,9 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
     return () => window.cancelAnimationFrame(frame)
   }, [authorEditorOpen])
 
-  useEffect(() => {
-    clearSelectionRef.current = () => clearSelection(true)
-    return () => {
-      if (clearSelectionRef.current) clearSelectionRef.current = null
-      if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current)
-    }
-  }, [clearSelection, clearSelectionRef])
+  useEffect(() => () => {
+    if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current)
+  }, [])
 
   const exportDomainDraft = () => {
     const json = JSON.stringify({
@@ -152,7 +140,7 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
   }
 
   return (
-    <div className={`map-graph-layout${selectedLesson ? ' has-detail' : ''}${authorEditorOpen ? ' map-author-open' : ''}`} style={domainColorStyle}>
+    <div className={`map-graph-layout${selectedLesson && (!isMobileViewport || mobileDetailOpen) ? ' has-detail' : ''}${isMobileViewport && mobileDetailOpen ? ' is-mobile-detail-open' : ''}${authorEditorOpen ? ' map-author-open' : ''}`} style={domainColorStyle}>
       <section className="map-graph-view" aria-label="分野別学習マップ">
         <div className="map-graph-toolbar">
           <p className="map-selection" aria-live="polite">
@@ -162,10 +150,20 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
               ? ` 選択した単元の直接の共通必須前提 ${directPrerequisiteIds.size} 件を強調しています。`
               : ' 選択した単元に直接の共通必須前提はありません。')}
           </p>
-          {import.meta.env.DEV && <div className="map-graph-actions">
-            <button ref={authorEditorButtonRef} type="button" aria-expanded={authorEditorOpen}
-              onClick={() => setAuthorEditorOpen((open) => !open)}>{authorEditorOpen ? '分野編集を閉じる' : '分野編集'}</button>
-          </div>}
+          <div className="map-graph-actions">
+            <button type="button" className={`map-scope-button${scope === 'all' ? ' is-current' : ''}`} title="5分類の単元をすべて表示"
+              onClick={() => onScopeChange('all')}>
+              <svg aria-hidden="true" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5" /><path d="M8 2.5v11M2.5 8h11" /></svg>
+              <span>全体</span>
+            </button>
+            <button type="button" className={`map-scope-button${scope === 'selected' ? ' is-current' : ''}`} title="選択単元と直接の共通必須前提を表示"
+              disabled={selectedLesson === undefined} onClick={() => onScopeChange('selected')}>
+              <svg aria-hidden="true" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" /><circle className="map-scope-icon-center" cx="8" cy="8" r="1.75" /></svg>
+              <span>選択範囲</span>
+            </button>
+            {import.meta.env.DEV && <button ref={authorEditorButtonRef} type="button" aria-expanded={authorEditorOpen}
+              onClick={() => setAuthorEditorOpen((open) => !open)}>{authorEditorOpen ? '分野編集を閉じる' : '分野編集'}</button>}
+          </div>
           <ul className="map-domain-legend" aria-label="教材分野の凡例">
             {Object.entries(lessonDomains).map(([domain, label]) => (
               <li key={domain}><span className={`map-domain-swatch map-domain-${domain}`} aria-hidden="true" />{label}</li>
@@ -176,10 +174,12 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
             <li>直近正答率（%）</li>
           </ul>
         </div>
-        <div ref={gridRef} className="map-grid-scroll">
+        <div ref={gridRef} className="map-grid-scroll" onScroll={onGridScroll}>
           <div className="map-domain-grid" aria-label="5分類の学習マップ">
             {Object.entries(lessonDomains).map(([domain, label]) => {
-              const lessons = lessonRegistry.lessons.filter((lesson) => (draftDomains[lesson.lessonId] ?? lesson.domain) === domain)
+              const lessons = lessonRegistry.lessons.filter((lesson) => (draftDomains[lesson.lessonId] ?? lesson.domain) === domain
+                && (visibleLessonIds === null || visibleLessonIds.has(lesson.lessonId)))
+              if (lessons.length === 0) return null
               return <section className={`map-domain-column map-domain-${domain}`} key={domain} aria-labelledby={`map-domain-${domain}`}>
                 <h2 id={`map-domain-${domain}`}><span className="map-domain-swatch" aria-hidden="true" />{label}<span className="map-domain-count">{lessons.length}単元</span></h2>
                 <ul>
@@ -232,7 +232,7 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
           </div>
         </div>
       </section>
-      {selectedLesson && <LessonDetailCard
+      {selectedLesson && (!isMobileViewport || mobileDetailOpen) && <LessonDetailCard
         key={selectedLesson.lessonId}
         lesson={selectedLesson}
         manualProgress={manualProgress[selectedLesson.lessonId]}
@@ -241,7 +241,8 @@ function LessonGraph({ selectedLessonId: initialSelectedLessonId, progress, manu
         progress={progress}
         onManualProgressAction={(action) => onManualProgressAction(selectedLesson.lessonId, action)}
         headingRef={detailHeadingRef}
-        onClose={() => clearSelection(true)}
+        onClose={onDetailClose}
+        onMapPrerequisiteSelect={onMapPrerequisiteSelect}
       />}
       {import.meta.env.DEV && authorEditorOpen && <section className="map-author-editor" aria-label="教材分野と色の編集">
         <header className="map-author-header">

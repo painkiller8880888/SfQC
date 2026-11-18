@@ -15,6 +15,7 @@ import {
 } from './route-history.mjs'
 import { exportLearningBackup, importLearningBackup, recheckLearningBackupImport, type LearningBackupImportResult } from './backup.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
+import { parseLessonRef } from './lesson-contract.mjs'
 import { LessonMap, LessonRouteContent } from './lesson-view'
 import { DescriptiveStatisticsExercisePreview } from './descriptive-statistics-exercise-preview'
 import { DescriptiveStatisticsCourse } from './descriptive-statistics-course'
@@ -61,6 +62,21 @@ type PendingLearningWrite = {
   expectedRaw: string | null
   candidateRaw: string
   change: PendingLearningChange
+}
+
+type MapView = 'graph' | 'list'
+type MapScope = 'all' | 'selected'
+type MapUiState = {
+  mapView: MapView
+  selectedLessonId: string | null
+  scope: MapScope
+  mobileDetailOpen: boolean
+}
+type MapListLocator = { href: string; text: string; cardTitle: string }
+type MapEntrySnapshot = MapUiState & {
+  graphScrollTop: number
+  graphScrollLeft: number
+  listOrigin?: MapListLocator
 }
 
 function emptyLearningState(): LearningState {
@@ -197,15 +213,19 @@ function App() {
   const [mapStateMessage, setMapStateMessage] = useState(initialMapMessage)
   const [dataMessage, setDataMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  const [mapView, setMapView] = useState<'graph' | 'list'>('graph')
+  const [mapUi, setMapUi] = useState<MapUiState>({
+    mapView: 'graph', selectedLessonId: null, scope: 'all', mobileDetailOpen: false,
+  })
+  const mapUiRef = useRef(mapUi)
+  const mapEntrySnapshotsRef = useRef(new Map<string, MapEntrySnapshot>())
+  const mapRestoreGenerationRef = useRef(0)
+  const [isMobileViewport, setIsMobileViewport] = useState(() => window.innerWidth <= 768)
+  const isMobileViewportRef = useRef(isMobileViewport)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null)
-  const selectedLessonIdRef = useRef<string | null>(null)
-  const clearMapSelectionRef = useRef<(() => void) | null>(null)
-  const mapGraphContentRef = useRef<HTMLDivElement>(null)
+  const mapGridRef = useRef<HTMLDivElement>(null)
+  const mapDetailHeadingRef = useRef<HTMLHeadingElement>(null)
   const mapListContentRef = useRef<HTMLDivElement>(null)
-  const mapGraphButtonRef = useRef<HTMLButtonElement>(null)
-  const mapListButtonRef = useRef<HTMLButtonElement>(null)
   const viewRef = useRef(view)
   const mapStateReadRef = useRef(mapStateRead)
   const pendingLearningWriteRef = useRef<PendingLearningWrite | null>(pendingLearningWrite)
@@ -220,9 +240,113 @@ function App() {
   const judgementIdRef = useRef(0)
   const [pendingBackupImport, setPendingBackupImport] = useState<LearningBackupImportResult | null>(null)
   const keepJudgementsAfterRestoreRef = useRef(true)
-  const onMapSelectionChange = useCallback((lessonId: string | null) => {
-    selectedLessonIdRef.current = lessonId
-  }, [])
+  const syncMapEntrySnapshot = (entryId: string, listOrigin?: MapListLocator) => {
+    const previous = mapEntrySnapshotsRef.current.get(entryId)
+    mapEntrySnapshotsRef.current.set(entryId, {
+      ...mapUiRef.current,
+      graphScrollTop: mapGridRef.current?.scrollTop ?? previous?.graphScrollTop ?? 0,
+      graphScrollLeft: mapGridRef.current?.scrollLeft ?? previous?.graphScrollLeft ?? 0,
+      listOrigin: listOrigin ?? previous?.listOrigin,
+    })
+  }
+  const focusGraphCard = (lessonId: string) => {
+    const grid = mapGridRef.current
+    const card = Array.from(grid?.querySelectorAll<HTMLButtonElement>('[data-lesson-id]') ?? [])
+      .find((candidate) => candidate.dataset.lessonId === lessonId)
+    if (!grid || !card) return false
+    const useGridScroll = !isMobileViewportRef.current
+      && (grid.scrollHeight > grid.clientHeight || grid.scrollWidth > grid.clientWidth)
+    if (!useGridScroll) {
+      const header = document.querySelector<HTMLElement>('.map-app-shell > .site-header')
+      const headerBottom = header && ['fixed', 'sticky'].includes(window.getComputedStyle(header).position)
+        ? Math.max(0, Math.min(window.innerHeight, header.getBoundingClientRect().bottom)) : 0
+      const rect = card.getBoundingClientRect()
+      const top = headerBottom + 8
+      const delta = rect.top < top ? rect.top - top
+        : rect.bottom > window.innerHeight - 8 ? rect.bottom - window.innerHeight + 8 : 0
+      if (delta) window.scrollBy({ top: delta, behavior: 'instant' })
+    } else {
+      const gridRect = grid.getBoundingClientRect()
+      const cardRect = card.getBoundingClientRect()
+      const top = cardRect.top < gridRect.top ? cardRect.top - gridRect.top
+        : cardRect.bottom > gridRect.bottom ? cardRect.bottom - gridRect.bottom : 0
+      const left = cardRect.left < gridRect.left ? cardRect.left - gridRect.left
+        : cardRect.right > gridRect.right ? cardRect.right - gridRect.right : 0
+      if (top) grid.scrollTop += top
+      if (left) grid.scrollLeft += left
+    }
+    card.focus({ preventScroll: true })
+    return true
+  }
+  const focusVisibleListHeading = () => {
+    const headings = Array.from(mapListContentRef.current?.querySelectorAll<HTMLElement>('h2[tabindex="-1"], h3[tabindex="-1"]') ?? [])
+    const heading = headings.find((candidate) => {
+      const rect = candidate.getBoundingClientRect()
+      return rect.bottom > 0 && rect.top < window.innerHeight
+    }) ?? headings[0]
+    if (!heading) {
+      headingRef.current?.focus({ preventScroll: true })
+      return
+    }
+    const rect = heading.getBoundingClientRect()
+    const delta = rect.top < 8 ? rect.top - 8
+      : rect.bottom > window.innerHeight - 8 ? rect.bottom - window.innerHeight + 8 : 0
+    if (delta) window.scrollBy({ top: delta, behavior: 'instant' })
+    heading.focus({ preventScroll: true })
+  }
+  const focusMapDetailHeading = () => {
+    const heading = mapDetailHeadingRef.current
+    if (!heading) return
+    const header = document.querySelector<HTMLElement>('.map-app-shell > .site-header')
+    const headerBottom = header && ['fixed', 'sticky'].includes(window.getComputedStyle(header).position)
+      ? Math.max(0, Math.min(window.innerHeight, header.getBoundingClientRect().bottom)) : 0
+    const rect = heading.getBoundingClientRect()
+    const top = headerBottom + 8
+    const delta = rect.top < top ? rect.top - top
+      : rect.bottom > window.innerHeight - 8 ? rect.bottom - window.innerHeight + 8 : 0
+    if (delta) window.scrollBy({ top: delta, behavior: 'instant' })
+    heading.focus({ preventScroll: true })
+  }
+  const normalizeMapLinkText = (value: string | null) => (value ?? '').replace(/\s+/gu, ' ').trim()
+  const mapListLocatorFor = (anchor: HTMLAnchorElement): MapListLocator | undefined => {
+    if (!anchor.closest('.map-list-content')) return undefined
+    const cardTitle = anchor.closest('.lesson-card')?.querySelector('h3')?.textContent
+    return {
+      href: anchor.getAttribute('href') ?? '',
+      text: normalizeMapLinkText(anchor.textContent),
+      cardTitle: normalizeMapLinkText(cardTitle ?? null),
+    }
+  }
+  const focusMapListOrigin = (locator?: MapListLocator) => {
+    const links = Array.from(mapListContentRef.current?.querySelectorAll<HTMLAnchorElement>('a[data-nav-intent]') ?? [])
+    const origin = locator && links.find((anchor) => anchor.getAttribute('href') === locator.href
+      && normalizeMapLinkText(anchor.textContent) === locator.text
+      && normalizeMapLinkText(anchor.closest('.lesson-card')?.querySelector('h3')?.textContent ?? null) === locator.cardTitle)
+    if (!origin) {
+      focusVisibleListHeading()
+      return
+    }
+    const rect = origin.getBoundingClientRect()
+    const delta = rect.top < 8 ? rect.top - 8
+      : rect.bottom > window.innerHeight - 8 ? rect.bottom - window.innerHeight + 8 : 0
+    if (delta) window.scrollBy({ top: delta, behavior: 'instant' })
+    origin.focus({ preventScroll: true })
+  }
+  const updateMapUi = (patch: Partial<MapUiState>) => {
+    const next = { ...mapUiRef.current, ...patch }
+    if (next.selectedLessonId === null) {
+      next.scope = 'all'
+      next.mobileDetailOpen = false
+    }
+    mapUiRef.current = next
+    mapRestoreGenerationRef.current += 1
+    setMapUi(next)
+    const current = viewRef.current
+    if (screenForRoute(current.route) === 'map') syncMapEntrySnapshot(current.historyState.entryId)
+  }
+  const onMapSelectionChange = (lessonId: string, _moveFocus: boolean, openMobileDetail: boolean) => {
+    updateMapUi({ selectedLessonId: lessonId, mobileDetailOpen: openMobileDetail })
+  }
 
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -485,13 +609,6 @@ function App() {
         : mapStateRead.status === 'unsupported' ? '未対応の保存形式'
           : '読み込み不能'
   const manualProgressDisabled = mapStateUnavailable || pendingLearningWrite !== null
-  const manualProgressNotice = pendingLearningWrite
-    ? '未確定の保存候補があります。データ管理画面で保存状態を確認または再試行するまで、編集を停止しています。'
-    : mapStateUnavailable
-    ? mapStateConfirmed
-      ? '手動進捗の保存状態を確認できません。画面には最後に確認した値を表示し、編集と保存を停止しています。'
-      : '手動進捗の保存状態を確認できません。画面の初期値は現在の保存内容を示さず、編集と保存を停止しています。'
-    : '手動完了はこのブラウザーに保存され、演習結果とは別に扱われます。バックアップに含まれます。'
   const manualCompletedCount = mapStateConfirmed
     ? lessonRegistry.lessons.filter((lesson) => Boolean(manualProgress[lesson.lessonId]?.completedAt)).length
     : null
@@ -520,6 +637,9 @@ function App() {
       }
     }
     publishRouteView(next)
+    if (screenForRoute(next.route) === 'map' && next.navigation !== 'restore') {
+      syncMapEntrySnapshot(next.historyState.entryId)
+    }
   }
 
   const replaceCurrentEntry = (
@@ -547,9 +667,12 @@ function App() {
     return replaceCurrentEntry({ scrollY: window.scrollY })
   }
 
-  const pushNavigation = (route: AppRoute, hash: string, intent: NavigationIntent) => {
-    if (!saveCurrentPosition()) return false
+  const pushNavigation = (route: AppRoute, hash: string, intent: NavigationIntent, sourceAnchor?: HTMLAnchorElement) => {
     const currentView = viewRef.current
+    if (screenForRoute(currentView.route) === 'map') {
+      syncMapEntrySnapshot(currentView.historyState.entryId, sourceAnchor ? mapListLocatorFor(sourceAnchor) : undefined)
+    }
+    if (!saveCurrentPosition()) return false
     const currentState = validateRouteHistoryState(window.history.state, window.location.hash)
       ?? currentView.historyState
     let nextState: RouteHistoryState | null
@@ -571,6 +694,7 @@ function App() {
     }
     lastHandledRef.current = hash + '\u0000' + nextState.entryId
     resolveCurrentLocation(intent, nextState)
+    if (screenForRoute(route) === 'map') syncMapEntrySnapshot(nextState.entryId)
     return true
   }
 
@@ -588,7 +712,7 @@ function App() {
     const intent = anchor.dataset.navIntent as NavigationIntent
     if (!['normal', 'review', 'section', 'return'].includes(intent)) return
     event.preventDefault()
-    pushNavigation(resolveRoute(url.hash), url.hash, intent)
+    pushNavigation(resolveRoute(url.hash), url.hash, intent, anchor)
   }
 
   const requestDownload = (json: string, filename: string) => {
@@ -763,6 +887,21 @@ function App() {
         }
       }
       lastHandledRef.current = hash + '\u0000' + next.historyState.entryId
+      mapRestoreGenerationRef.current += 1
+      if (screenForRoute(next.route) === 'map' && next.navigation === 'restore') {
+        const snapshot = mapEntrySnapshotsRef.current.get(next.historyState.entryId)
+        const restored: MapUiState = snapshot ? {
+          mapView: snapshot.mapView,
+          selectedLessonId: snapshot.selectedLessonId,
+          scope: snapshot.selectedLessonId ? snapshot.scope : 'all',
+          mobileDetailOpen: window.innerWidth > 768 && snapshot.mobileDetailOpen,
+        } : {
+          ...mapUiRef.current,
+          mobileDetailOpen: window.innerWidth > 768 && mapUiRef.current.mobileDetailOpen,
+        }
+        mapUiRef.current = restored
+        setMapUi(restored)
+      }
       publishRouteView(next)
     }
 
@@ -776,10 +915,20 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (screenForRoute(view.route) === 'map' && view.navigation !== 'restore'
+      && !mapEntrySnapshotsRef.current.has(view.historyState.entryId)) {
+      syncMapEntrySnapshot(view.historyState.entryId)
+    }
+  }, [view.navigationId])
+
+  useEffect(() => {
     const viewAtSchedule = view
+    const restoreGeneration = mapRestoreGenerationRef.current
     const isCurrent = () => viewRef.current.navigationId === viewAtSchedule.navigationId
       && window.history.state?.entryId === viewAtSchedule.historyState.entryId
       && window.location.hash === viewAtSchedule.historyState.routeHash
+      && mapRestoreGenerationRef.current === restoreGeneration
+    let restoreFrame: number | null = null
     const frame = window.requestAnimationFrame(() => {
       if (!isCurrent()) return
       applyRouteNavigationEffect(viewAtSchedule.navigation, viewAtSchedule.historyState, {
@@ -787,8 +936,28 @@ function App() {
         sectionHeading: sectionHeadingRef.current,
         scrollTo: (x, y) => window.scrollTo(x, y),
       })
+      if (viewAtSchedule.navigation === 'restore' && screenForRoute(viewAtSchedule.route) === 'map') {
+        restoreFrame = window.requestAnimationFrame(() => {
+          if (!isCurrent()) return
+          const snapshot = mapEntrySnapshotsRef.current.get(viewAtSchedule.historyState.entryId)
+          if (!snapshot) return
+          if (snapshot.mapView === 'graph') {
+            if (mapGridRef.current) {
+              mapGridRef.current.scrollTop = snapshot.graphScrollTop
+              mapGridRef.current.scrollLeft = snapshot.graphScrollLeft
+            }
+            if (snapshot.selectedLessonId) focusGraphCard(snapshot.selectedLessonId)
+          } else {
+            focusMapListOrigin(snapshot.listOrigin)
+          }
+          syncMapEntrySnapshot(viewAtSchedule.historyState.entryId)
+        })
+      }
     })
-    return () => window.cancelAnimationFrame(frame)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      if (restoreFrame !== null) window.cancelAnimationFrame(restoreFrame)
+    }
   }, [view.navigationId])
 
   useEffect(() => {
@@ -808,28 +977,68 @@ function App() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [view.navigationId])
 
-  const changeMapView = (next: 'graph' | 'list') => {
-    const focusedContent = mapView === 'graph' ? mapGraphContentRef.current : mapListContentRef.current
-    const returnFocus = focusedContent?.contains(document.activeElement) ?? false
-    setMapView(next)
-    if (returnFocus) {
-      window.requestAnimationFrame(() => {
-        (next === 'graph' ? mapGraphButtonRef.current : mapListButtonRef.current)?.focus()
-      })
-    }
+  const changeMapView = (next: MapView) => {
+    const current = mapUiRef.current
+    if (current.mapView === next) return
+    const snapshot = mapEntrySnapshotsRef.current.get(viewRef.current.historyState.entryId)
+    updateMapUi({ mapView: next })
+    if (next === 'graph') window.requestAnimationFrame(() => {
+      const grid = mapGridRef.current
+      if (!grid || mapUiRef.current.mapView !== 'graph') return
+      grid.scrollTop = snapshot?.graphScrollTop ?? 0
+      grid.scrollLeft = snapshot?.graphScrollLeft ?? 0
+    })
+  }
+
+  const closeMapDetail = () => {
+    const selectedLessonId = mapUiRef.current.selectedLessonId
+    if (!selectedLessonId || mapUiRef.current.mapView !== 'graph') return
+    if (isMobileViewportRef.current) updateMapUi({ mobileDetailOpen: false })
+    else updateMapUi({ selectedLessonId: null })
+    window.requestAnimationFrame(() => focusGraphCard(selectedLessonId))
+  }
+
+  const handleMapPrerequisiteSelect = (targetRef: string) => {
+    const parsed = parseLessonRef(targetRef)
+    if (!parsed || !lessonRegistry.lessons.some((lesson) => lesson.lessonId === parsed.lessonId)) return
+    const mobile = isMobileViewportRef.current
+    updateMapUi({ selectedLessonId: parsed.lessonId, mobileDetailOpen: false })
+    window.requestAnimationFrame(() => {
+      if (mobile) focusGraphCard(parsed.lessonId)
+      else focusMapDetailHeading()
+    })
+  }
+
+  const handleMapGridScroll = () => {
+    const current = viewRef.current
+    if (screenForRoute(current.route) === 'map') syncMapEntrySnapshot(current.historyState.entryId)
   }
 
   const handleMapKeyDownCapture = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Escape' || selectedLessonIdRef.current === null) return
+    mapRestoreGenerationRef.current += 1
+    if (event.key !== 'Escape' || mapUiRef.current.selectedLessonId === null
+      || mapUiRef.current.mapView !== 'graph') return
     event.preventDefault()
     event.stopPropagation()
-    if (mapView === 'graph') {
-      if (clearMapSelectionRef.current) clearMapSelectionRef.current()
-      else selectedLessonIdRef.current = null
-    } else {
-      selectedLessonIdRef.current = null
-    }
+    closeMapDetail()
   }
+
+  useEffect(() => {
+    const onResize = () => {
+      const mobile = window.innerWidth <= 768
+      if (mobile === isMobileViewportRef.current) return
+      isMobileViewportRef.current = mobile
+      setIsMobileViewport(mobile)
+      const selectedLessonId = mapUiRef.current.selectedLessonId
+      const focusIsInGrid = mapGridRef.current?.contains(document.activeElement) ?? false
+      updateMapUi({ mobileDetailOpen: mobile && selectedLessonId !== null })
+      if (mobile && selectedLessonId && focusIsInGrid) {
+        window.requestAnimationFrame(focusMapDetailHeading)
+      }
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const routeMessages = <>
     {mapStateUnavailable && <p className="storage-alert" role="alert">
@@ -911,7 +1120,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell${screen === 'map' ? ` map-app-shell${mapView === 'list' ? ' map-list-layout' : ''}` : ''}`} data-theme={theme} onClick={handleInternalClick}>
+    <div className={`app-shell${screen === 'map' ? ` map-app-shell${mapUi.mapView === 'list' ? ' map-list-layout' : ''}` : ''}`} data-theme={theme} onClick={handleInternalClick}>
       <button
         type="button"
         className="skip-link"
@@ -925,7 +1134,16 @@ function App() {
       <header className="site-header">
         <a className="site-brand" href="#/map" data-nav-intent="normal">SfQC</a>
         <nav className="primary-nav" aria-label="メイン">
-          {navigation.map((item) => (
+          {screen === 'map' ? <>
+            <button type="button" className={`primary-nav-button${mapUi.mapView === 'graph' ? ' is-current' : ''}`}
+              aria-current="page" aria-pressed={mapUi.mapView === 'graph'}
+              onClick={() => changeMapView('graph')}>学習マップ</button>
+            <button type="button" className={`primary-nav-button${mapUi.mapView === 'list' ? ' is-current' : ''}`}
+              aria-pressed={mapUi.mapView === 'list'} onClick={() => changeMapView('list')}>教材一覧</button>
+            {navigation.filter((item) => item.screen !== 'map').map((item) => (
+              <a key={item.screen} href={item.href} data-nav-intent="normal">{item.label}</a>
+            ))}
+          </> : navigation.map((item) => (
             <a
               key={item.screen}
               href={item.href}
@@ -947,7 +1165,9 @@ function App() {
       </header>
 
       {screen === 'map' ? (
-        <main className="map-workspace" onKeyDownCapture={handleMapKeyDownCapture}>
+        <main className="map-workspace" onKeyDownCapture={handleMapKeyDownCapture}
+          onPointerDownCapture={() => { mapRestoreGenerationRef.current += 1 }}
+          onWheelCapture={() => { mapRestoreGenerationRef.current += 1 }}>
           <div className="map-route-messages">{routeMessages}</div>
           {view.historyState.returnStack.length > 0 && (
             <nav className="return-navigation map-return-navigation" aria-label="復習から戻る">
@@ -957,42 +1177,32 @@ function App() {
           <header className="map-toolbar">
             <div className="map-heading">
               <h1 id="page-title" ref={headingRef} tabIndex={-1}>{pageTitle}</h1>
-              <p>{current.description}</p>
               {manualCompletedCount !== null && <p className="manual-progress-count">手動完了 {manualCompletedCount} / {lessonRegistry.lessons.length}</p>}
-              <p className="manual-progress-notice">{manualProgressNotice}</p>
             </div>
             <div className="map-toolbar-actions">
-              <div className="map-mode-toggle" role="group" aria-label="学習マップの表示">
-                <button
-                  ref={mapGraphButtonRef}
-                  type="button"
-                  className="map-mode-button"
-                  aria-pressed={mapView === 'graph'}
-                  onClick={() => changeMapView('graph')}
-                >マップ表示</button>
-                <button
-                  ref={mapListButtonRef}
-                  type="button"
-                  className="map-mode-button"
-                  aria-pressed={mapView === 'list'}
-                  onClick={() => changeMapView('list')}
-                >教材一覧</button>
-              </div>
               <a className="map-license-link" aria-label="使用ライブラリのライセンス" href={import.meta.env.BASE_URL + 'third-party-licenses.txt'}>ライセンス</a>
             </div>
           </header>
-          {mapView === 'graph' ? (
-            <div className="map-graph-content" ref={mapGraphContentRef}>
+          {mapUi.mapView === 'graph' ? (
+            <div className="map-graph-content">
               <LessonMapView
-                selectedLessonId={selectedLessonIdRef.current}
+                selectedLessonId={mapUi.selectedLessonId}
+                scope={mapUi.scope}
+                mobileDetailOpen={mapUi.mobileDetailOpen}
+                isMobileViewport={isMobileViewport}
                 progress={mapPracticeProgress}
                 manualProgress={manualProgress}
                 manualProgressConfirmed={mapStateConfirmed}
                 manualProgressDisabled={manualProgressDisabled}
                 onManualProgressAction={onManualProgressAction}
                 onSelectionChange={onMapSelectionChange}
+                onScopeChange={(scope) => updateMapUi({ scope })}
+                onDetailClose={closeMapDetail}
+                onMapPrerequisiteSelect={handleMapPrerequisiteSelect}
                 onAuthorExport={requestLessonDomainDownload}
-                clearSelectionRef={clearMapSelectionRef}
+                gridRef={mapGridRef}
+                onGridScroll={handleMapGridScroll}
+                detailHeadingRef={mapDetailHeadingRef}
               />
             </div>
           ) : (
