@@ -13,7 +13,11 @@ export type DescriptiveStatisticsExercisePreviewQuestion = QuestionBase & (
   | { type: 'choice'; choices: string[]; answer: number }
 )
 
-export const descriptiveStatisticsExerciseCategories: readonly { id: 'mean-deviation' | 'data-transformation' | 'unbiased-variance' | 'comprehensive' | 'variance-standard-deviation'; title: string }[]
+export const descriptiveStatisticsExerciseCategories: readonly {
+  id: 'mean-deviation' | 'data-transformation' | 'unbiased-variance' | 'comprehensive' | 'variance-standard-deviation'
+  title: string
+  typeIds: readonly string[]
+}[]
 
 export function createDescriptiveStatisticsExercisePreviewState(
   categoryIndex: number,
@@ -29,5 +33,11 @@ export function nextDescriptiveStatisticsExercisePreviewState(
 export function generateDescriptiveStatisticsExercisePreviewQuestion(
   categoryIndex: number,
   typeIndex: number,
+  seed: number,
+): DescriptiveStatisticsExercisePreviewQuestion
+
+export function generateDescriptiveStatisticsExercisePreviewQuestionById(
+  categoryId: string,
+  typeId: string,
   seed: number,
 ): DescriptiveStatisticsExercisePreviewQuestion

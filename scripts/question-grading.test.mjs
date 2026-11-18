@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { gradeDecimalAnswer } from '../src/question-grading.mjs'
+import { gradeDecimalAnswer, isValidDecimalAnswer } from '../src/question-grading.mjs'
 
 test('decimal grading rounds half away from zero and compares exact values', () => {
   assert.deepEqual(gradeDecimalAnswer('1.234', '1.23', 2), { status: 'graded', isCorrect: true })
@@ -26,6 +26,11 @@ test('decimal grading rejects unsupported input syntax and accepts signed decima
   for (const answer of ['1e0', '1 個', '01', '', '.5', '1.', '+', 1, null]) {
     assert.deepEqual(gradeDecimalAnswer(answer, '1', 2), { status: 'invalid', reason: 'invalid-answer-format' })
   }
+})
+
+test('decimal contract validation shares grading syntax', () => {
+  for (const value of ['-1', '+1.25', ' 0.5 ']) assert.equal(isValidDecimalAnswer(value), true)
+  for (const value of ['01', '1e0', '1.', '1 mm', Number.POSITIVE_INFINITY]) assert.equal(isValidDecimalAnswer(value), false)
 })
 
 test('decimal grading handles excessive precision and very large rounding settings', { timeout: 1000 }, () => {

@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { LessonReference } from './lesson-view'
 import { gradeDecimalAnswer } from './question-grading.mjs'
+import { generateLessonExercise } from './lesson-exercise-adapters.mjs'
+import { getExerciseGradingData, getExerciseQuestionDisplay } from './lesson-contract.mjs'
 import {
   createDescriptiveStatisticsExercisePreviewState,
   descriptiveStatisticsExerciseCategories,
-  generateDescriptiveStatisticsExercisePreviewQuestion,
   nextDescriptiveStatisticsExercisePreviewState,
 } from './descriptive-statistics-exercise-preview-data.mjs'
 import type {
@@ -34,8 +35,12 @@ function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
   const gradedQuestionRef = useRef('')
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState({ kind: '', text: '' })
-  const question = generateDescriptiveStatisticsExercisePreviewQuestion(categoryIndex, state.typeIndex, state.seed)
-  const questionKey = descriptiveStatisticsExerciseCategories[categoryIndex].id + ':' + state.seed + ':' + state.typeIndex
+  const category = descriptiveStatisticsExerciseCategories[categoryIndex]
+  const exerciseId = category.typeIds[state.typeIndex]
+  const instance = generateLessonExercise('descriptive-statistics', exerciseId, state.seed)
+  const display = getExerciseQuestionDisplay(instance)
+  const { evaluation, solution } = getExerciseGradingData(instance)
+  const questionKey = instance.instanceId
   const titleId = `${id}-title`
 
   useEffect(() => {
@@ -48,15 +53,17 @@ function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
   const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     let correct: boolean
-    if (question.type === 'choice') {
+    if (display.response.type === 'choice') {
+      if (evaluation.type !== 'choice') throw new TypeError('Choice exercises need choice grading data')
       const selected = event.currentTarget.querySelector<HTMLInputElement>('input[name="answer"]:checked')?.value
       if (selected === undefined) {
         setFeedback({ kind: 'ng', text: '選択肢を選んでください。' })
         return
       }
-      correct = Number(selected) === question.answer
+      correct = selected === evaluation.correctChoiceId
     } else {
-      const result = gradeDecimalAnswer(normalizeNumericInput(answer), String(question.answer), 0)
+      if (evaluation.type !== 'numeric') throw new TypeError('Numeric exercises need numeric grading data')
+      const result = gradeDecimalAnswer(normalizeNumericInput(answer), evaluation.answers[0]?.expected, evaluation.answers[0]?.roundingDigits)
       if (result.status === 'invalid') {
         setFeedback({ kind: 'ng', text: '入力形式を確認してください（例：12、−2、+3、0.5）。' })
         return
@@ -77,34 +84,37 @@ function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
 
   return <section className="ds-practice-question" aria-labelledby={titleId} data-practice-category={categoryIndex} data-practice-type={state.typeIndex} data-practice-seed={state.seed}>
     <div className="ds-practice-question-heading">
-      <h2 id={titleId}>問{categoryIndex + 1}：{descriptiveStatisticsExerciseCategories[categoryIndex].title}</h2>
-      <p>確認する節：{question.sections.map((sectionId, index) => <span key={sectionId}>
-        {index > 0 && '・'}<LessonReference
-          targetRef={`descriptive-statistics#${sectionId}`}
-          label={sectionLabels[sectionId] ?? sectionId}
-          intent="review"
-        />
-      </span>)}</p>
+      <h2 id={titleId}>問{categoryIndex + 1}：{category.title}</h2>
+      <p>確認する節：{display.reviewSectionRefs.map((targetRef, index) => {
+        const sectionId = targetRef.split('#')[1] ?? targetRef
+        return <span key={targetRef}>
+          {index > 0 && '・'}<LessonReference
+            targetRef={targetRef}
+            label={sectionLabels[sectionId] ?? sectionId}
+            intent="review"
+          />
+        </span>
+      })}</p>
     </div>
-    <p className="ds-practice-prompt">{question.prompt}</p>
-    {question.table && <div className="ds-practice-table-wrap">
+    <p className="ds-practice-prompt">{display.prompt}</p>
+    {display.table && <div className="ds-practice-table-wrap">
       <table>
         <caption>ラインごとに測った値</caption>
-        <thead><tr><th scope="col">ライン</th>{question.table.rows[0].values.map((_, index) => <th scope="col" key={index}>{index + 1}個目</th>)}</tr></thead>
-        <tbody>{question.table.rows.map((row) => <tr key={row.label}>
+        <thead><tr><th scope="col">ライン</th>{display.table.rows[0].values.map((_, index) => <th scope="col" key={index}>{index + 1}個目</th>)}</tr></thead>
+        <tbody>{display.table.rows.map((row) => <tr key={row.label}>
           <th scope="row">{row.label}</th>{row.values.map((value, index) => <td className="num" key={index}>{value}</td>)}
         </tr>)}</tbody>
       </table>
     </div>}
-    {question.calculation && <div className="ds-practice-calculation" aria-label="計算過程">
-      {question.calculation.map((step) => <p key={step}>{step}</p>)}
+    {display.calculations && <div className="ds-practice-calculation" aria-label="計算過程">
+      {display.calculations.map((step) => <p key={step}>{step}</p>)}
     </div>}
     <form className="ds-practice-answer" onSubmit={checkAnswer}>
-      {question.type === 'choice' ? <fieldset>
+      {display.response.type === 'choice' ? <fieldset>
         <legend>選択肢を1つ選んでください</legend>
-        {question.choices.map((choice, index) => <label className="ds-practice-choice" htmlFor={`${id}-choice-${index}`} key={choice}>
-          <input id={`${id}-choice-${index}`} type="radio" name="answer" value={index} />
-          <span><b>{String.fromCharCode('ア'.charCodeAt(0) + index)}：</b>{choice}</span>
+        {display.response.choices.map((choice, index) => <label className="ds-practice-choice" htmlFor={`${id}-choice-${index}`} key={choice.id}>
+          <input id={`${id}-choice-${index}`} type="radio" name="answer" value={choice.id} />
+          <span><b>{String.fromCharCode('ア'.charCodeAt(0) + index)}：</b>{choice.text}</span>
         </label>)}
       </fieldset> : <label className="ds-practice-number" htmlFor={`${id}-answer`}>
         答え
@@ -116,7 +126,7 @@ function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
           value={answer}
           onChange={(event) => setAnswer(event.currentTarget.value)}
         />
-        <span>{question.unit}</span>
+        <span>{display.response.type === 'numeric' ? display.response.fields[0].unit : ''}</span>
       </label>}
       <div className="ds-exercise-actions">
         <button className="ds-button ds-button-primary" type="submit">答え合わせ</button>
@@ -126,7 +136,7 @@ function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
     <p className={`ds-exercise-feedback ${feedback.kind}`} role="status" aria-live="polite">{feedback.text}</p>
     <details ref={detailsRef}>
       <summary>解説を見る</summary>
-      <p className="ds-exercise-solution">{question.explanation}</p>
+      <p className="ds-exercise-solution">{solution.explanation}</p>
     </details>
   </section>
 }

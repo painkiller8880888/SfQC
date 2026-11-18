@@ -1,3 +1,6 @@
+import { previewExerciseDefinitions } from './descriptive-statistics-preview-exercises.mjs'
+import { descriptiveStatisticsExerciseCategories } from './descriptive-statistics-exercise-preview-data.mjs'
+
 /** @typedef {import('./lesson-contract.mjs').ConditionalPrerequisite} ConditionalPrerequisite */
 /** @typedef {import('./lesson-contract.mjs').LessonDomain} LessonDomain */
 /** @typedef {import('./lesson-contract.mjs').OptionalReview} OptionalReview */
@@ -546,10 +549,69 @@ const lessons = [
   ]),
 ]
 
+/** @type {import('./lesson-contract.mjs').ExerciseCatalog} */
+const exerciseCatalog = {
+  categories: descriptiveStatisticsExerciseCategories.map(({ id, title, typeIds }) => ({
+    lessonId: 'descriptive-statistics',
+    categoryId: id,
+    title,
+    exerciseIds: [...typeIds],
+  })),
+  generators: [
+    {
+      generatorId: 'descriptive-statistics-inline',
+      types: Object.entries(previewExerciseDefinitions).map(([typeId, definition]) => ({
+        typeId,
+        mode: /** @type {'index'} */ ('index'),
+        minimum: 0,
+        maximum: definition.count - 1,
+      })),
+    },
+    {
+      generatorId: 'descriptive-statistics-independent',
+      types: descriptiveStatisticsExerciseCategories.flatMap(({ typeIds }) => typeIds.map((typeId) => ({
+        typeId,
+        mode: /** @type {'seed'} */ ('seed'),
+        minimum: 0,
+        maximum: 0xffffffff,
+      }))),
+    },
+  ],
+  definitions: [
+    ...Object.entries(previewExerciseDefinitions).map(([exerciseId, definition]) => ({
+      lessonId: 'descriptive-statistics',
+      exerciseId,
+      revision: 1,
+      placement: { kind: /** @type {'section'} */ ('section'), sectionId: exerciseId },
+      generation: {
+        kind: /** @type {'index'} */ ('index'),
+        generatorId: 'descriptive-statistics-inline',
+        typeId: exerciseId,
+        minimum: 0,
+        maximum: definition.count - 1,
+      },
+    })),
+    ...descriptiveStatisticsExerciseCategories.flatMap(({ id: categoryId, typeIds }) => typeIds.map((exerciseId) => ({
+      lessonId: 'descriptive-statistics',
+      exerciseId,
+      revision: 1,
+      placement: { kind: /** @type {'category'} */ ('category'), categoryId },
+      generation: {
+        kind: /** @type {'seed'} */ ('seed'),
+        generatorId: 'descriptive-statistics-independent',
+        typeId: exerciseId,
+        minimum: 0,
+        maximum: 0xffffffff,
+      },
+    }))),
+  ],
+}
+
 /** @type {LessonRegistry} */
 export const lessonRegistry = {
   curriculumRevision: 3,
   officialSourceItemIds: Array.from({ length: 64 }, (_, index) => `SRC-${String(index + 1).padStart(4, '0')}`),
   sources: sourceDocuments,
   lessons,
+  exerciseCatalog,
 }

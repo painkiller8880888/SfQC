@@ -4,8 +4,42 @@ import {
   createDescriptiveStatisticsExercisePreviewState,
   descriptiveStatisticsExerciseCategories,
   generateDescriptiveStatisticsExercisePreviewQuestion,
+  generateDescriptiveStatisticsExercisePreviewQuestionById,
   nextDescriptiveStatisticsExercisePreviewState,
 } from '../src/descriptive-statistics-exercise-preview-data.mjs'
+import { generateExerciseInstance, getExerciseGradingData, getExerciseQuestionDisplay } from '../src/lesson-contract.mjs'
+import { lessonExerciseGenerators } from '../src/lesson-exercise-adapters.mjs'
+import { lessonRegistry } from '../src/lesson-registry.mjs'
+import { descriptiveStatisticsExerciseBaseline } from './descriptive-statistics-exercise-baseline.fixture.mjs'
+
+function legacyQuestionFromInstance(instance) {
+  const display = getExerciseQuestionDisplay(instance)
+  const { evaluation, solution } = getExerciseGradingData(instance)
+  const question = {
+    prompt: display.prompt,
+    sections: display.reviewSectionRefs.map((reference) => reference.split('#')[1]),
+    explanation: solution.explanation,
+    ...(display.table ? { table: display.table } : {}),
+    ...(display.calculations ? { calculation: display.calculations } : {}),
+  }
+  if (display.response.type === 'choice' && evaluation.type === 'choice') {
+    return {
+      ...question,
+      type: 'choice',
+      choices: display.response.choices.map(({ text }) => text),
+      answer: display.response.choices.findIndex(({ id }) => id === evaluation.correctChoiceId),
+    }
+  }
+  if (display.response.type === 'numeric' && evaluation.type === 'numeric') {
+    return {
+      ...question,
+      type: 'numeric',
+      unit: display.response.fields[0].unit,
+      answer: evaluation.answers[0].expected,
+    }
+  }
+  throw new TypeError('Exercise display and grading data do not match')
+}
 
 test('exercise preview covers the five lesson areas with deterministic question variants', () => {
   const expectedSections = [
@@ -92,4 +126,52 @@ test('individual regeneration changes the question type and validates its random
   assert.throws(() => generateDescriptiveStatisticsExercisePreviewQuestion(0, 0, -1), RangeError)
   assert.throws(() => createDescriptiveStatisticsExercisePreviewState(0, () => 1), RangeError)
   assert.throws(() => nextDescriptiveStatisticsExercisePreviewState(0, first, () => Number.NaN), RangeError)
+})
+
+test('type IDs and the shared contract preserve frozen questions and resolve independently of order', () => {
+  for (const { categoryId, questions } of descriptiveStatisticsExerciseBaseline.questions) {
+    const category = descriptiveStatisticsExerciseCategories.find((item) => item.id === categoryId)
+    for (const { typeIndex, question: expected } of questions) {
+      const typeId = category.typeIds[typeIndex]
+      assert.deepEqual(generateDescriptiveStatisticsExercisePreviewQuestionById(categoryId, typeId,
+        descriptiveStatisticsExerciseBaseline.seed), expected)
+      const instance = generateExerciseInstance(lessonRegistry, 'descriptive-statistics', typeId,
+        descriptiveStatisticsExerciseBaseline.seed, lessonExerciseGenerators)
+      assert.deepEqual(legacyQuestionFromInstance(instance), expected)
+    }
+  }
+  for (const { seed, question: expected } of descriptiveStatisticsExerciseBaseline.integratedErrorSeeds) {
+    const typeId = descriptiveStatisticsExerciseCategories.find(({ id }) => id === 'comprehensive').typeIds[2]
+    const instance = generateExerciseInstance(lessonRegistry, 'descriptive-statistics', typeId, seed, lessonExerciseGenerators)
+    assert.deepEqual(legacyQuestionFromInstance(instance), expected)
+    assert.equal(expected.answer, [2, 8, 1, 0].indexOf(seed))
+  }
+
+  const category = descriptiveStatisticsExerciseCategories[0]
+  const typeId = category.typeIds[0]
+  const original = generateExerciseInstance(lessonRegistry, 'descriptive-statistics', typeId, 48291, lessonExerciseGenerators)
+  const repeated = generateExerciseInstance(lessonRegistry, 'descriptive-statistics', typeId, 48291, lessonExerciseGenerators)
+  const differentInput = generateExerciseInstance(lessonRegistry, 'descriptive-statistics', typeId, 48292, lessonExerciseGenerators)
+  assert.equal(original.instanceId, repeated.instanceId)
+  assert.notEqual(original.instanceId, differentInput.instanceId)
+
+  const reordered = structuredClone(lessonRegistry)
+  reordered.exerciseCatalog.categories.reverse()
+  reordered.exerciseCatalog.generators[1].types.reverse()
+  reordered.exerciseCatalog.definitions.reverse()
+  for (const { categoryId, questions } of descriptiveStatisticsExerciseBaseline.questions) {
+    const categoryDefinition = descriptiveStatisticsExerciseCategories.find((item) => item.id === categoryId)
+    for (const { typeIndex, question: expected } of questions) {
+      const reorderedInstance = generateExerciseInstance(reordered, 'descriptive-statistics', categoryDefinition.typeIds[typeIndex],
+        descriptiveStatisticsExerciseBaseline.seed, lessonExerciseGenerators)
+      assert.deepEqual(legacyQuestionFromInstance(reorderedInstance), expected)
+    }
+    for (const typeId of categoryDefinition.typeIds) {
+      for (const seed of [0, 0xffffffff]) {
+        const boundary = generateExerciseInstance(reordered, 'descriptive-statistics', typeId, seed, lessonExerciseGenerators)
+        assert.deepEqual(legacyQuestionFromInstance(boundary),
+          generateDescriptiveStatisticsExercisePreviewQuestionById(categoryId, typeId, seed))
+      }
+    }
+  }
 })

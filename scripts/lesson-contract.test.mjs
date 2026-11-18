@@ -1,11 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
-import { parseLessonRef, validateLessonRegistry } from '../src/lesson-contract.mjs'
+import {
+  exerciseDefinitionId,
+  generateExerciseInstance,
+  getExerciseCatalogErrors,
+  getExerciseGradingData,
+  getExerciseQuestionDisplay,
+  parseLessonRef,
+  validateLessonRegistry,
+} from '../src/lesson-contract.mjs'
 import { lessonRegistryFixture } from './lesson-contract.fixture.mjs'
+import { PRACTICE_CATEGORY_IDS } from '../src/practice-results.mjs'
 
 const copy = (value) => structuredClone(value)
 const lesson = (registry, lessonId) => registry.lessons.find((item) => item.lessonId === lessonId)
+const collectKeys = (value) => value && typeof value === 'object'
+  ? [...Object.keys(value), ...Object.values(value).flatMap(collectKeys)] : []
 
 test('LessonRef parser validates stable syntax without requiring a current registry entry', () => {
   assert.deepEqual(parseLessonRef('future-lesson#section'), { lessonId: 'future-lesson', sectionId: 'section' })
@@ -57,10 +68,83 @@ test('fixture and the six included lessons satisfy the contract and keep other l
     }
   }
   assert.equal(lessonRegistry.officialSourceItemIds.length, 64)
+  assert.deepEqual(lessonRegistry.exerciseCatalog.categories.map(({ categoryId }) => categoryId), PRACTICE_CATEGORY_IDS)
+  assert.deepEqual(lessonRegistry.exerciseCatalog.definitions
+    .filter(({ placement }) => placement.kind === 'section').map(({ exerciseId }) => exerciseId),
+  ['mean', 'deviation', 'variance', 'standard-deviation'])
+  assert.equal(lessonRegistry.exerciseCatalog.definitions.length, 19)
+  assert.equal(lessonRegistry.exerciseCatalog.generators.find(({ generatorId }) =>
+    generatorId === 'descriptive-statistics-independent').types.length, 15)
   assert.deepEqual(lesson(lessonRegistry, 'data-types').sourceRefs, ['jsa-l3', 'jsa-l4'])
   assert.ok(lessonRegistry.sources.every((source) => source.url.endsWith('.pdf')))
   assert.ok(lessonRegistry.sources.find((source) => source.sourceId === 'jsa-l2').citations
     .some((citation) => citation.sourceItemId === 'SRC-0062' && citation.location === 'p.1「品質保証：プロセス保証」'))
+})
+
+test('fixed and seeded exercise APIs keep display data separate from grading and explanations', () => {
+  assert.equal(exerciseDefinitionId('data-types', 'observed-counts'), 'data-types:observed-counts')
+  const fixed = generateExerciseInstance(lessonRegistryFixture, 'data-types', 'observed-counts', undefined, {})
+  const fixedRepeat = generateExerciseInstance(lessonRegistryFixture, 'data-types', 'observed-counts', undefined, {})
+  assert.equal(fixed.instanceId, fixedRepeat.instanceId)
+  const fixedDisplay = getExerciseQuestionDisplay(fixed)
+  assert.equal(fixed.mode, 'fixed')
+  assert.deepEqual(fixedDisplay.response.fields.map(({ id }) => id), ['alpha-count', 'beta-count'])
+  assert.ok(!collectKeys(fixedDisplay).some((key) => ['evaluation', 'solution', 'expected', 'correctChoiceId', 'explanation'].includes(key)))
+  assert.deepEqual(getExerciseGradingData(fixed).evaluation, { type: 'numeric', answers: [
+    { fieldId: 'alpha-count', expected: '2', roundingDigits: 0 },
+    { fieldId: 'beta-count', expected: '3', roundingDigits: 0 },
+  ] })
+
+  const fixedChoice = generateExerciseInstance(lessonRegistryFixture, 'data-types', 'classify-unit', undefined, {})
+  const choiceDisplay = getExerciseQuestionDisplay(fixedChoice)
+  const choiceGrading = getExerciseGradingData(fixedChoice)
+  assert.ok(!collectKeys(choiceDisplay).includes('correctChoiceId'))
+  assert.equal(choiceGrading.evaluation.correctChoiceId, 'count-the-product')
+  assert.equal(choiceGrading.solution.choiceFeedback[0].misconception, '製品の個数と傷の件数を同じ単位で数えています。')
+
+  let calls = 0
+  const generatedQuestion = (seed, sectionRef = 'data-types#types') => ({
+    display: {
+      prompt: '観測した個数を入力してください。',
+      response: { type: 'numeric', fields: [{ id: 'count', label: '個数', unit: '個', roundingDigits: 0 }] },
+      reviewSectionRefs: [sectionRef],
+    },
+    evaluation: { type: 'numeric', answers: [{ fieldId: 'count', expected: String(seed % 10), roundingDigits: 0 }] },
+    solution: { explanation: `観測数は ${seed % 10} 個です。` },
+  })
+  const generators = { 'fixture-counts': (_definition, seed) => { calls += 1; return generatedQuestion(seed) } }
+  const instance = generateExerciseInstance(lessonRegistryFixture, 'data-types', 'generated-counts', 48291, generators)
+  assert.equal(calls, 1)
+  assert.equal(instance.instanceId, 'data-types:generated-counts@1:seed:48291')
+  assert.equal(getExerciseGradingData(instance).evaluation.answers[0].expected, '1')
+  assert.equal(instance.instanceId, generateExerciseInstance(lessonRegistryFixture, 'data-types', 'generated-counts', 48291, generators).instanceId)
+  assert.notEqual(instance.instanceId, generateExerciseInstance(lessonRegistryFixture, 'data-types', 'generated-counts', 7, generators).instanceId)
+  const changedMode = copy(lessonRegistryFixture)
+  const modeDefinition = changedMode.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'generated-counts')
+  modeDefinition.generation.kind = 'index'
+  modeDefinition.generation.maximum = 100
+  const modeType = changedMode.exerciseCatalog.generators[0].types[0]
+  modeType.mode = 'index'
+  modeType.maximum = 100
+  assert.notEqual(instance.instanceId,
+    generateExerciseInstance(changedMode, 'data-types', 'generated-counts', 7, generators).instanceId)
+  assert.throws(() => generateExerciseInstance(lessonRegistryFixture, 'data-types', 'generated-counts', -1, generators), RangeError)
+  assert.throws(() => generateExerciseInstance(lessonRegistryFixture, 'data-types', 'generated-counts', 1.5, generators), RangeError)
+  assert.throws(() => generateExerciseInstance(lessonRegistryFixture, 'data-types', 'generated-counts', 0x100000000, generators), RangeError)
+  assert.throws(() => generateExerciseInstance(lessonRegistryFixture, 'data-types', 'generated-counts', 0, {}), /Unknown exercise generator/u)
+  assert.throws(() => generateExerciseInstance(lessonRegistryFixture, 'data-types', 'observed-counts', 0, {}), RangeError)
+
+  const revised = copy(lessonRegistryFixture)
+  revised.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'generated-counts').revision = 2
+  assert.notEqual(instance.instanceId,
+    generateExerciseInstance(revised, 'data-types', 'generated-counts', 48291, generators).instanceId)
+  const revisedFixed = copy(lessonRegistryFixture)
+  revisedFixed.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'observed-counts').revision = 2
+  assert.notEqual(fixed.instanceId,
+    generateExerciseInstance(revisedFixed, 'data-types', 'observed-counts', undefined, {}).instanceId)
+  assert.throws(() => generateExerciseInstance(lessonRegistryFixture, 'data-types', 'generated-counts', 0, {
+    'fixture-counts': (_definition, seed) => generatedQuestion(seed, 'data-types#missing'),
+  }), /data-types:generated-counts.*reviewSectionRefs/u)
 })
 
 test('basic statistics course covers the worked comparison, drills, code figures, and sources', () => {
@@ -331,4 +415,60 @@ test('unknown keys, undefined values, malformed IDs, and invalid revisions are r
   const unknownDomain = copy(lessonRegistryFixture)
   lesson(unknownDomain, 'descriptive-statistics').domain = 'other'
   assert.equal(validateLessonRegistry(unknownDomain), false)
+})
+
+test('exercise contract errors identify definitions and reject broken data and nested references', () => {
+  const unknownMode = copy(lessonRegistryFixture)
+  unknownMode.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'generated-counts').generation.kind = 'random'
+  assert.equal(validateLessonRegistry(unknownMode), false)
+  assert.ok(getExerciseCatalogErrors(unknownMode.exerciseCatalog, unknownMode.lessons)
+    .some((error) => error.includes('data-types:generated-counts') && error.includes('generation.kind')))
+
+  const duplicate = copy(lessonRegistryFixture)
+  duplicate.exerciseCatalog.definitions.push(copy(duplicate.exerciseCatalog.definitions[0]))
+  assert.equal(validateLessonRegistry(duplicate), false)
+
+  const mismatchedFields = copy(lessonRegistryFixture)
+  mismatchedFields.exerciseCatalog.definitions[0].generation.question.evaluation.answers.pop()
+  assert.equal(validateLessonRegistry(mismatchedFields), false)
+  assert.ok(getExerciseCatalogErrors(mismatchedFields.exerciseCatalog, mismatchedFields.lessons)
+    .some((error) => error.includes('data-types:observed-counts') && error.includes('evaluation.answers')))
+
+  const duplicateField = copy(lessonRegistryFixture)
+  duplicateField.exerciseCatalog.definitions[0].generation.question.display.response.fields[1].id = 'alpha-count'
+  assert.equal(validateLessonRegistry(duplicateField), false)
+
+  const unresolvedChoice = copy(lessonRegistryFixture)
+  unresolvedChoice.exerciseCatalog.definitions[2].generation.question.evaluation.correctChoiceId = 'missing-choice'
+  assert.equal(validateLessonRegistry(unresolvedChoice), false)
+
+  const unresolvedFeedback = copy(lessonRegistryFixture)
+  unresolvedFeedback.exerciseCatalog.definitions[2].generation.question.solution.choiceFeedback[0].reviewSectionRefs = ['data-types#missing']
+  assert.equal(validateLessonRegistry(unresolvedFeedback), false)
+
+  const invalidDecimal = copy(lessonRegistryFixture)
+  invalidDecimal.exerciseCatalog.definitions[0].generation.question.evaluation.answers[0].expected = '01'
+  assert.equal(validateLessonRegistry(invalidDecimal), false)
+  const acceptedDecimal = copy(lessonRegistryFixture)
+  acceptedDecimal.exerciseCatalog.definitions[0].generation.question.display.response.fields[0].roundingDigits = 1
+  acceptedDecimal.exerciseCatalog.definitions[0].generation.question.evaluation.answers[0] = {
+    fieldId: 'alpha-count', expected: ' +2.5 ', roundingDigits: 1,
+  }
+  assert.equal(validateLessonRegistry(acceptedDecimal), true)
+
+  const nestedReference = copy(lessonRegistryFixture)
+  lesson(nestedReference, 'descriptive-statistics').sections.find(({ sectionId }) => sectionId === 'mean').blocks.push({
+    kind: 'details', summary: '追加の説明', blocks: [{ kind: 'lessonRef', label: '利用できない節', targetRef: 'math-ratios-percentages#ratio' }],
+  })
+  assert.equal(validateLessonRegistry(nestedReference), false)
+
+  const overviewSlot = copy(lessonRegistryFixture)
+  lesson(overviewSlot, 'data-types').overview = [{ kind: 'exerciseSlot', exerciseId: 'observed-counts' }]
+  assert.equal(validateLessonRegistry(overviewSlot), false)
+
+  const missingSlot = copy(lessonRegistryFixture)
+  lesson(missingSlot, 'data-types').sections[0].blocks = [
+    { kind: 'paragraph', parts: [{ kind: 'text', text: '測定値と計数値を区別します。' }] },
+  ]
+  assert.equal(validateLessonRegistry(missingSlot), false)
 })

@@ -114,12 +114,100 @@ export type SourceDefinition = {
   citations: { sourceItemId: string; location: string }[]
 }
 
+export type ExerciseQuestionDisplay = {
+  prompt: string
+  response:
+    | { type: 'numeric'; fields: Array<{ id: string; label: string; unit: string; roundingDigits: number; roundingInstruction?: string }> }
+    | { type: 'choice'; choices: Array<{ id: string; text: string }> }
+  table?: { rows: Array<{ label: string; values: number[] }> }
+  calculations?: string[]
+  reviewSectionRefs: LessonRef[]
+}
+
+export type ExerciseQuestion = {
+  display: ExerciseQuestionDisplay
+  evaluation:
+    | { type: 'numeric'; answers: Array<{ fieldId: string; expected: string; roundingDigits: number }> }
+    | { type: 'choice'; correctChoiceId: string }
+  solution: {
+    explanation: string
+    steps?: string[]
+    choiceFeedback?: Array<{ choiceId: string; misconception: string; reviewSectionRefs?: LessonRef[] }>
+  }
+}
+
+export type ExerciseCategoryDefinition = {
+  lessonId: string
+  categoryId: string
+  title: string
+  exerciseIds: string[]
+}
+
+export type ExerciseGeneratorType = {
+  typeId: string
+  mode: 'index' | 'seed'
+  minimum: number
+  maximum: number
+}
+
+export type ExerciseGeneratorDefinition = {
+  generatorId: string
+  types: ExerciseGeneratorType[]
+}
+
+export type ExerciseDefinition = {
+  lessonId: string
+  exerciseId: string
+  revision: number
+  placement:
+    | { kind: 'section'; sectionId: string }
+    | { kind: 'category'; categoryId: string }
+  generation:
+    | { kind: 'fixed'; question: ExerciseQuestion }
+    | { kind: 'index' | 'seed'; generatorId: string; typeId: string; minimum: number; maximum: number }
+}
+
+export type ExerciseCatalog = {
+  categories: ExerciseCategoryDefinition[]
+  generators: ExerciseGeneratorDefinition[]
+  definitions: ExerciseDefinition[]
+}
+
+export type ExerciseInstance = {
+  definitionId: string
+  instanceId: string
+  lessonId: string
+  exerciseId: string
+  revision: number
+  mode: 'fixed' | 'index' | 'seed'
+  input: number | null
+}
+
+export type ExerciseGradingData = {
+  evaluation: ExerciseQuestion['evaluation']
+  solution: ExerciseQuestion['solution']
+}
+
+export type ExerciseGenerator = (definition: ExerciseDefinition, input: number) => ExerciseQuestion
+
 export type LessonRegistry = {
   curriculumRevision: number
   officialSourceItemIds: string[]
   sources: SourceDefinition[]
   lessons: LessonDefinition[]
+  exerciseCatalog?: ExerciseCatalog
 }
 
 export function parseLessonRef(value: unknown): ParsedLessonRef | null
 export declare function validateLessonRegistry(value: unknown): value is LessonRegistry
+export function getExerciseCatalogErrors(catalog: unknown, lessons: unknown): string[]
+export function exerciseDefinitionId(lessonId: string, exerciseId: string): string
+export function generateExerciseInstance(
+  registry: LessonRegistry,
+  lessonId: string,
+  exerciseId: string,
+  input?: number,
+  generators?: Readonly<Record<string, ExerciseGenerator>>,
+): ExerciseInstance
+export function getExerciseQuestionDisplay(instance: ExerciseInstance): ExerciseQuestionDisplay
+export function getExerciseGradingData(instance: ExerciseInstance): ExerciseGradingData

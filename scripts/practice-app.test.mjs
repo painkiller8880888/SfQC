@@ -210,7 +210,7 @@ async function submitWrongIndependentJudgement(app, window) {
   )
   if (question.type === 'choice') {
     const wrongIndex = question.answer === 0 ? 1 : 0
-    await click(card.querySelector(`input[type="radio"][value="${wrongIndex}"]`))
+    await click(card.querySelectorAll('input[type="radio"]')[wrongIndex])
   } else {
     await changeTextInput(window, card.querySelector('input[type="text"]'), String(Number(question.answer) + 1))
   }
@@ -1897,7 +1897,7 @@ test('course practice presents five categories, records one valid judgment, and 
 
     if (question.type === 'choice') {
       const wrongIndex = question.answer === 0 ? 1 : 0
-      await click(card.querySelector(`input[type="radio"][value="${wrongIndex}"]`))
+      await click(card.querySelectorAll('input[type="radio"]')[wrongIndex])
     } else {
       await changeTextInput(window, card.querySelector('input[type="text"]'), String(Number(question.answer) + 1))
     }

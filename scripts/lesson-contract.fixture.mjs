@@ -41,7 +41,13 @@ export const lessonRegistryFixture = {
       sections: [{
         sectionId: 'types',
         title: '観測単位とデータ型',
-        blocks: [{ kind: 'paragraph', parts: [{ kind: 'text', text: '測定値と計数値は、記録した対象と単位を確かめて区別します。' }] }],
+        blocks: [
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '測定値と計数値は、記録した対象と単位を確かめて区別します。' }] },
+          { kind: 'details', summary: '表の読み取りを確認', blocks: [
+            { kind: 'exerciseSlot', exerciseId: 'observed-counts' },
+            { kind: 'exerciseSlot', exerciseId: 'generated-counts' },
+          ] },
+        ],
       }],
       figures: [],
     },
@@ -157,4 +163,83 @@ export const lessonRegistryFixture = {
       revision: 1,
     },
   ],
+  exerciseCatalog: {
+    categories: [{
+      lessonId: 'data-types',
+      categoryId: 'types-review',
+      title: 'データの分類',
+      exerciseIds: ['classify-unit'],
+    }],
+    generators: [{
+      generatorId: 'fixture-counts',
+      types: [{ typeId: 'generated-counts', mode: 'seed', minimum: 0, maximum: 4294967295 }],
+    }],
+    definitions: [
+      {
+        lessonId: 'data-types',
+        exerciseId: 'observed-counts',
+        revision: 1,
+        placement: { kind: 'section', sectionId: 'types' },
+        generation: {
+          kind: 'fixed',
+          question: {
+            display: {
+              prompt: '記録票にある甲と乙の個数をそれぞれ入力してください。',
+              response: { type: 'numeric', fields: [
+                { id: 'alpha-count', label: '甲', unit: '個', roundingDigits: 0 },
+                { id: 'beta-count', label: '乙', unit: '個', roundingDigits: 0 },
+              ] },
+              reviewSectionRefs: ['data-types#types'],
+            },
+            evaluation: { type: 'numeric', answers: [
+              { fieldId: 'alpha-count', expected: '2', roundingDigits: 0 },
+              { fieldId: 'beta-count', expected: '3', roundingDigits: 0 },
+            ] },
+            solution: { explanation: '甲は2個、乙は3個です。' },
+          },
+        },
+      },
+      {
+        lessonId: 'data-types',
+        exerciseId: 'generated-counts',
+        revision: 1,
+        placement: { kind: 'section', sectionId: 'types' },
+        generation: {
+          kind: 'seed',
+          generatorId: 'fixture-counts',
+          typeId: 'generated-counts',
+          minimum: 0,
+          maximum: 4294967295,
+        },
+      },
+      {
+        lessonId: 'data-types',
+        exerciseId: 'classify-unit',
+        revision: 1,
+        placement: { kind: 'category', categoryId: 'types-review' },
+        generation: {
+          kind: 'fixed',
+          question: {
+            display: {
+              prompt: '1個の製品に3件の傷があるとき、不適合品数はどれですか。',
+              response: { type: 'choice', choices: [
+                { id: 'count-the-product', text: '1個' },
+                { id: 'count-the-defects', text: '3件' },
+              ] },
+              reviewSectionRefs: ['data-types#types'],
+            },
+            evaluation: { type: 'choice', correctChoiceId: 'count-the-product' },
+            solution: {
+              explanation: '不適合品数は対象製品の個数で数えます。',
+              choiceFeedback: [{
+                choiceId: 'count-the-defects',
+                misconception: '製品の個数と傷の件数を同じ単位で数えています。',
+                reviewSectionRefs: ['data-types#types'],
+              }],
+            },
+          },
+        },
+      },
+    ],
+  },
 }

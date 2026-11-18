@@ -6,6 +6,8 @@ import {
   previewExerciseDefinitions,
 } from '../src/descriptive-statistics-preview-exercises.mjs'
 import { gradeDecimalAnswer } from '../src/question-grading.mjs'
+import { generateLessonExercise } from '../src/lesson-exercise-adapters.mjs'
+import { getExerciseGradingData, getExerciseQuestionDisplay } from '../src/lesson-contract.mjs'
 
 const measurements = (index) => {
   const prompt = generateDescriptiveStatisticsPreviewExercise('mean', index).prompt
@@ -46,6 +48,16 @@ test('preview exercises reproduce the four reviewed seed questions and calculati
     const exercise = generateDescriptiveStatisticsPreviewExercise(id, previewExerciseDefinitions[id].initialIndex)
     assert.deepEqual(exercise, expectedExercise)
     assert.ok(!exercise.prompt.includes(exercise.solution), `${id} should keep its explanation out of the question`)
+
+    const instance = generateLessonExercise('descriptive-statistics', id, previewExerciseDefinitions[id].initialIndex)
+    const display = getExerciseQuestionDisplay(instance)
+    const { evaluation, solution } = getExerciseGradingData(instance)
+    assert.equal(display.prompt, exercise.prompt)
+    assert.deepEqual(display.response.type === 'numeric' ? display.response.fields.map(({ label, unit }) => ({ label, unit })) : [], exercise.fields)
+    assert.deepEqual(evaluation.type === 'numeric' ? evaluation.answers.map(({ expected: answer }) => answer) : [], exercise.answers)
+    assert.equal(solution.explanation, exercise.solution)
+    assert.equal(Object.hasOwn(display, 'evaluation'), false)
+    assert.equal(Object.hasOwn(display, 'solution'), false)
   }
 })
 
@@ -54,9 +66,16 @@ test('every generated question is distinct and exposes canonical safe-integer an
     const prompts = new Set()
     for (let index = 0; index < count; index += 1) {
       const exercise = generateDescriptiveStatisticsPreviewExercise(id, index)
+      const instance = generateLessonExercise('descriptive-statistics', id, index)
+      const display = getExerciseQuestionDisplay(instance)
+      const { evaluation, solution } = getExerciseGradingData(instance)
       assert.ok(exercise.prompt.length)
       assert.ok(exercise.solution.length)
       assert.equal(exercise.fields.length, exercise.answers.length)
+      assert.equal(display.prompt, exercise.prompt)
+      assert.equal(evaluation.type, 'numeric')
+      assert.deepEqual(evaluation.answers.map(({ expected }) => expected), exercise.answers)
+      assert.equal(solution.explanation, exercise.solution)
       for (const answer of exercise.answers) {
         assert.equal(typeof answer, 'string')
         assert.match(answer, /^-?(?:0|[1-9]\d*)$/u)
