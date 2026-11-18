@@ -1145,7 +1145,7 @@ function App() {
         <nav className="primary-nav" aria-label="メイン">
           {screen === 'map' ? <>
             <button type="button" className={`primary-nav-button${mapUi.mapView === 'graph' ? ' is-current' : ''}`}
-              aria-current="page" aria-pressed={mapUi.mapView === 'graph'}
+              aria-pressed={mapUi.mapView === 'graph'}
               onClick={() => changeMapView('graph')}>学習マップ</button>
             <button type="button" className={`primary-nav-button${mapUi.mapView === 'list' ? ' is-current' : ''}`}
               aria-pressed={mapUi.mapView === 'list'} onClick={() => changeMapView('list')}>教材一覧</button>
