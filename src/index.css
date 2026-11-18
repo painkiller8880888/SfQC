@@ -196,6 +196,7 @@ h1:focus {
 }
 
 .primary-nav a,
+.primary-nav button,
 .screen-navigation a {
   display: inline-block;
   padding: 0.65rem 0.9rem;
@@ -205,11 +206,26 @@ h1:focus {
   font-weight: 650;
 }
 
-.primary-nav a[aria-current="page"] {
+.primary-nav button {
+  color: var(--link);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.primary-nav button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 4px;
+}
+
+.primary-nav a[aria-current="page"],
+.primary-nav button.is-current {
   border-color: var(--accent);
   background: var(--surface-selected);
   text-decoration-thickness: 2px;
 }
+
+.primary-nav button.is-current { text-decoration: underline; }
 
 .page-content {
   display: grid;
@@ -572,6 +588,23 @@ h1 {
 .section-list li + li,
 .reference-group li + li {
   margin-top: 0.5rem;
+}
+
+.lesson-reference-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.lesson-reference-button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .reference-group p,
@@ -1027,28 +1060,15 @@ h1 {
 }
 
 .map-heading .manual-progress-count {
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
   font-weight: 600;
 }
 
-.map-heading .manual-progress-notice {
-  max-width: 38rem;
-  font-size: 0.875rem;
-}
-
-.map-toolbar-actions,
-.map-mode-toggle {
+.map-toolbar-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-}
-
-.map-mode-button[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: var(--surface-selected);
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
 }
 
 .map-license-link {
@@ -1098,14 +1118,19 @@ h1 {
 
   .map-app-shell:not(.map-list-layout) .primary-nav {
     width: 100%;
-    flex-wrap: nowrap;
-    justify-content: space-between;
+    flex-wrap: wrap;
+    justify-content: flex-start;
     gap: 0.35rem;
   }
 
-  .map-app-shell:not(.map-list-layout) .primary-nav a {
+  .map-app-shell:not(.map-list-layout) .primary-nav a,
+  .map-app-shell:not(.map-list-layout) .primary-nav button {
     padding-inline: 0.5rem;
   }
+
+  .map-app-shell.map-list-layout .primary-nav { gap: 0.35rem; }
+  .map-app-shell.map-list-layout .primary-nav a,
+  .map-app-shell.map-list-layout .primary-nav button { padding-inline: 0.5rem; }
 
   .map-app-shell:not(.map-list-layout) .theme-control {
     margin-left: auto;
@@ -1123,8 +1148,7 @@ h1 {
     padding-inline: 0.35rem;
   }
 
-  .map-toolbar-actions,
-  .map-mode-toggle {
+  .map-toolbar-actions {
     gap: 0.35rem;
   }
 }
