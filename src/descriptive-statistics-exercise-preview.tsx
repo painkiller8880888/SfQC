@@ -110,7 +110,7 @@ function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
       {display.calculations.map((step) => <p key={step}>{step}</p>)}
     </div>}
     <form className="ds-practice-answer" onSubmit={checkAnswer}>
-      {display.response.type === 'choice' ? <fieldset>
+      {display.response.type === 'choice' ? <fieldset key={questionKey}>
         <legend>選択肢を1つ選んでください</legend>
         {display.response.choices.map((choice, index) => <label className="ds-practice-choice" htmlFor={`${id}-choice-${index}`} key={choice.id}>
           <input id={`${id}-choice-${index}`} type="radio" name="answer" value={choice.id} />

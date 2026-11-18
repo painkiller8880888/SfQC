@@ -86,6 +86,8 @@ test('fixed and seeded exercise APIs keep display data separate from grading and
   const fixed = generateExerciseInstance(lessonRegistryFixture, 'data-types', 'observed-counts', undefined, {})
   const fixedRepeat = generateExerciseInstance(lessonRegistryFixture, 'data-types', 'observed-counts', undefined, {})
   assert.equal(fixed.instanceId, fixedRepeat.instanceId)
+  assert.deepEqual(getExerciseQuestionDisplay(fixed), getExerciseQuestionDisplay(fixedRepeat))
+  assert.deepEqual(getExerciseGradingData(fixed), getExerciseGradingData(fixedRepeat))
   const fixedDisplay = getExerciseQuestionDisplay(fixed)
   assert.equal(fixed.mode, 'fixed')
   assert.deepEqual(fixedDisplay.response.fields.map(({ id }) => id), ['alpha-count', 'beta-count'])

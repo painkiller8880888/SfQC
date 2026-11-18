@@ -188,6 +188,11 @@ export type ExerciseGradingData = {
   solution: ExerciseQuestion['solution']
 }
 
+/**
+ * For unchanged generator/type resources, a given definition ID and revision plus the same mode/input
+ * must return identical display, evaluation, and solution data. Fixed definitions follow the same
+ * revision rule; runtime validation checks each result's structure without rerunning the generator.
+ */
 export type ExerciseGenerator = (definition: ExerciseDefinition, input: number) => ExerciseQuestion
 
 export type LessonRegistry = {

@@ -89,6 +89,56 @@ test('every generated question is distinct and exposes canonical safe-integer an
   }
 })
 
+test('inline generated answers and explanations agree with the displayed measurements and divisors', () => {
+  const valuesFromQuestion = (prompt) => {
+    const match = prompt.match(/(?:ところ、|3本は )((?:\d+ mm、){2}\d+ mm)/u)
+    assert.ok(match, `expected three displayed measurements in: ${prompt}`)
+    return match[1].split('、').map((value) => Number(value.replace(/ mm$/u, '')))
+  }
+  const signed = (value) => `${value < 0 ? '−' : value > 0 ? '+' : ''}${Math.abs(value)}`
+
+  for (const [id, { count }] of Object.entries(previewExerciseDefinitions)) {
+    for (let index = 0; index < count; index += 1) {
+      const exercise = generateDescriptiveStatisticsPreviewExercise(id, index)
+      const values = valuesFromQuestion(exercise.prompt)
+      const total = values.reduce((sum, value) => sum + value, 0)
+      const mean = total / values.length
+      const deviations = values.map((value) => value - mean)
+      const sumOfSquares = deviations.reduce((sum, value) => sum + value ** 2, 0)
+      const divisor = values.length - 1
+      assert.ok(divisor > 0, `${id} must not divide by zero`)
+
+      if (id === 'mean') {
+        assert.equal(exercise.answers[0], String(mean))
+        assert.deepEqual(exercise.fields.map(({ unit }) => unit), ['mm'])
+        assert.equal(exercise.solution, `${values.join(' + ')} = ${total}、${total} ÷ 3 = ${mean} mm`)
+      } else if (id === 'deviation') {
+        const promptMean = Number(exercise.prompt.match(/平均は (\d+) mm/u)[1])
+        const expectedDeviations = values.map((value) => value - promptMean)
+        assert.equal(expectedDeviations.reduce((sum, value) => sum + value, 0), 0)
+        assert.deepEqual(exercise.answers, expectedDeviations.map(String))
+        assert.deepEqual(exercise.fields.map(({ unit }) => unit), ['mm', 'mm', 'mm'])
+        assert.equal(exercise.solution,
+          `${values.map((value, position) => `${value} − ${promptMean} = ${signed(expectedDeviations[position])}`).join('　')}　(mm)`)
+      } else if (id === 'variance') {
+        const sampleVariance = sumOfSquares / divisor
+        assert.ok(Number.isInteger(sampleVariance))
+        assert.deepEqual(exercise.answers, [String(sumOfSquares), String(sampleVariance)])
+        assert.deepEqual(exercise.fields.map(({ unit }) => unit), ['mm²', 'mm²'])
+        assert.equal(exercise.solution,
+          `平均 = ${total} ÷ 3 = ${mean} mm。偏差は ${deviations.map(signed).join('、')}。S = ${deviations.map((value) => `(${signed(value)})²`).join(' + ')} = ${deviations.map((value) => value ** 2).join(' + ')} = ${sumOfSquares} mm²。V = ${sumOfSquares} ÷ ${divisor} = ${sampleVariance} mm²`)
+      } else {
+        const variance = sumOfSquares / divisor
+        const standardDeviation = Math.sqrt(variance)
+        assert.equal(standardDeviation, Number(exercise.answers[0]))
+        assert.deepEqual(exercise.fields.map(({ unit }) => unit), ['mm'])
+        assert.equal(exercise.solution,
+          `平均 = ${mean} mm、偏差は −${standardDeviation}、0、+${standardDeviation}。S = ${sumOfSquares} mm²、V = ${sumOfSquares} ÷ ${divisor} = ${variance} mm²、s = √${variance} = ${standardDeviation} mm`)
+      }
+    }
+  }
+})
+
 test('regeneration returns a different numeric variant and validates its seed', () => {
   for (const [id, { count }] of Object.entries(previewExerciseDefinitions)) {
     for (const index of [0, Math.floor(count / 2), count - 1]) {
