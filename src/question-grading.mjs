@@ -81,3 +81,32 @@ export function gradeDecimalAnswer(answer, expected, roundingDigits) {
     isCorrect: compareDecimal(roundDecimal(answerValue, roundingDigits), roundDecimal(expectedValue, roundingDigits)) === 0,
   }
 }
+
+/** @param {Array<{ id: string }>} fields @param {Array<{ fieldId: string; expected: string; roundingDigits: number }>} expectedAnswers @param {Record<string, unknown>} answers @returns {import('./question-grading.d.mts').ExerciseNumericGradingResult} */
+export function gradeNumericExerciseAnswers(fields, expectedAnswers, answers) {
+  if (!Array.isArray(fields) || fields.length === 0 || !Array.isArray(expectedAnswers)
+    || typeof answers !== 'object' || answers === null) {
+    return { status: 'invalid', reason: 'invalid-grading-definition' }
+  }
+
+  /** @type {import('./question-grading.d.mts').DecimalAnswerGradingResult[]} */
+  const results = fields.map((field) => {
+    if (!field || typeof field.id !== 'string') return gradeDecimalAnswer('', undefined, 0)
+    const expected = expectedAnswers.find((answer) => answer?.fieldId === field.id)
+    const answer = answers[field.id]
+    const normalized = typeof answer === 'string' ? answer.normalize('NFKC').replace(/−/gu, '-') : answer
+    return gradeDecimalAnswer(normalized, expected?.expected, expected?.roundingDigits)
+  })
+  const fieldIds = fields.map((field) => field?.id)
+  const expectedIds = expectedAnswers.map((answer) => answer?.fieldId)
+  if (results.some((result) => result.status === 'invalid' && result.reason !== 'invalid-answer-format')
+    || fieldIds.some((id, index) => typeof id !== 'string' || fieldIds.indexOf(id) !== index)
+    || expectedIds.length !== fieldIds.length
+    || expectedIds.some((id, index) => !fieldIds.includes(id) || expectedIds.indexOf(id) !== index)) {
+    return { status: 'invalid', reason: 'invalid-grading-definition' }
+  }
+  if (results.some((result) => result.status === 'invalid')) {
+    return { status: 'invalid', reason: 'invalid-answer-format' }
+  }
+  return { status: 'graded', isCorrect: results.every((result) => result.status === 'graded' && result.isCorrect) }
+}

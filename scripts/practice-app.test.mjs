@@ -16,6 +16,7 @@ import {
 import { generateDescriptiveStatisticsExercisePreviewQuestion } from '../src/descriptive-statistics-exercise-preview-data.mjs'
 import { LEARNING_STATE_KEY, readLearningState, serializeLearningState } from '../src/learning-state.mjs'
 import { PRACTICE_RESULTS_KEY, serializePracticeResults } from '../src/practice-results.mjs'
+import { lessonRegistryFixture } from './lesson-contract.fixture.mjs'
 
 const THEME_STORAGE_KEY = 'sfqc:theme-preference'
 const THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)'
@@ -1747,6 +1748,168 @@ test('section checks stay local while independent judgments and manual completio
   }
 })
 
+test('general lesson slots share numeric grading and keep each question isolated when generation fails', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const failedSeeds = new Set([0, 2])
+  let slotRoot
+  try {
+    const { LessonRouteContent } = await app.loadModule('/src/lesson-view.tsx')
+    const { createRoot } = await import('react-dom/client')
+    const slotHost = window.document.createElement('div')
+    app.host.append(slotHost)
+    slotRoot = createRoot(slotHost)
+    const fixtureGenerators = {
+      'fixture-counts': (_definition, seed) => {
+        if (seed === 0) throw new Error('fixture generation failure')
+        if (failedSeeds.has(seed)) return null
+        const first = seed + 1
+        const second = seed + 2
+        return {
+          display: {
+            prompt: '表の値に2を足した結果を、甲と乙の順に入力してください。',
+            table: { rows: [{ label: '観測', values: [first, second] }] },
+            response: { type: 'numeric', fields: [
+              { id: 'first', label: '甲', unit: '個', roundingDigits: 0 },
+              { id: 'second', label: '乙', unit: '個', roundingDigits: 0 },
+            ] },
+            reviewSectionRefs: ['data-types#types'],
+          },
+          evaluation: { type: 'numeric', answers: [
+            { fieldId: 'first', expected: String(first + 2), roundingDigits: 0 },
+            { fieldId: 'second', expected: String(second + 2), roundingDigits: 0 },
+          ] },
+          solution: {
+            steps: [`甲：${first} + 2 = ${first + 2}`, `乙：${second} + 2 = ${second + 2}`],
+            explanation: '表の観測値に2を足します。',
+          },
+        }
+      },
+    }
+    await act(async () => slotRoot.render(createElement(LessonRouteContent, {
+      lesson: lessonRegistryFixture.lessons.find((lesson) => lesson.lessonId === 'data-types'),
+      sectionId: 'types',
+      sectionHeadingRef: { current: null },
+      registry: lessonRegistryFixture,
+      exerciseGenerators: fixtureGenerators,
+    })))
+
+    const fixed = slotHost.querySelector('[data-exercise-id="observed-counts"]')
+    const fixedInputs = fixed.querySelectorAll('input[type="text"]')
+    assert.equal(fixedInputs.length, 2)
+    assert.match(fixed.textContent, /データの種類：観測単位とデータ型/u)
+    assert.ok(fixed.querySelector('.ds-practice-question-heading a[data-nav-intent="review"]'))
+    assert.ok([...fixed.querySelectorAll('.ds-practice-number span')].every((label) => /整数に丸めて判定/u.test(label.textContent)))
+    const fixedForm = fixed.querySelector('form')
+    await act(async () => fixedForm.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(fixed.querySelector('.ds-exercise-feedback').textContent, /入力形式/u)
+    await changeTextInput(window, fixedInputs[0], '2')
+    await changeTextInput(window, fixedInputs[1], '4')
+    await act(async () => fixedForm.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(fixed.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    await changeTextInput(window, fixedInputs[1], '3')
+    await act(async () => fixedForm.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(fixed.querySelector('.ds-exercise-feedback').textContent, /正解/u)
+    assert.equal(fixed.querySelector('.ds-practice-question details').open, true,
+      'a correct response opens the explanation')
+
+    const generated = slotHost.querySelector('[data-exercise-id="generated-counts"]')
+    assert.match(generated.querySelector('.ds-exercise-error').textContent, /表示できません/u)
+    assert.equal(generated.querySelector('form'), null)
+    let regenerate = buttonFor(generated, '別の問題')
+    assert.ok(regenerate)
+    await click(regenerate)
+    assert.match(generated.querySelector('.ds-practice-prompt').textContent, /表の値に2/u)
+    const table = generated.querySelector('table')
+    assert.equal(table.querySelector('caption'), null, 'generic tables do not invent a subject-specific caption')
+    assert.deepEqual([...table.querySelectorAll('thead th')].map((cell) => cell.textContent), ['', '1', '2'])
+    const generatedDetails = generated.querySelector('.ds-practice-question details')
+    assert.equal(generatedDetails.open, false)
+    assert.deepEqual([...generatedDetails.querySelectorAll('.ds-exercise-steps li')].map((step) => step.textContent), [
+      '甲：2 + 2 = 4', '乙：3 + 2 = 5',
+    ])
+    assert.ok(generated.querySelector('.ds-practice-question-heading a[data-nav-intent="review"]'))
+    const generatedInputs = generated.querySelectorAll('input[type="text"]')
+    await changeTextInput(window, generatedInputs[0], '4')
+    await changeTextInput(window, generatedInputs[1], '6')
+    const generatedForm = generated.querySelector('form')
+    await act(async () => generatedForm.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(generated.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    await changeTextInput(window, generatedInputs[1], '5')
+    await act(async () => generatedForm.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(generated.querySelector('.ds-exercise-feedback').textContent, /正解/u)
+    assert.equal(generatedDetails.open, true)
+
+    regenerate = buttonFor(generated, '別の問題')
+    regenerate.focus()
+    const oldPrompt = generated.querySelector('.ds-practice-prompt').textContent
+    await click(regenerate)
+    assert.equal(buttonFor(generated, '別の問題'), regenerate, 'regeneration does not remount its focused control')
+    assert.equal(window.document.activeElement, regenerate)
+    assert.equal(generated.querySelector('.ds-practice-prompt').textContent, oldPrompt)
+    assert.equal(generated.querySelectorAll('input[type="text"]')[0].value, '4')
+    assert.equal(generated.querySelectorAll('input[type="text"]')[1].value, '5')
+    assert.equal(generated.querySelector('.ds-practice-question details').open, true)
+    assert.match(generated.querySelector('.ds-exercise-error').textContent, /表示できませんでした/u)
+
+    failedSeeds.delete(2)
+    await click(regenerate)
+    assert.equal(generated.querySelectorAll('input[type="text"]')[0].value, '')
+    assert.equal(generated.querySelectorAll('input[type="text"]')[1].value, '')
+    assert.equal(generated.querySelector('.ds-practice-question details').open, false)
+    assert.equal(generated.querySelector('.ds-exercise-feedback').textContent, '')
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null,
+      'section checks never enter independent practice history')
+
+    const choiceRegistry = structuredClone(lessonRegistryFixture)
+    choiceRegistry.lessons.find((lesson) => lesson.lessonId === 'data-types').sections[0].blocks.push({
+      kind: 'exerciseSlot', exerciseId: 'classify-unit',
+    })
+    await act(async () => slotRoot.render(createElement(LessonRouteContent, {
+      lesson: choiceRegistry.lessons.find((lesson) => lesson.lessonId === 'data-types'),
+      sectionId: 'types',
+      sectionHeadingRef: { current: null },
+      registry: choiceRegistry,
+      exerciseGenerators: fixtureGenerators,
+    })))
+    const choice = slotHost.querySelector('[data-exercise-id="classify-unit"]')
+    const choiceDetails = choice.querySelector('details')
+    assert.deepEqual([...choice.querySelectorAll('.ds-practice-choice b')].map((label) => label.textContent), ['ア：', 'イ：'])
+    assert.equal(choiceDetails.open, false)
+    assert.ok(choiceDetails.querySelector('.ds-exercise-solution'), 'the solution stays inside the closed details')
+    assert.equal(choiceDetails.querySelector('summary').textContent, '解説を見る')
+    assert.equal(choiceDetails.open, false)
+    await click(choice.querySelector('input[value="count-the-defects"]'))
+    await act(async () => choice.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(choice.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.equal(choice.querySelector('.ds-exercise-misconception').textContent,
+      '製品の個数と傷の件数を同じ単位で数えています。')
+    assert.ok(choice.querySelector('.ds-exercise-review-links a[data-nav-intent="review"]'))
+    assert.equal(choiceDetails.open, false, 'an incorrect choice does not expose the solution')
+
+    const missingDefinitionRegistry = structuredClone(lessonRegistryFixture)
+    missingDefinitionRegistry.exerciseCatalog.definitions = missingDefinitionRegistry.exerciseCatalog.definitions
+      .filter((definition) => definition.exerciseId !== 'generated-counts')
+    const missingDefinitionSection = missingDefinitionRegistry.lessons.find((lesson) => lesson.lessonId === 'data-types').sections[0]
+    missingDefinitionSection.blocks.find((block) => block.kind === 'details').blocks[1].exerciseId = 'missing-counts'
+    await act(async () => slotRoot.render(createElement(LessonRouteContent, {
+      lesson: missingDefinitionRegistry.lessons.find((lesson) => lesson.lessonId === 'data-types'),
+      sectionId: 'types',
+      sectionHeadingRef: { current: null },
+      registry: missingDefinitionRegistry,
+      exerciseGenerators: fixtureGenerators,
+    })))
+    const missingDefinition = slotHost.querySelector('[data-exercise-id="missing-counts"]')
+    assert.match(missingDefinition.querySelector('.ds-exercise-error').textContent, /表示できません/u)
+    assert.equal(missingDefinition.querySelector('form'), null)
+    assert.ok(slotHost.querySelector('[data-exercise-id="observed-counts"] form'),
+      'a missing definition affects only its own question slot')
+  } finally {
+    if (slotRoot) await act(async () => slotRoot.unmount())
+    await app.close()
+  }
+})
+
 test('unknown judgment writes block backup restore until a recheck confirms the saved record', async () => {
   let confirmations = 0
   const app = await createHarness({ confirm: () => { confirmations += 1; return true } })
@@ -1889,9 +2052,24 @@ test('course practice presents five categories, records one valid judgment, and 
       question.sections.map((sectionId) => `/course/descriptive-statistics/lesson/${sectionId}`))
     assert.ok([...card.querySelectorAll('.ds-practice-question-heading a')].every((link) => link.dataset.navIntent === 'review'),
       'a lesson link from a course exercise must focus the section and allow returning to the exercise')
+    assert.equal(card.querySelector('details').open, false, 'solutions begin closed')
+    if (question.table) {
+      const table = card.querySelector('table')
+      assert.equal(table.querySelector('caption').textContent, 'ラインごとに測った値')
+      assert.deepEqual([...table.querySelectorAll('thead th')].map((cell) => cell.textContent), [
+        'ライン', ...question.table.rows[0].values.map((_, index) => `${index + 1}個目`),
+      ])
+      assert.deepEqual([...table.querySelectorAll('tbody tr')].map((row) => [
+        row.querySelector('th').textContent,
+        ...[...row.querySelectorAll('td')].map((cell) => Number(cell.textContent)),
+      ]), question.table.rows.map((row) => [row.label, ...row.values]))
+    } else assert.equal(card.querySelector('table'), null)
 
     const submit = card.querySelector('form')
-    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    await act(async () => {
+      submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
+      submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
+    })
     assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null,
       'an empty numeric answer or unselected choice must not consume the first grade')
 
@@ -1901,13 +2079,29 @@ test('course practice presents five categories, records one valid judgment, and 
     } else {
       await changeTextInput(window, card.querySelector('input[type="text"]'), String(Number(question.answer) + 1))
     }
-    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    await act(async () => {
+      submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
+      submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
+    })
     assert.match(card.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.match(app.host.querySelector('.ds-practice-toolbar [role="status"]').textContent,
+      /正解 0 \/ 5 問（答え合わせ済み 1 問）/u)
     const saved = JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY))
     assert.equal(saved.records.length, 1)
     assert.equal(saved.records[0].categoryId, ['mean-deviation', 'data-transformation', 'unbiased-variance', 'comprehensive', 'variance-standard-deviation'][categoryIndex])
     assert.equal(saved.records[0].isCorrect, false)
     assert.match(saved.records[0].attemptedAt, /^\d{4}-\d{2}-\d{2}T/u)
+
+    if (question.type === 'choice') {
+      await click(card.querySelectorAll('input[type="radio"]')[question.answer])
+    } else {
+      await changeTextInput(window, card.querySelector('input[type="text"]'), String(question.answer))
+    }
+    await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /正解/u)
+    assert.match(app.host.querySelector('.ds-practice-toolbar [role="status"]').textContent,
+      /正解 0 \/ 5 問（答え合わせ済み 1 問）/u, 'the current aggregate keeps the first wrong judgment')
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1)
 
     await act(async () => submit.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
     assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1,
@@ -1977,6 +2171,54 @@ test('regenerating a checked choice question clears its radio selection before a
     assert.match(card.querySelector('.ds-exercise-feedback').textContent, /選択肢を選んでください/u)
     assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1,
       'submitting after choice-to-choice regeneration must not add another judgment')
+  } finally {
+    Math.random = originalRandom
+    await app.close()
+  }
+})
+
+test('bulk regeneration isolates a failed question and keeps its grade and saved history', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const originalRandom = Math.random
+  try {
+    await app.remountAt('#/course/descriptive-statistics/practice')
+    const cards = [...app.host.querySelectorAll('.ds-practice-question')]
+    for (const categoryIndex of [0, 1]) {
+      const card = cards[categoryIndex]
+      const question = generateDescriptiveStatisticsExercisePreviewQuestion(
+        categoryIndex, Number(card.dataset.practiceType), Number(card.dataset.practiceSeed),
+      )
+      if (question.type === 'choice') {
+        await click(card.querySelectorAll('input[type="radio"]')[question.answer === 0 ? 1 : 0])
+      } else {
+        await changeTextInput(window, card.querySelector('input[type="text"]'), String(Number(question.answer) + 1))
+      }
+      await act(async () => card.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    }
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 2)
+    const beforeQuestions = cards.map((card) => [card.dataset.practiceType, card.dataset.practiceSeed])
+    const failedCard = cards[1]
+    const failedQuestion = [failedCard.dataset.practiceType, failedCard.dataset.practiceSeed]
+    const failedFeedback = failedCard.querySelector('.ds-exercise-feedback').textContent
+    const answerState = (card) => [...card.querySelectorAll('input')].map((input) => [input.value, input.checked])
+    const failedAnswers = answerState(failedCard)
+
+    const randomValues = [0.1, 0.2, 1, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    Math.random = () => randomValues.shift() ?? 0.2
+    await click(buttonFor(app.host, '別の問題にする（5問すべて）'))
+
+    const after = [...app.host.querySelectorAll('.ds-practice-question')]
+    assert.deepEqual([after[1].dataset.practiceType, after[1].dataset.practiceSeed], failedQuestion)
+    assert.match(after[1].querySelector('.ds-exercise-error').textContent, /表示できませんでした/u)
+    assert.equal(after[1].querySelector('.ds-exercise-feedback').textContent, failedFeedback)
+    assert.deepEqual(answerState(after[1]), failedAnswers)
+    assert.ok(after[0].dataset.practiceType !== beforeQuestions[0][0]
+      || after[0].dataset.practiceSeed !== beforeQuestions[0][1])
+    assert.match(app.host.querySelector('.ds-practice-toolbar [role="status"]').textContent,
+      /答え合わせ済み 1 問/u, 'only the failed card stays in the current aggregate')
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 2,
+      'bulk regeneration does not remove saved history')
   } finally {
     Math.random = originalRandom
     await app.close()

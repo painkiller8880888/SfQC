@@ -1,8 +1,7 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import { LessonReference } from './lesson-view'
-import { gradeDecimalAnswer } from './question-grading.mjs'
+import { useRef, useState } from 'react'
+import { ExerciseQuestionCard } from './lesson-view'
+import type { ExerciseInstance } from './lesson-contract.mjs'
 import { generateLessonExercise } from './lesson-exercise-adapters.mjs'
-import { getExerciseGradingData, getExerciseQuestionDisplay } from './lesson-contract.mjs'
 import {
   createDescriptiveStatisticsExercisePreviewState,
   descriptiveStatisticsExerciseCategories,
@@ -11,134 +10,20 @@ import {
 import type {
   DescriptiveStatisticsExercisePreviewState,
 } from './descriptive-statistics-exercise-preview-data.mjs'
-import practiceStyles from './course-practice.css?inline'
 
-const sectionLabels: Record<string, string> = {
-  mean: '1 平均',
-  deviation: '2 偏差',
-  variance: '3 範囲と分散',
-  'standard-deviation': '4 標準偏差',
-}
-
-function normalizeNumericInput(text: string) {
-  return text.normalize('NFKC').replace(/−/gu, '-')
-}
-
-function ExerciseCard({ categoryIndex, state, onGrade, onRegenerate }: {
-  categoryIndex: number
+type PracticeQuestion = {
   state: DescriptiveStatisticsExercisePreviewState
-  onGrade: (correct: boolean) => void
-  onRegenerate: () => void
-}) {
-  const id = useId()
-  const detailsRef = useRef<HTMLDetailsElement>(null)
-  const gradedQuestionRef = useRef('')
-  const [answer, setAnswer] = useState('')
-  const [feedback, setFeedback] = useState({ kind: '', text: '' })
-  const category = descriptiveStatisticsExerciseCategories[categoryIndex]
-  const exerciseId = category.typeIds[state.typeIndex]
-  const instance = generateLessonExercise('descriptive-statistics', exerciseId, state.seed)
-  const display = getExerciseQuestionDisplay(instance)
-  const { evaluation, solution } = getExerciseGradingData(instance)
-  const questionKey = instance.instanceId
-  const titleId = `${id}-title`
+  instance: ExerciseInstance | null
+  error: string | null
+}
 
-  useEffect(() => {
-    setAnswer('')
-    setFeedback({ kind: '', text: '' })
-    gradedQuestionRef.current = ''
-    if (detailsRef.current) detailsRef.current.open = false
-  }, [state.seed, state.typeIndex])
-
-  const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    let correct: boolean
-    if (display.response.type === 'choice') {
-      if (evaluation.type !== 'choice') throw new TypeError('Choice exercises need choice grading data')
-      const selected = event.currentTarget.querySelector<HTMLInputElement>('input[name="answer"]:checked')?.value
-      if (selected === undefined) {
-        setFeedback({ kind: 'ng', text: '選択肢を選んでください。' })
-        return
-      }
-      correct = selected === evaluation.correctChoiceId
-    } else {
-      if (evaluation.type !== 'numeric') throw new TypeError('Numeric exercises need numeric grading data')
-      const result = gradeDecimalAnswer(normalizeNumericInput(answer), evaluation.answers[0]?.expected, evaluation.answers[0]?.roundingDigits)
-      if (result.status === 'invalid') {
-        setFeedback({ kind: 'ng', text: '入力形式を確認してください（例：12、−2、+3、0.5）。' })
-        return
-      }
-      correct = result.isCorrect
-    }
-    if (gradedQuestionRef.current !== questionKey) {
-      gradedQuestionRef.current = questionKey
-      onGrade(correct)
-    }
-    if (correct) {
-      setFeedback({ kind: 'ok', text: '正解です。' })
-      if (detailsRef.current) detailsRef.current.open = true
-    } else {
-      setFeedback({ kind: 'ng', text: '違います。考え直すか、「解説を見る」で考え方を確認してください。' })
-    }
+function createPracticeQuestion(categoryIndex: number, state: DescriptiveStatisticsExercisePreviewState): PracticeQuestion {
+  try {
+    const exerciseId = descriptiveStatisticsExerciseCategories[categoryIndex].typeIds[state.typeIndex]
+    return { state, instance: generateLessonExercise('descriptive-statistics', exerciseId, state.seed), error: null }
+  } catch {
+    return { state, instance: null, error: 'この問題を表示できません。' }
   }
-
-  return <section className="ds-practice-question" aria-labelledby={titleId} data-practice-category={categoryIndex} data-practice-type={state.typeIndex} data-practice-seed={state.seed}>
-    <div className="ds-practice-question-heading">
-      <h2 id={titleId}>問{categoryIndex + 1}：{category.title}</h2>
-      <p>確認する節：{display.reviewSectionRefs.map((targetRef, index) => {
-        const sectionId = targetRef.split('#')[1] ?? targetRef
-        return <span key={targetRef}>
-          {index > 0 && '・'}<LessonReference
-            targetRef={targetRef}
-            label={sectionLabels[sectionId] ?? sectionId}
-            intent="review"
-          />
-        </span>
-      })}</p>
-    </div>
-    <p className="ds-practice-prompt">{display.prompt}</p>
-    {display.table && <div className="ds-practice-table-wrap">
-      <table>
-        <caption>ラインごとに測った値</caption>
-        <thead><tr><th scope="col">ライン</th>{display.table.rows[0].values.map((_, index) => <th scope="col" key={index}>{index + 1}個目</th>)}</tr></thead>
-        <tbody>{display.table.rows.map((row) => <tr key={row.label}>
-          <th scope="row">{row.label}</th>{row.values.map((value, index) => <td className="num" key={index}>{value}</td>)}
-        </tr>)}</tbody>
-      </table>
-    </div>}
-    {display.calculations && <div className="ds-practice-calculation" aria-label="計算過程">
-      {display.calculations.map((step) => <p key={step}>{step}</p>)}
-    </div>}
-    <form className="ds-practice-answer" onSubmit={checkAnswer}>
-      {display.response.type === 'choice' ? <fieldset key={questionKey}>
-        <legend>選択肢を1つ選んでください</legend>
-        {display.response.choices.map((choice, index) => <label className="ds-practice-choice" htmlFor={`${id}-choice-${index}`} key={choice.id}>
-          <input id={`${id}-choice-${index}`} type="radio" name="answer" value={choice.id} />
-          <span><b>{String.fromCharCode('ア'.charCodeAt(0) + index)}：</b>{choice.text}</span>
-        </label>)}
-      </fieldset> : <label className="ds-practice-number" htmlFor={`${id}-answer`}>
-        答え
-        <input
-          id={`${id}-answer`}
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          value={answer}
-          onChange={(event) => setAnswer(event.currentTarget.value)}
-        />
-        <span>{display.response.type === 'numeric' ? display.response.fields[0].unit : ''}</span>
-      </label>}
-      <div className="ds-exercise-actions">
-        <button className="ds-button ds-button-primary" type="submit">答え合わせ</button>
-        <button className="ds-button" type="button" onClick={onRegenerate}>この問題を入れ替える</button>
-      </div>
-    </form>
-    <p className={`ds-exercise-feedback ${feedback.kind}`} role="status" aria-live="polite">{feedback.text}</p>
-    <details ref={detailsRef}>
-      <summary>解説を見る</summary>
-      <p className="ds-exercise-solution">{solution.explanation}</p>
-    </details>
-  </section>
 }
 
 export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirstGrade }: {
@@ -146,25 +31,32 @@ export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirs
   onFirstGrade?: (categoryId: string, isCorrect: boolean) => void
 }) {
   const [questions, setQuestions] = useState(() => descriptiveStatisticsExerciseCategories.map((_, index) =>
-    createDescriptiveStatisticsExercisePreviewState(index)))
+    createPracticeQuestion(index, createDescriptiveStatisticsExercisePreviewState(index))))
   const [grades, setGrades] = useState<(boolean | null)[]>(() => Array(descriptiveStatisticsExerciseCategories.length).fill(null))
   const questionListRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const style = document.createElement('style')
-    style.textContent = practiceStyles
-    document.head.append(style)
-    return () => style.remove()
-  }, [])
+  const nextQuestion = (categoryIndex: number, current: PracticeQuestion) => {
+    try {
+      const nextState = nextDescriptiveStatisticsExercisePreviewState(categoryIndex, current.state)
+      const question = createPracticeQuestion(categoryIndex, nextState)
+      if (question.instance) return { question, regenerated: true }
+    } catch {
+      // Keep the current question and its state when generation fails.
+    }
+    return { question: { ...current, error: current.instance
+      ? '別の問題を表示できませんでした。表示中の問題を保っています。' : 'この問題を表示できません。' }, regenerated: false }
+  }
 
   const regenerateOne = (categoryIndex: number) => {
-    setQuestions((current) => current.map((state, index) => index === categoryIndex
-      ? nextDescriptiveStatisticsExercisePreviewState(categoryIndex, state) : state))
-    setGrades((current) => current.map((grade, index) => index === categoryIndex ? null : grade))
+    const result = nextQuestion(categoryIndex, questions[categoryIndex])
+    setQuestions((current) => current.map((question, index) => index === categoryIndex ? result.question : question))
+    if (result.regenerated) setGrades((current) => current.map((grade, index) => index === categoryIndex ? null : grade))
   }
+
   const regenerateAll = () => {
-    setQuestions((current) => current.map((state, index) => nextDescriptiveStatisticsExercisePreviewState(index, state)))
-    setGrades(Array(descriptiveStatisticsExerciseCategories.length).fill(null))
+    const results = questions.map((question, index) => nextQuestion(index, question))
+    setQuestions(results.map((result) => result.question))
+    setGrades((current) => current.map((grade, index) => results[index].regenerated ? null : grade))
     questionListRef.current?.scrollIntoView?.({ block: 'start' })
   }
   const answered = grades.filter((grade) => grade !== null).length
@@ -180,15 +72,24 @@ export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirs
         </div>
       </header>
       <div className="ds-practice-list" ref={questionListRef}>
-        {questions.map((state, categoryIndex) => <ExerciseCard
+        {questions.map((question, categoryIndex) => <ExerciseQuestionCard
           key={categoryIndex}
-          categoryIndex={categoryIndex}
-          state={state}
-          onGrade={(isCorrect) => {
+          instance={question.instance}
+          exerciseId={question.instance?.exerciseId ?? descriptiveStatisticsExerciseCategories[categoryIndex].typeIds[question.state.typeIndex]}
+          title={`問${categoryIndex + 1}：${descriptiveStatisticsExerciseCategories[categoryIndex].title}`}
+          headingLevel={2}
+          error={question.error}
+          onFirstGrade={(isCorrect) => {
             setGrades((current) => current.map((grade, index) => index === categoryIndex ? isCorrect : grade))
             onFirstGrade?.(descriptiveStatisticsExerciseCategories[categoryIndex].id, isCorrect)
           }}
           onRegenerate={() => regenerateOne(categoryIndex)}
+          tableCaption="ラインごとに測った値"
+          tableRowHeaderLabel="ライン"
+          tableColumnLabel={(index) => `${index + 1}個目`}
+          dataPracticeCategory={categoryIndex}
+          dataPracticeType={question.state.typeIndex}
+          dataPracticeSeed={question.state.seed}
         />)}
       </div>
       <div className="ds-practice-footer">

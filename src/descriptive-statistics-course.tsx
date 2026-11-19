@@ -1,17 +1,12 @@
-import { useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
-import type { IncludedLessonDefinition, LessonBodyBlock, LessonRegistry } from './lesson-contract.mjs'
+import { useState, type ReactNode, type RefObject } from 'react'
+import type { ExerciseInstance, IncludedLessonDefinition, LessonBodyBlock, LessonRegistry } from './lesson-contract.mjs'
 import { parseLessonRef } from './lesson-contract.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { routeToHash } from './resolve-screen.mjs'
 import { FigureRef } from './figures/figure-ref'
-import { gradeDecimalAnswer } from './question-grading.mjs'
 import { nextPreviewExerciseIndex, previewExerciseDefinitions } from './descriptive-statistics-preview-exercises.mjs'
 import { generateLessonExercise } from './lesson-exercise-adapters.mjs'
-import { getExerciseGradingData, getExerciseQuestionDisplay } from './lesson-contract.mjs'
-
-function normalizeNumericInput(value: string) {
-  return value.normalize('NFKC').replace(/−/gu, '-')
-}
+import { ExerciseQuestionCard } from './lesson-view'
 
 function CourseReference({ targetRef, label, intent = 'review', registry }: {
   targetRef: string
@@ -42,59 +37,38 @@ function MathText({ text }: { text: string }) {
   return <>{parts}</>
 }
 
-function InlineExercise({ exerciseId }: {
+function InlineExercise({ exerciseId, registry }: {
   exerciseId: string
+  registry: LessonRegistry
 }) {
-  const id = useId()
-  const detailsRef = useRef<HTMLDetailsElement>(null)
-  const [index, setIndex] = useState(() => previewExerciseDefinitions[exerciseId as keyof typeof previewExerciseDefinitions]?.initialIndex ?? 0)
-  const [answers, setAnswers] = useState<string[]>([])
-  const [feedback, setFeedback] = useState('')
-  const instance = generateLessonExercise('descriptive-statistics', exerciseId, index)
-  const display = getExerciseQuestionDisplay(instance)
-  const { evaluation, solution } = getExerciseGradingData(instance)
-  const response = display.response
-  if (response.type !== 'numeric' || evaluation.type !== 'numeric') throw new TypeError('Inline exercises must accept numeric answers')
-  const grade = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const results = response.fields.map((field, fieldIndex) => {
-      const expected = evaluation.answers.find((answer) => answer.fieldId === field.id)
-      return gradeDecimalAnswer(normalizeNumericInput(answers[fieldIndex] ?? ''), expected?.expected, expected?.roundingDigits)
-    })
-    if (results.some((result) => result.status === 'invalid')) {
-      setFeedback('入力形式を確認してください（例：12、−2、0.5）。')
-      return
+  type QuestionState = { index: number; instance: ExerciseInstance | null; error: string | null }
+  const definition = registry.exerciseCatalog?.definitions.find((item) => item.lessonId === 'descriptive-statistics' && item.exerciseId === exerciseId)
+  const generation = definition?.generation
+  const initialIndex = previewExerciseDefinitions[exerciseId as keyof typeof previewExerciseDefinitions]?.initialIndex
+    ?? (generation?.kind === 'fixed' ? 0 : generation?.minimum ?? 0)
+  const [question, setQuestion] = useState<QuestionState>(() => {
+    try {
+      return { index: initialIndex, instance: generateLessonExercise('descriptive-statistics', exerciseId, initialIndex, registry), error: null }
+    } catch {
+      return { index: initialIndex, instance: null, error: 'この問題を表示できません。' }
     }
-    const correct = results.length === evaluation.answers.length && results.every((result) => result.status === 'graded' && result.isCorrect)
-    setFeedback(correct ? '正解です。解説を開いて計算を確認できます。' : '違います。値−平均、または二乗和の式を確認してください。')
-    if (correct && detailsRef.current) detailsRef.current.open = true
-  }
+  })
+  const canRegenerate = generation?.kind === 'index' && generation.maximum > generation.minimum
   const regenerate = () => {
-    setIndex((current) => nextPreviewExerciseIndex(exerciseId as keyof typeof previewExerciseDefinitions, current))
-    setAnswers([])
-    setFeedback('')
-    if (detailsRef.current) detailsRef.current.open = false
+    try {
+      const index = nextPreviewExerciseIndex(exerciseId as keyof typeof previewExerciseDefinitions, question.index)
+      const instance = generateLessonExercise('descriptive-statistics', exerciseId, index, registry)
+      setQuestion({ index, instance, error: null })
+    } catch {
+      setQuestion((current) => ({ ...current, error: current.instance
+        ? '別の問題を表示できませんでした。表示中の問題を保っています。' : 'この問題を表示できません。' }))
+    }
   }
 
-  return <section className="course-inline-exercise" aria-labelledby={`${id}-title`}>
-    <h4 id={`${id}-title`}>確認問題</h4>
-    <p>{display.prompt}</p>
-    <form onSubmit={grade}>
-      {response.fields.map((field, fieldIndex) => <label className="course-inline-field" key={field.id} htmlFor={`${id}-${fieldIndex}`}>
-        {field.label}
-        <input id={`${id}-${fieldIndex}`} type="text" inputMode="decimal" autoComplete="off" value={answers[fieldIndex] ?? ''}
-          onChange={(event) => {
-            const value = event.currentTarget.value
-            setAnswers((current) => Array.from({ length: response.fields.length }, (_, index) =>
-              index === fieldIndex ? value : current[index] ?? ''))
-          }} />
-        <span>{field.roundingInstruction ? `${field.unit}、${field.roundingInstruction}` : field.unit}</span>
-      </label>)}
-      <div className="course-inline-actions"><button type="submit">答え合わせ</button><button type="button" onClick={regenerate}>別の問題</button></div>
-    </form>
-    <p role="status" aria-live="polite">{feedback}</p>
-    <details ref={detailsRef}><summary>解説を見る</summary><p>{solution.explanation}</p></details>
-  </section>
+  return <ExerciseQuestionCard instance={question.instance} exerciseId={exerciseId} title="確認問題" headingLevel={4}
+    registry={registry} error={question.error} className="course-inline-exercise"
+    tableCaption="ラインごとに測った値" tableRowHeaderLabel="ライン" tableColumnLabel={(index) => `${index + 1}個目`}
+    onRegenerate={canRegenerate ? regenerate : undefined} regenerateLabel="別の問題" />
 }
 
 function BodyBlock({ block, lesson, registry }: {
@@ -117,7 +91,7 @@ function BodyBlock({ block, lesson, registry }: {
   if (block.kind === 'details') return <details className="course-details"><summary>{block.summary}</summary>
     <div>{block.blocks.map((child, index) => <BodyBlock key={index} block={child} lesson={lesson} registry={registry} />)}</div>
   </details>
-  return <InlineExercise exerciseId={block.exerciseId} />
+  return <InlineExercise exerciseId={block.exerciseId} registry={registry} />
 }
 
 export function DescriptiveStatisticsCourse({ lesson, activeSectionId, sectionHeadingRef, registry = lessonRegistry }: {

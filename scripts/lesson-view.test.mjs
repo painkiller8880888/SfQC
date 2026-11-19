@@ -6,6 +6,7 @@ import { createServer } from 'vite'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 import { deriveCourseProgress } from '../src/course-progress.mjs'
 import { deriveLessonGraph } from '../src/lesson-graph.mjs'
+import { lessonRegistryFixture } from './lesson-contract.fixture.mjs'
 
 function createManualProgress() {
   return Object.fromEntries(lessonRegistry.lessons.map((lesson) => [lesson.lessonId, { completedAt: null }]))
@@ -155,7 +156,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.match(variance, /id="course-section-variance"/u)
     assert.equal((variance.match(/class="course-section"/gu) ?? []).length, 4)
     assert.equal((variance.match(/class="interactive-variance-comparison/g) ?? []).length, 4)
-    assert.equal((variance.match(/class="course-inline-exercise"/gu) ?? []).length, 4)
+    assert.equal((variance.match(/class="ds-practice-question course-inline-exercise"/gu) ?? []).length, 4)
     assert.match(variance, /href="#\/lesson\/math-algebra-sigma\/sigma" data-nav-intent="review"/u)
     assert.match(variance, /n − 1/u)
     assert.match(variance, /class="course-references"/u)
@@ -234,7 +235,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     const actualVarianceRoute = render(App)
     assert.match(actualVarianceRoute, /<h1[^>]*>範囲と分散<\/h1>/u)
     assert.match(actualVarianceRoute, /class="course-sections"/u)
-    assert.match(actualVarianceRoute, /class="course-inline-exercise"/u)
+    assert.match(actualVarianceRoute, /class="ds-practice-question course-inline-exercise"/u)
     assert.doesNotMatch(actualVarianceRoute, /<h1[^>]*>範囲と分散 \| 基本統計量/u)
 
     globalThis.window.location.hash = '#/practice'

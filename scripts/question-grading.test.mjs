@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { gradeDecimalAnswer, isValidDecimalAnswer } from '../src/question-grading.mjs'
+import { gradeDecimalAnswer, gradeNumericExerciseAnswers, isValidDecimalAnswer } from '../src/question-grading.mjs'
 
 test('decimal grading rounds half away from zero and compares exact values', () => {
   assert.deepEqual(gradeDecimalAnswer('1.234', '1.23', 2), { status: 'graded', isCorrect: true })
@@ -18,6 +18,26 @@ test('decimal grading validates rounding settings and expected values before ans
   }
   assert.deepEqual(gradeDecimalAnswer('bad', '1e0', 2), { status: 'invalid', reason: 'invalid-expected-value' })
   assert.deepEqual(gradeDecimalAnswer('bad', '1', 2), { status: 'invalid', reason: 'invalid-answer-format' })
+})
+
+test('numeric exercise grading maps fields by ID and gives definition errors priority', () => {
+  const fields = [{ id: 'first' }, { id: 'second' }]
+  const expected = [
+    { fieldId: 'second', expected: '3', roundingDigits: 0 },
+    { fieldId: 'first', expected: '2', roundingDigits: 0 },
+  ]
+  assert.deepEqual(gradeNumericExerciseAnswers(fields, expected, { first: '２', second: '3' }), {
+    status: 'graded', isCorrect: true,
+  })
+  assert.deepEqual(gradeNumericExerciseAnswers(fields, expected, { first: '2', second: '' }), {
+    status: 'invalid', reason: 'invalid-answer-format',
+  })
+  assert.deepEqual(gradeNumericExerciseAnswers(fields, [
+    { fieldId: 'first', expected: 'invalid', roundingDigits: 0 }, expected[0],
+  ], { first: '', second: '3' }), { status: 'invalid', reason: 'invalid-grading-definition' })
+  assert.deepEqual(gradeNumericExerciseAnswers(fields, [
+    { fieldId: 'first', expected: '2', roundingDigits: -1 }, expected[0],
+  ], { first: '', second: '3' }), { status: 'invalid', reason: 'invalid-grading-definition' })
 })
 
 test('decimal grading rejects unsupported input syntax and accepts signed decimal notation', () => {
