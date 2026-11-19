@@ -68,6 +68,17 @@ const descriptiveStatisticsSectionLabels: Readonly<Record<string, string>> = {
 }
 const exerciseChoiceLabels = ['ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ']
 
+function exerciseReviewLabel(targetRef: string, registry: LessonRegistry) {
+  const parsed = parseLessonRef(targetRef)
+  const lesson = parsed && registry.lessons.find((item) => item.lessonId === parsed.lessonId)
+  if (!parsed?.sectionId || !lesson || lesson.availability !== 'included') return undefined
+  const section = lesson.sections.find((item) => item.sectionId === parsed.sectionId)
+  if (!section) return undefined
+  return lesson.lessonId === 'descriptive-statistics'
+    ? descriptiveStatisticsSectionLabels[section.sectionId] ?? section.title
+    : lessonRefLabel(targetRef, registry)
+}
+
 type ExerciseQuestionCardProps = {
   instance: ExerciseInstance | null
   title: string
@@ -231,9 +242,8 @@ export function ExerciseQuestionCard({ instance, title, headingLevel = 2, exerci
     <div className="ds-practice-question-heading">
       <Heading id={`${id}-title`}>{title}</Heading>
       {!!display?.reviewSectionRefs.length && <p>確認する節：{display.reviewSectionRefs.map((targetRef, index) => {
-        const sectionId = targetRef.split('#')[1] ?? targetRef
         return <span key={`${targetRef}-${index}`}>
-          {index > 0 && '・'}<LessonReference targetRef={targetRef} label={descriptiveStatisticsSectionLabels[sectionId]} intent="review" registry={registry} />
+          {index > 0 && '・'}<LessonReference targetRef={targetRef} label={exerciseReviewLabel(targetRef, registry)} intent="review" registry={registry} />
         </span>
       })}</p>}
     </div>
@@ -326,27 +336,27 @@ function LessonExerciseSlot({ exerciseId, lesson, registry, exerciseGenerators }
   registry: LessonRegistry
   exerciseGenerators: Readonly<Record<string, ExerciseGenerator>>
 }) {
-  type QuestionState = { input: number | undefined; instance: ExerciseInstance | null; error: string | null }
+  type QuestionState = { cursor: number | undefined; instance: ExerciseInstance | null; error: string | null }
   const definition = registry.exerciseCatalog?.definitions.find((item) => item.lessonId === lesson.lessonId && item.exerciseId === exerciseId)
   const generation = definition?.generation
   const initialInput = generation?.kind === 'fixed' ? undefined : generation?.minimum
   const [question, setQuestion] = useState<QuestionState>(() => {
     try {
-      return { input: initialInput, instance: generateLessonExercise(lesson.lessonId, exerciseId, initialInput, registry, exerciseGenerators), error: null }
+      return { cursor: initialInput, instance: generateLessonExercise(lesson.lessonId, exerciseId, initialInput, registry, exerciseGenerators), error: null }
     } catch {
-      return { input: initialInput, instance: null, error: 'この問題を表示できません。' }
+      return { cursor: initialInput, instance: null, error: 'この問題を表示できません。' }
     }
   })
   const canRegenerate = generation && generation.kind !== 'fixed' && generation.maximum > generation.minimum
   const regenerate = () => {
     if (!canRegenerate) return
-    const nextInput = question.input === undefined || question.input >= generation.maximum
-      ? generation.minimum : question.input + 1
+    const nextInput = question.cursor === undefined || question.cursor >= generation.maximum
+      ? generation.minimum : question.cursor + 1
     try {
       const instance = generateLessonExercise(lesson.lessonId, exerciseId, nextInput, registry, exerciseGenerators)
-      setQuestion({ input: nextInput, instance, error: null })
+      setQuestion({ cursor: nextInput, instance, error: null })
     } catch {
-      setQuestion((current) => ({ ...current, error: current.instance
+      setQuestion((current) => ({ ...current, cursor: nextInput, error: current.instance
         ? '別の問題を表示できませんでした。表示中の問題を保っています。' : 'この問題を表示できません。' }))
     }
   }
