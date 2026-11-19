@@ -513,8 +513,7 @@ h1 {
 }
 
 .course-details,
-.course-references,
-.course-inline-exercise {
+.course-references {
   margin-block: 1rem;
   padding: 0.75rem;
   border: 1px solid var(--border);
@@ -522,33 +521,9 @@ h1 {
 }
 
 .course-details > summary,
-.course-references > summary,
-.course-inline-exercise details > summary {
+.course-references > summary {
   cursor: pointer;
   font-weight: 600;
-}
-
-.course-inline-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0.4rem 0.6rem 0.4rem 0;
-}
-
-.course-inline-field input {
-  width: 6.5rem;
-  min-height: 2.5rem;
-}
-
-.course-inline-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-block: 0.5rem;
-}
-
-.course-inline-actions button {
-  min-height: 2.5rem;
 }
 
 .lesson-actions {

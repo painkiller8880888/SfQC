@@ -61,6 +61,6 @@ export const lessonExerciseGenerators = Object.freeze({
 
 if (!validateLessonRegistry(lessonRegistry)) throw new TypeError('Invalid lesson registry')
 
-export function generateLessonExercise(lessonId, exerciseId, input) {
-  return generateExerciseInstance(lessonRegistry, lessonId, exerciseId, input, lessonExerciseGenerators)
+export function generateLessonExercise(lessonId, exerciseId, input, registry = lessonRegistry, generators = lessonExerciseGenerators) {
+  return generateExerciseInstance(registry, lessonId, exerciseId, input, generators)
 }

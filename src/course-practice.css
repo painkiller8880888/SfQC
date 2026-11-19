@@ -84,7 +84,9 @@
   margin-bottom: 0.5rem;
 }
 
-.ds-practice-question-heading h2 {
+.ds-practice-question-heading h2,
+.ds-practice-question-heading h3,
+.ds-practice-question-heading h4 {
   margin: 0;
   font-size: 1rem;
 }
@@ -217,6 +219,38 @@
   font: inherit;
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
+}
+
+.ds-practice-number span {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.ds-exercise-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+
+.ds-exercise-error,
+.ds-exercise-feedback.ng {
+  color: var(--danger);
+}
+
+.ds-exercise-feedback.ok {
+  color: var(--success);
+}
+
+.ds-exercise-latest-grade,
+.ds-exercise-misconception,
+.ds-exercise-review-links {
+  margin-block: 0.25rem 0.5rem;
+}
+
+.ds-exercise-steps {
+  margin-block: 0.4rem;
+  padding-inline-start: 1.5rem;
 }
 
 .ds-practice-question details {

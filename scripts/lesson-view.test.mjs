@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createElement } from 'react'
+import { act, createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 import { deriveCourseProgress } from '../src/course-progress.mjs'
@@ -19,7 +20,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
   })
   const previousWindow = globalThis.window
   try {
-    const { getLessonAccuracyDisplay, LessonDetailCard, LessonMap, LessonReference, LessonRouteContent, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
+    const { getLessonAccuracyDisplay, ExerciseQuestionCard, LessonDetailCard, LessonMap, LessonReference, LessonRouteContent, resolveLessonRef } = await server.ssrLoadModule('/src/lesson-view.tsx')
     const render = (component, props = {}) => renderToStaticMarkup(createElement(component, props))
     const emptyProgress = deriveCourseProgress(null, { schemaVersion: 1, records: [] }, lessonRegistry)
     const manualProgress = createManualProgress()
@@ -53,6 +54,30 @@ test('registry-driven map, references, lesson blocks, and app routes render only
       kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'mean',
     })
     assert.equal(resolveLessonRef('math-algebra-sigma').sectionId, null)
+
+    const reviewRegistry = structuredClone(lessonRegistry)
+    const otherLesson = reviewRegistry.lessons.find((lesson) => lesson.lessonId === 'math-powers-roots')
+    otherLesson.sections[0].sectionId = 'variance'
+    otherLesson.declaredSectionIds = ['variance']
+    const reviewDefinition = reviewRegistry.exerciseCatalog.definitions.find((definition) => definition.exerciseId === 'mean')
+    reviewDefinition.generation = {
+      kind: 'fixed',
+      question: {
+        display: {
+          prompt: '式を確認してください。',
+          response: { type: 'numeric', fields: [{ id: 'answer', label: '答え', unit: '', roundingDigits: 0 }] },
+          reviewSectionRefs: ['math-powers-roots#variance'],
+        },
+        evaluation: { type: 'numeric', answers: [{ fieldId: 'answer', expected: '2', roundingDigits: 0 }] },
+        solution: { explanation: '式を確認します。' },
+      },
+    }
+    const { generateExerciseInstance } = await server.ssrLoadModule('/src/lesson-contract.mjs')
+    const reviewInstance = generateExerciseInstance(reviewRegistry, 'descriptive-statistics', 'mean', undefined)
+    const reviewCard = render(ExerciseQuestionCard, { instance: reviewInstance, title: '確認問題', registry: reviewRegistry })
+    assert.match(reviewCard, /href="#\/lesson\/math-powers-roots\/variance"/u)
+    assert.ok(reviewCard.includes(`>${otherLesson.title}：${otherLesson.sections[0].title}</a>`))
+    assert.doesNotMatch(reviewCard, /3 範囲と分散/u)
 
     const courseProgress = deriveCourseProgress(null, { schemaVersion: 1, records: [
       { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-10-26T00:00:00.000Z' },
@@ -155,7 +180,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     assert.match(variance, /id="course-section-variance"/u)
     assert.equal((variance.match(/class="course-section"/gu) ?? []).length, 4)
     assert.equal((variance.match(/class="interactive-variance-comparison/g) ?? []).length, 4)
-    assert.equal((variance.match(/class="course-inline-exercise"/gu) ?? []).length, 4)
+    assert.equal((variance.match(/class="ds-practice-question course-inline-exercise"/gu) ?? []).length, 4)
     assert.match(variance, /href="#\/lesson\/math-algebra-sigma\/sigma" data-nav-intent="review"/u)
     assert.match(variance, /n − 1/u)
     assert.match(variance, /class="course-references"/u)
@@ -234,7 +259,7 @@ test('registry-driven map, references, lesson blocks, and app routes render only
     const actualVarianceRoute = render(App)
     assert.match(actualVarianceRoute, /<h1[^>]*>範囲と分散<\/h1>/u)
     assert.match(actualVarianceRoute, /class="course-sections"/u)
-    assert.match(actualVarianceRoute, /class="course-inline-exercise"/u)
+    assert.match(actualVarianceRoute, /class="ds-practice-question course-inline-exercise"/u)
     assert.doesNotMatch(actualVarianceRoute, /<h1[^>]*>範囲と分散 \| 基本統計量/u)
 
     globalThis.window.location.hash = '#/practice'
@@ -292,5 +317,131 @@ test('all common prerequisite edges are listed in the target lesson detail card'
     }
   } finally {
     await server.close()
+  }
+})
+
+test('lesson exercise slots advance past a failed input and reset after regeneration succeeds', async () => {
+  const server = await createServer({
+    configFile: 'vite.config.ts',
+    server: { middlewareMode: true, hmr: false },
+    appType: 'custom',
+  })
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
+    url: 'https://sfqc.test/SfQC/#/lesson/descriptive-statistics/variance',
+    pretendToBeVisual: true,
+  })
+  const globalKeys = [
+    'window', 'document', 'navigator', 'Element', 'HTMLElement', 'Node', 'Event', 'MouseEvent',
+    'requestAnimationFrame', 'cancelAnimationFrame', 'getComputedStyle', 'IS_REACT_ACT_ENVIRONMENT',
+  ]
+  const previousGlobals = new Map(globalKeys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
+  const globals = {
+    window: dom.window,
+    document: dom.window.document,
+    navigator: dom.window.navigator,
+    Element: dom.window.Element,
+    HTMLElement: dom.window.HTMLElement,
+    Node: dom.window.Node,
+    Event: dom.window.Event,
+    MouseEvent: dom.window.MouseEvent,
+    requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
+    cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
+    getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+    IS_REACT_ACT_ENVIRONMENT: true,
+  }
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true })
+  }
+
+  let root
+  try {
+    const { LessonRouteContent } = await server.ssrLoadModule('/src/lesson-view.tsx')
+    const { createRoot } = await import('react-dom/client')
+    const registry = structuredClone(lessonRegistry)
+    const lesson = registry.lessons.find((item) => item.lessonId === 'math-powers-roots')
+    const section = lesson.sections[0]
+    section.blocks = [{ kind: 'exerciseSlot', exerciseId: 'variance' }]
+    const definition = registry.exerciseCatalog.definitions.find((item) => item.lessonId === 'descriptive-statistics'
+      && item.exerciseId === 'variance')
+    definition.lessonId = lesson.lessonId
+    definition.placement = { kind: 'section', sectionId: section.sectionId }
+    definition.generation.maximum = 2
+    const generator = registry.exerciseCatalog.generators.find((item) => item.generatorId === definition.generation.generatorId)
+    generator.types.find((item) => item.typeId === definition.generation.typeId).maximum = 2
+    const attemptedInputs = []
+    const exerciseGenerators = {
+      [definition.generation.generatorId]: (_exerciseDefinition, input) => {
+        attemptedInputs.push(input)
+        if (input === 1) throw new Error('permanent generation failure at 1')
+        return {
+          display: {
+            prompt: `入力 ${input} の問題`,
+            response: { type: 'numeric', fields: [{ id: 'answer', label: '答え', unit: '', roundingDigits: 0 }] },
+            reviewSectionRefs: ['descriptive-statistics#variance'],
+          },
+          evaluation: { type: 'numeric', answers: [{ fieldId: 'answer', expected: String(input), roundingDigits: 0 }] },
+          solution: { explanation: `入力 ${input} の解説` },
+        }
+      },
+    }
+    const host = dom.window.document.getElementById('root')
+    root = createRoot(host)
+    await act(async () => root.render(createElement(LessonRouteContent, {
+      lesson,
+      sectionId: section.sectionId,
+      sectionHeadingRef: { current: null },
+      registry,
+      exerciseGenerators,
+    })))
+
+    const card = host.querySelector('[data-exercise-id="variance"]')
+    const regenerate = [...card.querySelectorAll('button')].find((button) => button.textContent.includes('別の問題'))
+    assert.match(card.querySelector('.ds-practice-prompt').textContent, /入力 0/u)
+    await act(async () => {
+      const input = card.querySelector('input[type="text"]')
+      Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set.call(input, '0')
+      input.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true, inputType: 'insertText', data: '0' }))
+      input.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+    })
+    await act(async () => card.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /正解/u)
+    assert.equal(card.querySelector('details').open, true)
+
+    regenerate.focus()
+    await act(async () => regenerate.click())
+    assert.deepEqual(attemptedInputs, [0, 1])
+    assert.equal([...card.querySelectorAll('button')].find((button) => button.textContent.includes('別の問題')), regenerate)
+    assert.equal(dom.window.document.activeElement, regenerate)
+    assert.match(card.querySelector('.ds-practice-prompt').textContent, /入力 0/u)
+    assert.equal(card.querySelector('input[type="text"]').value, '0')
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /正解/u)
+    assert.equal(card.querySelector('details').open, true)
+    assert.match(card.querySelector('.ds-exercise-error').textContent, /表示できませんでした/u)
+
+    await act(async () => regenerate.click())
+    assert.deepEqual(attemptedInputs, [0, 1, 2])
+    assert.equal([...card.querySelectorAll('button')].find((button) => button.textContent.includes('別の問題')), regenerate)
+    assert.equal(dom.window.document.activeElement, regenerate)
+    assert.match(card.querySelector('.ds-practice-prompt').textContent, /入力 2/u)
+    assert.equal(card.querySelector('input[type="text"]').value, '')
+    assert.equal(card.querySelector('.ds-exercise-feedback').textContent, '')
+    assert.equal(card.querySelector('details').open, false)
+    assert.equal(card.querySelector('.ds-exercise-error'), null)
+
+    await act(async () => regenerate.click())
+    assert.deepEqual(attemptedInputs, [0, 1, 2, 0])
+    assert.match(card.querySelector('.ds-practice-prompt').textContent, /入力 0/u)
+    assert.equal(card.querySelector('input[type="text"]').value, '')
+    assert.equal(card.querySelector('details').open, false)
+    assert.equal(dom.window.document.activeElement, regenerate)
+  } finally {
+    if (root) await act(async () => root.unmount())
+    await server.close()
+    dom.window.close()
+    for (const key of globalKeys) {
+      const descriptor = previousGlobals.get(key)
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+      else delete globalThis[key]
+    }
   }
 })
