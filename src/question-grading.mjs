@@ -29,6 +29,11 @@ function parseDecimal(value) {
   }
 }
 
+/** @param {unknown} value @returns {value is string} */
+export function isValidDecimalAnswer(value) {
+  return parseDecimal(value) !== null
+}
+
 /** @param {number} digits @returns {bigint} */
 function powerOfTen(digits) {
   return 10n ** BigInt(digits)

@@ -5,7 +5,9 @@ import { lessonRegistry } from './lesson-registry.mjs'
 import { routeToHash } from './resolve-screen.mjs'
 import { FigureRef } from './figures/figure-ref'
 import { gradeDecimalAnswer } from './question-grading.mjs'
-import { generateDescriptiveStatisticsPreviewExercise, nextPreviewExerciseIndex, previewExerciseDefinitions } from './descriptive-statistics-preview-exercises.mjs'
+import { nextPreviewExerciseIndex, previewExerciseDefinitions } from './descriptive-statistics-preview-exercises.mjs'
+import { generateLessonExercise } from './lesson-exercise-adapters.mjs'
+import { getExerciseGradingData, getExerciseQuestionDisplay } from './lesson-contract.mjs'
 
 function normalizeNumericInput(value: string) {
   return value.normalize('NFKC').replace(/−/gu, '-')
@@ -48,17 +50,22 @@ function InlineExercise({ exerciseId }: {
   const [index, setIndex] = useState(() => previewExerciseDefinitions[exerciseId as keyof typeof previewExerciseDefinitions]?.initialIndex ?? 0)
   const [answers, setAnswers] = useState<string[]>([])
   const [feedback, setFeedback] = useState('')
-  const exercise = generateDescriptiveStatisticsPreviewExercise(exerciseId as keyof typeof previewExerciseDefinitions, index)
+  const instance = generateLessonExercise('descriptive-statistics', exerciseId, index)
+  const display = getExerciseQuestionDisplay(instance)
+  const { evaluation, solution } = getExerciseGradingData(instance)
+  const response = display.response
+  if (response.type !== 'numeric' || evaluation.type !== 'numeric') throw new TypeError('Inline exercises must accept numeric answers')
   const grade = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const results = exercise.fields.map((_, fieldIndex) => gradeDecimalAnswer(
-      normalizeNumericInput(answers[fieldIndex] ?? ''), exercise.answers[fieldIndex], 0,
-    ))
+    const results = response.fields.map((field, fieldIndex) => {
+      const expected = evaluation.answers.find((answer) => answer.fieldId === field.id)
+      return gradeDecimalAnswer(normalizeNumericInput(answers[fieldIndex] ?? ''), expected?.expected, expected?.roundingDigits)
+    })
     if (results.some((result) => result.status === 'invalid')) {
       setFeedback('入力形式を確認してください（例：12、−2、0.5）。')
       return
     }
-    const correct = results.length === exercise.answers.length && results.every((result) => result.status === 'graded' && result.isCorrect)
+    const correct = results.length === evaluation.answers.length && results.every((result) => result.status === 'graded' && result.isCorrect)
     setFeedback(correct ? '正解です。解説を開いて計算を確認できます。' : '違います。値−平均、または二乗和の式を確認してください。')
     if (correct && detailsRef.current) detailsRef.current.open = true
   }
@@ -71,22 +78,22 @@ function InlineExercise({ exerciseId }: {
 
   return <section className="course-inline-exercise" aria-labelledby={`${id}-title`}>
     <h4 id={`${id}-title`}>確認問題</h4>
-    <p>{exercise.prompt}</p>
+    <p>{display.prompt}</p>
     <form onSubmit={grade}>
-      {exercise.fields.map((field, fieldIndex) => <label className="course-inline-field" key={field.label} htmlFor={`${id}-${fieldIndex}`}>
+      {response.fields.map((field, fieldIndex) => <label className="course-inline-field" key={field.id} htmlFor={`${id}-${fieldIndex}`}>
         {field.label}
         <input id={`${id}-${fieldIndex}`} type="text" inputMode="decimal" autoComplete="off" value={answers[fieldIndex] ?? ''}
           onChange={(event) => {
             const value = event.currentTarget.value
-            setAnswers((current) => Array.from({ length: exercise.fields.length }, (_, index) =>
+            setAnswers((current) => Array.from({ length: response.fields.length }, (_, index) =>
               index === fieldIndex ? value : current[index] ?? ''))
           }} />
-        <span>{field.unit}</span>
+        <span>{field.roundingInstruction ? `${field.unit}、${field.roundingInstruction}` : field.unit}</span>
       </label>)}
       <div className="course-inline-actions"><button type="submit">答え合わせ</button><button type="button" onClick={regenerate}>別の問題</button></div>
     </form>
     <p role="status" aria-live="polite">{feedback}</p>
-    <details ref={detailsRef}><summary>解説を見る</summary><p>{exercise.solution}</p></details>
+    <details ref={detailsRef}><summary>解説を見る</summary><p>{solution.explanation}</p></details>
   </section>
 }
 

@@ -5,14 +5,6 @@ const contexts = [
   { noun: '充填した飲料の量', unit: 'mL', base: 500 },
 ]
 
-export const descriptiveStatisticsExerciseCategories = Object.freeze([
-  Object.freeze({ id: 'mean-deviation', title: '平均と偏差' }),
-  Object.freeze({ id: 'data-transformation', title: 'データの変換' }),
-  Object.freeze({ id: 'unbiased-variance', title: '不偏分散' }),
-  Object.freeze({ id: 'comprehensive', title: '総合' }),
-  Object.freeze({ id: 'variance-standard-deviation', title: '分散と標準偏差' }),
-])
-
 const kana = ['ア', 'イ', 'ウ', 'エ']
 
 function validateCategoryAndType(categoryIndex, typeIndex) {
@@ -374,13 +366,36 @@ function thirdStandardDeviationQuestion(random) {
   )
 }
 
-const generators = [
-  [firstMeanQuestion, secondMeanQuestion, (random) => choiceQuestion('偏差（測定値 − 平均）について、正しい説明はどれですか。', pick(random, deviationCorrect), shuffle(random, deviationWrong).slice(0, 3), ['deviation'], random)],
-  [firstTransformationQuestion, secondTransformationQuestion, thirdTransformationQuestion],
-  [firstVarianceQuestion, secondVarianceQuestion, thirdVarianceQuestion],
-  [fourthVarianceQuestion, fifthVarianceQuestion, fourthIntegratedQuestion],
-  [firstStandardDeviationQuestion, secondStandardDeviationQuestion, thirdStandardDeviationQuestion],
+const exerciseGroups = [
+  { id: 'mean-deviation', title: '平均と偏差', types: [
+    { id: 'mean-deviation-average', generate: firstMeanQuestion },
+    { id: 'mean-deviation-deviation', generate: secondMeanQuestion },
+    { id: 'mean-deviation-meaning', generate: (random) => choiceQuestion('偏差（測定値 − 平均）について、正しい説明はどれですか。', pick(random, deviationCorrect), shuffle(random, deviationWrong).slice(0, 3), ['deviation'], random) },
+  ] },
+  { id: 'data-transformation', title: 'データの変換', types: [
+    { id: 'data-transformation-add-constant', generate: firstTransformationQuestion },
+    { id: 'data-transformation-multiply', generate: secondTransformationQuestion },
+    { id: 'data-transformation-unit', generate: thirdTransformationQuestion },
+  ] },
+  { id: 'unbiased-variance', title: '不偏分散', types: [
+    { id: 'unbiased-variance-mean-and-sum', generate: firstVarianceQuestion },
+    { id: 'unbiased-variance-denominator', generate: secondVarianceQuestion },
+    { id: 'unbiased-variance-conditions', generate: thirdVarianceQuestion },
+  ] },
+  { id: 'comprehensive', title: '総合', types: [
+    { id: 'comprehensive-variance-comparison', generate: fourthVarianceQuestion },
+    { id: 'comprehensive-standard-deviation-comparison', generate: fifthVarianceQuestion },
+    { id: 'comprehensive-calculation-error', generate: fourthIntegratedQuestion },
+  ] },
+  { id: 'variance-standard-deviation', title: '分散と標準偏差', types: [
+    { id: 'variance-standard-deviation-variance', generate: firstStandardDeviationQuestion },
+    { id: 'variance-standard-deviation-calculation', generate: secondStandardDeviationQuestion },
+    { id: 'variance-standard-deviation-unit', generate: thirdStandardDeviationQuestion },
+  ] },
 ]
+
+export const descriptiveStatisticsExerciseCategories = Object.freeze(exerciseGroups.map(({ id, title, types }) =>
+  Object.freeze({ id, title, typeIds: Object.freeze(types.map(({ id: typeId }) => typeId)) })))
 
 export function createDescriptiveStatisticsExercisePreviewState(categoryIndex, random = Math.random) {
   validateCategoryAndType(categoryIndex, 0)
@@ -401,6 +416,11 @@ export function nextDescriptiveStatisticsExercisePreviewState(categoryIndex, cur
 
 export function generateDescriptiveStatisticsExercisePreviewQuestion(categoryIndex, typeIndex, seed) {
   validateCategoryAndType(categoryIndex, typeIndex)
-  const random = seededRandom(seed)
-  return generators[categoryIndex][typeIndex](random)
+  return exerciseGroups[categoryIndex].types[typeIndex].generate(seededRandom(seed))
+}
+
+export function generateDescriptiveStatisticsExercisePreviewQuestionById(categoryId, typeId, seed) {
+  const type = exerciseGroups.find((category) => category.id === categoryId)?.types.find((item) => item.id === typeId)
+  if (!type) throw new RangeError('Unknown exercise category or type')
+  return type.generate(seededRandom(seed))
 }

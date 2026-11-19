@@ -210,7 +210,7 @@ async function submitWrongIndependentJudgement(app, window) {
   )
   if (question.type === 'choice') {
     const wrongIndex = question.answer === 0 ? 1 : 0
-    await click(card.querySelector(`input[type="radio"][value="${wrongIndex}"]`))
+    await click(card.querySelectorAll('input[type="radio"]')[wrongIndex])
   } else {
     await changeTextInput(window, card.querySelector('input[type="text"]'), String(Number(question.answer) + 1))
   }
@@ -1897,7 +1897,7 @@ test('course practice presents five categories, records one valid judgment, and 
 
     if (question.type === 'choice') {
       const wrongIndex = question.answer === 0 ? 1 : 0
-      await click(card.querySelector(`input[type="radio"][value="${wrongIndex}"]`))
+      await click(card.querySelectorAll('input[type="radio"]')[wrongIndex])
     } else {
       await changeTextInput(window, card.querySelector('input[type="text"]'), String(Number(question.answer) + 1))
     }
@@ -1942,6 +1942,43 @@ test('course practice presents five categories, records one valid judgment, and 
     assert.match(app.host.querySelector('.progress-card').textContent, /未完了/u,
       'answering a question must not mark the lesson manually complete')
   } finally {
+    await app.close()
+  }
+})
+
+test('regenerating a checked choice question clears its radio selection before another grade', async () => {
+  const app = await createHarness()
+  const { window } = app.dom
+  const originalRandom = Math.random
+  const initialRandomValues = [0, 10 / 2 ** 32, 0.99, 11 / 2 ** 32, 0, 12 / 2 ** 32, 0, 13 / 2 ** 32, 0, 14 / 2 ** 32]
+  try {
+    Math.random = () => initialRandomValues.shift() ?? 0.2
+    await app.remountAt('#/course/descriptive-statistics/practice')
+    let card = app.host.querySelector('.ds-practice-question[data-practice-category="1"]')
+    assert.equal(card.dataset.practiceType, '2')
+    const oldSeed = Number(card.dataset.practiceSeed)
+    const firstQuestion = generateDescriptiveStatisticsExercisePreviewQuestion(1, 2, oldSeed)
+    assert.equal(firstQuestion.type, 'choice')
+
+    const radios = [...card.querySelectorAll('input[type="radio"]')]
+    await click(radios[0])
+    await act(async () => card.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1)
+
+    const regenerationRandomValues = [0, 15 / 2 ** 32]
+    Math.random = () => regenerationRandomValues.shift() ?? 0.2
+    await click(buttonFor(card, 'この問題を入れ替える'))
+    card = app.host.querySelector('.ds-practice-question[data-practice-category="1"]')
+    assert.equal(card.dataset.practiceType, '0')
+    assert.notEqual(Number(card.dataset.practiceSeed), oldSeed)
+    assert.ok([...card.querySelectorAll('input[type="radio"]')].every((input) => !input.checked))
+
+    await act(async () => card.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /選択肢を選んでください/u)
+    assert.equal(JSON.parse(window.localStorage.getItem(PRACTICE_RESULTS_KEY)).records.length, 1,
+      'submitting after choice-to-choice regeneration must not add another judgment')
+  } finally {
+    Math.random = originalRandom
     await app.close()
   }
 })

@@ -4,4 +4,5 @@ export type DecimalAnswerGradingResult =
   | { readonly status: 'invalid'; readonly reason: 'invalid-expected-value' }
   | { readonly status: 'invalid'; readonly reason: 'invalid-rounding-digits' }
 
+export declare function isValidDecimalAnswer(value: unknown): value is string
 export declare function gradeDecimalAnswer(answer: unknown, expected: unknown, roundingDigits: unknown): DecimalAnswerGradingResult

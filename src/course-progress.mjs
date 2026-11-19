@@ -35,13 +35,16 @@ export function deriveCourseProgress(learningState, practiceResults, registry = 
       hasPractice: hasCoursePractice(lesson.lessonId),
     }
   })
-  const categories = PRACTICE_CATEGORY_IDS.map((categoryId, index) => {
+  const categories = PRACTICE_CATEGORY_IDS.map((categoryId) => {
     const categoryRecords = records.filter((record) => record.categoryId === categoryId)
     const correctCount = categoryRecords.filter((record) => record.isCorrect).length
     const attemptCount = categoryRecords.length
+    const definition = registry.exerciseCatalog?.categories.find((category) =>
+      category.lessonId === 'descriptive-statistics' && category.categoryId === categoryId)
+    const fallback = descriptiveStatisticsExerciseCategories.find((category) => category.id === categoryId)
     return {
       categoryId,
-      title: descriptiveStatisticsExerciseCategories[index].title,
+      title: definition?.title ?? fallback?.title ?? categoryId,
       attemptCount,
       correctCount,
       incorrectCount: attemptCount - correctCount,

@@ -65,3 +65,16 @@ test('unrated categories stay in initial registry order and saved results do not
   assert.deepEqual(progress.categories.map((item) => item.categoryId), PRACTICE_CATEGORY_IDS)
   assert.equal(progress.categories.at(-1).correctCount, 1)
 })
+
+test('category names resolve by category ID when registry metadata order changes', () => {
+  const reorderedRegistry = structuredClone(lessonRegistry)
+  reorderedRegistry.exerciseCatalog.categories.reverse()
+  const normal = deriveCourseProgress(null, null)
+  const reordered = deriveCourseProgress(null, null, reorderedRegistry)
+  assert.deepEqual(reordered.categories.map(({ categoryId, title }) => ({ categoryId, title })),
+    normal.categories.map(({ categoryId, title }) => ({ categoryId, title })))
+  const registryWithoutCatalog = structuredClone(lessonRegistry)
+  delete registryWithoutCatalog.exerciseCatalog
+  assert.deepEqual(deriveCourseProgress(null, null, registryWithoutCatalog).categories.map(({ title }) => title),
+    normal.categories.map(({ title }) => title))
+})

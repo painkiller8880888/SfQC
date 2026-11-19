@@ -6,6 +6,8 @@ import {
   previewExerciseDefinitions,
 } from '../src/descriptive-statistics-preview-exercises.mjs'
 import { gradeDecimalAnswer } from '../src/question-grading.mjs'
+import { generateLessonExercise } from '../src/lesson-exercise-adapters.mjs'
+import { getExerciseGradingData, getExerciseQuestionDisplay } from '../src/lesson-contract.mjs'
 
 const measurements = (index) => {
   const prompt = generateDescriptiveStatisticsPreviewExercise('mean', index).prompt
@@ -46,6 +48,16 @@ test('preview exercises reproduce the four reviewed seed questions and calculati
     const exercise = generateDescriptiveStatisticsPreviewExercise(id, previewExerciseDefinitions[id].initialIndex)
     assert.deepEqual(exercise, expectedExercise)
     assert.ok(!exercise.prompt.includes(exercise.solution), `${id} should keep its explanation out of the question`)
+
+    const instance = generateLessonExercise('descriptive-statistics', id, previewExerciseDefinitions[id].initialIndex)
+    const display = getExerciseQuestionDisplay(instance)
+    const { evaluation, solution } = getExerciseGradingData(instance)
+    assert.equal(display.prompt, exercise.prompt)
+    assert.deepEqual(display.response.type === 'numeric' ? display.response.fields.map(({ label, unit }) => ({ label, unit })) : [], exercise.fields)
+    assert.deepEqual(evaluation.type === 'numeric' ? evaluation.answers.map(({ expected: answer }) => answer) : [], exercise.answers)
+    assert.equal(solution.explanation, exercise.solution)
+    assert.equal(Object.hasOwn(display, 'evaluation'), false)
+    assert.equal(Object.hasOwn(display, 'solution'), false)
   }
 })
 
@@ -54,9 +66,16 @@ test('every generated question is distinct and exposes canonical safe-integer an
     const prompts = new Set()
     for (let index = 0; index < count; index += 1) {
       const exercise = generateDescriptiveStatisticsPreviewExercise(id, index)
+      const instance = generateLessonExercise('descriptive-statistics', id, index)
+      const display = getExerciseQuestionDisplay(instance)
+      const { evaluation, solution } = getExerciseGradingData(instance)
       assert.ok(exercise.prompt.length)
       assert.ok(exercise.solution.length)
       assert.equal(exercise.fields.length, exercise.answers.length)
+      assert.equal(display.prompt, exercise.prompt)
+      assert.equal(evaluation.type, 'numeric')
+      assert.deepEqual(evaluation.answers.map(({ expected }) => expected), exercise.answers)
+      assert.equal(solution.explanation, exercise.solution)
       for (const answer of exercise.answers) {
         assert.equal(typeof answer, 'string')
         assert.match(answer, /^-?(?:0|[1-9]\d*)$/u)
@@ -67,6 +86,56 @@ test('every generated question is distinct and exposes canonical safe-integer an
       prompts.add(exercise.prompt)
     }
     assert.equal(prompts.size, count)
+  }
+})
+
+test('inline generated answers and explanations agree with the displayed measurements and divisors', () => {
+  const valuesFromQuestion = (prompt) => {
+    const match = prompt.match(/(?:ところ、|3本は )((?:\d+ mm、){2}\d+ mm)/u)
+    assert.ok(match, `expected three displayed measurements in: ${prompt}`)
+    return match[1].split('、').map((value) => Number(value.replace(/ mm$/u, '')))
+  }
+  const signed = (value) => `${value < 0 ? '−' : value > 0 ? '+' : ''}${Math.abs(value)}`
+
+  for (const [id, { count }] of Object.entries(previewExerciseDefinitions)) {
+    for (let index = 0; index < count; index += 1) {
+      const exercise = generateDescriptiveStatisticsPreviewExercise(id, index)
+      const values = valuesFromQuestion(exercise.prompt)
+      const total = values.reduce((sum, value) => sum + value, 0)
+      const mean = total / values.length
+      const deviations = values.map((value) => value - mean)
+      const sumOfSquares = deviations.reduce((sum, value) => sum + value ** 2, 0)
+      const divisor = values.length - 1
+      assert.ok(divisor > 0, `${id} must not divide by zero`)
+
+      if (id === 'mean') {
+        assert.equal(exercise.answers[0], String(mean))
+        assert.deepEqual(exercise.fields.map(({ unit }) => unit), ['mm'])
+        assert.equal(exercise.solution, `${values.join(' + ')} = ${total}、${total} ÷ 3 = ${mean} mm`)
+      } else if (id === 'deviation') {
+        const promptMean = Number(exercise.prompt.match(/平均は (\d+) mm/u)[1])
+        const expectedDeviations = values.map((value) => value - promptMean)
+        assert.equal(expectedDeviations.reduce((sum, value) => sum + value, 0), 0)
+        assert.deepEqual(exercise.answers, expectedDeviations.map(String))
+        assert.deepEqual(exercise.fields.map(({ unit }) => unit), ['mm', 'mm', 'mm'])
+        assert.equal(exercise.solution,
+          `${values.map((value, position) => `${value} − ${promptMean} = ${signed(expectedDeviations[position])}`).join('　')}　(mm)`)
+      } else if (id === 'variance') {
+        const sampleVariance = sumOfSquares / divisor
+        assert.ok(Number.isInteger(sampleVariance))
+        assert.deepEqual(exercise.answers, [String(sumOfSquares), String(sampleVariance)])
+        assert.deepEqual(exercise.fields.map(({ unit }) => unit), ['mm²', 'mm²'])
+        assert.equal(exercise.solution,
+          `平均 = ${total} ÷ 3 = ${mean} mm。偏差は ${deviations.map(signed).join('、')}。S = ${deviations.map((value) => `(${signed(value)})²`).join(' + ')} = ${deviations.map((value) => value ** 2).join(' + ')} = ${sumOfSquares} mm²。V = ${sumOfSquares} ÷ ${divisor} = ${sampleVariance} mm²`)
+      } else {
+        const variance = sumOfSquares / divisor
+        const standardDeviation = Math.sqrt(variance)
+        assert.equal(standardDeviation, Number(exercise.answers[0]))
+        assert.deepEqual(exercise.fields.map(({ unit }) => unit), ['mm'])
+        assert.equal(exercise.solution,
+          `平均 = ${mean} mm、偏差は −${standardDeviation}、0、+${standardDeviation}。S = ${sumOfSquares} mm²、V = ${sumOfSquares} ÷ ${divisor} = ${variance} mm²、s = √${variance} = ${standardDeviation} mm`)
+      }
+    }
   }
 })
 
