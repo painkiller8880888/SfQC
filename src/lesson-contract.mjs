@@ -334,7 +334,13 @@ function isExerciseQuestion(value, path, lessonsById, errors) {
   }
   if (Object.hasOwn(display, 'table')) {
     const table = display.table
-    if (!hasOnlyKeys(table, ['rows']) || !hasKeys(table, ['rows']) || !isArray(table.rows) || table.rows.length === 0
+    if (!hasOnlyKeys(table, ['caption', 'rowHeaderLabel', 'columnLabels', 'rows']) || !hasKeys(table, ['rows'])
+      || (Object.hasOwn(table, 'caption') && !isText(table.caption))
+      || (Object.hasOwn(table, 'rowHeaderLabel') && !isText(table.rowHeaderLabel))
+      || (Object.hasOwn(table, 'columnLabels') && (!isArray(table.columnLabels) || !table.columnLabels.every(isText)
+        || !isArray(table.rows) || table.rows.some((row) => !isRecord(row) || !isArray(row.values)
+          || row.values.length !== table.columnLabels.length)))
+      || !isArray(table.rows) || table.rows.length === 0
       || !table.rows.every((row) => hasOnlyKeys(row, ['label', 'values']) && hasKeys(row, ['label', 'values'])
         && isText(row.label) && isArray(row.values) && row.values.length > 0
         && row.values.every((number) => typeof number === 'number' && Number.isFinite(number)))

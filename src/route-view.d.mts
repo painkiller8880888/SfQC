@@ -17,6 +17,7 @@ export type RouteView = {
 export type RouteNavigationTargets = {
   heading: (Pick<HTMLElement, 'focus' | 'scrollIntoView'>) | null
   sectionHeading: (Pick<HTMLElement, 'focus' | 'scrollIntoView'>) | null
+  returnTarget?: Pick<HTMLElement, 'focus'> | null
   scrollTo: (x: number, y: number) => void
 }
 

@@ -1910,6 +1910,94 @@ test('general lesson slots share numeric grading and keep each question isolated
   }
 })
 
+test('data-types exercises explain their table units and restore the active question after review', async () => {
+  const learningState = serializeLearningState({ schemaVersion: 2, lessons: {
+    'data-types': { completedAt: '2026-11-14T00:00:00.000Z' },
+  } })
+  const practiceResults = serializePracticeResults({ schemaVersion: 1, records: [
+    { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-11-14T01:00:00.000Z' },
+  ] })
+  const app = await createHarness({ localStorageEntries: {
+    [LEARNING_STATE_KEY]: learningState,
+    [PRACTICE_RESULTS_KEY]: practiceResults,
+  } })
+  const { window } = app.dom
+  window.HTMLElement.prototype.scrollIntoView = () => {}
+  try {
+    await app.remountAt('#/lesson/data-types/types')
+    await settleEffects(window)
+
+    const fixedClassification = app.host.querySelector('[data-exercise-id="classify-record"]')
+    assert.equal(fixedClassification.querySelector('details').open, false)
+    assert.equal(fixedClassification.querySelectorAll('input[type="radio"]').length, 4)
+    assert.match(fixedClassification.textContent, /正しく説明/u)
+
+    const observation = app.host.querySelector('[data-exercise-id="identify-observation-unit"]')
+    assert.deepEqual([...observation.querySelectorAll('table caption')].map((caption) => caption.textContent), [])
+    assert.equal(observation.querySelector('details').open, false)
+    assert.ok(observation.querySelector('.ds-practice-question-heading a[data-nav-intent="review"]'))
+
+    const card = app.host.querySelector('[data-exercise-id="defect-aggregation"]')
+    const tableCaption = () => card.querySelector('.ds-practice-table-wrap caption')?.textContent
+    const columnLabels = () => [...card.querySelectorAll('.ds-practice-table-wrap thead th')].map((cell) => cell.textContent)
+    const tableRows = () => [...card.querySelectorAll('.ds-practice-table-wrap tbody tr')].map((row) => [
+      row.querySelector('th').textContent,
+      ...[...row.querySelectorAll('td')].map((cell) => Number(cell.textContent)),
+    ])
+    assert.equal(tableCaption(), '製品ごとの検査記録')
+    assert.deepEqual(columnLabels(), ['製品番号', '見つかった傷（件）', '基準を超えた傷（件）'])
+    assert.deepEqual(tableRows(), [
+      ['P-01', 4, 3], ['P-02', 1, 0], ['P-03', 2, 1], ['P-04', 0, 0], ['P-05', 1, 0], ['P-06', 0, 0],
+    ])
+    assert.equal(card.querySelector('details').open, false)
+
+    await click(buttonFor(card, '別の問題'))
+    assert.equal(tableCaption(), '基準を超えた傷の明細（検査対象は製品1〜5の5個）')
+    assert.deepEqual(columnLabels(), ['傷番号', '製品番号'])
+    assert.deepEqual(tableRows(), [['傷1', 1], ['傷2', 3]])
+    assert.equal(card.querySelector('input[type="radio"]:checked'), null)
+    assert.equal(card.querySelector('.ds-exercise-feedback').textContent, '')
+    assert.equal(card.querySelector('details').open, false)
+
+    await click(buttonFor(card, '別の問題'))
+    assert.equal(tableCaption(), '製品ごとの検査記録', '0 → 1 → 0 restores the first case')
+    assert.deepEqual(columnLabels(), ['製品番号', '見つかった傷（件）', '基準を超えた傷（件）'])
+    await click(card.querySelector('input[value="choice-1"]'))
+    await act(async () => card.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.match(card.querySelector('.ds-exercise-misconception').textContent, /基準を超えた傷/u)
+    assert.equal(card.querySelector('details').open, false)
+
+    const reviewLink = card.querySelector('.ds-exercise-review-links a[data-nav-intent="review"]')
+    assert.ok(reviewLink)
+    await click(reviewLink)
+    await settleEffects(window)
+    assert.equal(window.location.hash, '#/lesson/data-types/types')
+    assert.ok(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'))
+    await click(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'))
+    await settleEffects(window)
+
+    const restored = app.host.querySelector('[data-exercise-id="defect-aggregation"]')
+    assert.equal(restored.querySelector('input[value="choice-1"]').checked, true)
+    assert.match(restored.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.equal(restored.querySelector('details').open, false)
+    assert.equal(window.document.activeElement,
+      restored.querySelectorAll('a[data-nav-intent="review"]')[1],
+      'return focus goes to the review link that opened the lesson')
+
+    await click(restored.querySelector('input[value="choice-0"]'))
+    await act(async () => restored.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    assert.equal(restored.querySelector('.ds-exercise-feedback').textContent, '正解です。解説で考え方を確認できます。')
+    assert.equal(restored.querySelector('details').open, true)
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), learningState,
+      'answering and switching lesson questions must preserve manual completion')
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), practiceResults,
+      'lesson checks must preserve independent practice history and accuracy')
+  } finally {
+    await app.close()
+  }
+})
+
 test('unknown judgment writes block backup restore until a recheck confirms the saved record', async () => {
   let confirmations = 0
   const app = await createHarness({ confirm: () => { confirmations += 1; return true } })

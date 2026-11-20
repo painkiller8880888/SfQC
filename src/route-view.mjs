@@ -21,7 +21,7 @@ export function resolveRouteView(hash, rawState, navigationCause, navigationId) 
 }
 
 export function applyRouteNavigationEffect(navigation, historyState, targets) {
-  if (navigation === 'return') targets.heading?.focus({ preventScroll: true })
+  if (navigation === 'return') (targets.returnTarget ?? targets.heading)?.focus({ preventScroll: true })
   if (navigation === 'restore' || navigation === 'return' || navigation === 'initial') {
     targets.scrollTo(0, historyState.scrollY)
     return

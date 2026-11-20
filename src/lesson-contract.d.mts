@@ -119,7 +119,12 @@ export type ExerciseQuestionDisplay = {
   response:
     | { type: 'numeric'; fields: Array<{ id: string; label: string; unit: string; roundingDigits: number; roundingInstruction?: string }> }
     | { type: 'choice'; choices: Array<{ id: string; text: string }> }
-  table?: { rows: Array<{ label: string; values: number[] }> }
+  table?: {
+    caption?: string
+    rowHeaderLabel?: string
+    columnLabels?: string[]
+    rows: Array<{ label: string; values: number[] }>
+  }
   calculations?: string[]
   reviewSectionRefs: LessonRef[]
 }

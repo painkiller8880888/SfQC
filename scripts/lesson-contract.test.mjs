@@ -12,6 +12,7 @@ import {
 } from '../src/lesson-contract.mjs'
 import { lessonRegistryFixture } from './lesson-contract.fixture.mjs'
 import { PRACTICE_CATEGORY_IDS } from '../src/practice-results.mjs'
+import { generateLessonExercise } from '../src/lesson-exercise-adapters.mjs'
 
 const copy = (value) => structuredClone(value)
 const lesson = (registry, lessonId) => registry.lessons.find((item) => item.lessonId === lessonId)
@@ -53,13 +54,16 @@ test('fixture and the six included lessons satisfy the contract and keep other l
       assert.equal(item.revision, 1)
       continue
     }
-    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 5 : 2)
+    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 5 : item.lessonId === 'data-types' ? 3 : 2)
     assert.deepEqual(item.declaredSectionIds, sectionIds)
     assert.equal(item.sections.length, sectionIds.length)
     const paragraphs = item.sections.flatMap((section) => section.blocks
       .filter((block) => block.kind === 'paragraph')
       .map((block) => block.parts.filter((part) => part.kind === 'text').map((part) => part.text).join('')))
-    if (item.lessonId !== 'descriptive-statistics') {
+    if (item.lessonId === 'data-types') {
+      assert.ok(paragraphs.some((paragraph) => paragraph.includes('基準を超える傷が3件')))
+      assert.ok(item.sections[0].blocks.some((block) => block.kind === 'table'))
+    } else if (item.lessonId !== 'descriptive-statistics') {
       assert.ok(paragraphs.some((paragraph) => paragraph.includes('例：')))
       assert.ok(paragraphs.some((paragraph) => paragraph.startsWith('出典')))
     } else {
@@ -71,11 +75,12 @@ test('fixture and the six included lessons satisfy the contract and keep other l
   assert.deepEqual(lessonRegistry.exerciseCatalog.categories.map(({ categoryId }) => categoryId), PRACTICE_CATEGORY_IDS)
   assert.deepEqual(lessonRegistry.exerciseCatalog.definitions
     .filter(({ placement }) => placement.kind === 'section').map(({ exerciseId }) => exerciseId),
-  ['mean', 'deviation', 'variance', 'standard-deviation'])
-  assert.equal(lessonRegistry.exerciseCatalog.definitions.length, 19)
+  ['classify-record', 'identify-observation-unit', 'defect-aggregation', 'mean', 'deviation', 'variance', 'standard-deviation'])
+  assert.equal(lessonRegistry.exerciseCatalog.definitions.length, 22)
   assert.equal(lessonRegistry.exerciseCatalog.generators.find(({ generatorId }) =>
     generatorId === 'descriptive-statistics-independent').types.length, 15)
   assert.deepEqual(lesson(lessonRegistry, 'data-types').sourceRefs, ['jsa-l3', 'jsa-l4'])
+  assert.deepEqual(lesson(lessonRegistry, 'data-types').commonPrerequisites, [])
   assert.ok(lessonRegistry.sources.every((source) => source.url.endsWith('.pdf')))
   assert.ok(lessonRegistry.sources.find((source) => source.sourceId === 'jsa-l2').citations
     .some((citation) => citation.sourceItemId === 'SRC-0062' && citation.location === 'p.1「品質保証：プロセス保証」'))
@@ -147,6 +152,94 @@ test('fixed and seeded exercise APIs keep display data separate from grading and
   assert.throws(() => generateExerciseInstance(lessonRegistryFixture, 'data-types', 'generated-counts', 0, {
     'fixture-counts': (_definition, seed) => generatedQuestion(seed, 'data-types#missing'),
   }), /data-types:generated-counts.*reviewSectionRefs/u)
+})
+
+test('data-types lesson maps observation units to fixed classification and switchable aggregation questions', () => {
+  const dataTypes = lesson(lessonRegistry, 'data-types')
+  const blocks = dataTypes.sections[0].blocks
+  const slots = blocks.filter((block) => block.kind === 'exerciseSlot')
+  const firstTableIndex = blocks.findIndex((block) => block.kind === 'table')
+  const observationUnitIndex = blocks.findIndex((block) => block.kind === 'paragraph'
+    && block.parts.some((part) => part.kind === 'text' && part.text.includes('1観測')))
+  assert.ok(observationUnitIndex >= 0 && observationUnitIndex < firstTableIndex,
+    'the lesson states what one observation represents before the first table')
+  assert.deepEqual(slots.map((block) => block.exerciseId), [
+    'classify-record', 'identify-observation-unit', 'defect-aggregation',
+  ])
+  const definitions = lessonRegistry.exerciseCatalog.definitions.filter(({ lessonId }) => lessonId === 'data-types')
+  assert.ok(definitions.slice(0, 2).every(({ revision, generation }) => revision === 1 && generation.kind === 'fixed'))
+  assert.deepEqual(definitions[2], {
+    lessonId: 'data-types',
+    exerciseId: 'defect-aggregation',
+    revision: 1,
+    placement: { kind: 'section', sectionId: 'types' },
+    generation: {
+      kind: 'index', generatorId: 'data-types-cases', typeId: 'defect-aggregation', minimum: 0, maximum: 1,
+    },
+  })
+  assert.deepEqual(lessonRegistry.exerciseCatalog.generators.find(({ generatorId }) => generatorId === 'data-types-cases').types, [
+    { typeId: 'defect-aggregation', mode: 'index', minimum: 0, maximum: 1 },
+  ])
+
+  const productCase = generateLessonExercise('data-types', 'defect-aggregation', 0)
+  const productDisplay = getExerciseQuestionDisplay(productCase)
+  assert.deepEqual(productDisplay.table, {
+    caption: '製品ごとの検査記録',
+    rowHeaderLabel: '製品番号',
+    columnLabels: ['見つかった傷（件）', '基準を超えた傷（件）'],
+    rows: [
+      { label: 'P-01', values: [4, 3] }, { label: 'P-02', values: [1, 0] },
+      { label: 'P-03', values: [2, 1] }, { label: 'P-04', values: [0, 0] },
+      { label: 'P-05', values: [1, 0] }, { label: 'P-06', values: [0, 0] },
+    ],
+  })
+  assert.deepEqual(productDisplay.reviewSectionRefs, ['data-types#types'])
+  assert.ok(!collectKeys(productDisplay).some((key) => ['evaluation', 'solution', 'correctChoiceId', 'explanation'].includes(key)))
+  assert.equal(getExerciseGradingData(productCase).evaluation.correctChoiceId, 'choice-0')
+  assert.equal(getExerciseGradingData(productCase).solution.choiceFeedback.length, 3)
+
+  const detailCase = generateLessonExercise('data-types', 'defect-aggregation', 1)
+  const detailDisplay = getExerciseQuestionDisplay(detailCase)
+  assert.deepEqual(detailDisplay.table, {
+    caption: '基準を超えた傷の明細（検査対象は製品1〜5の5個）',
+    rowHeaderLabel: '傷番号',
+    columnLabels: ['製品番号'],
+    rows: [{ label: '傷1', values: [1] }, { label: '傷2', values: [3] }],
+  })
+  assert.deepEqual(getExerciseGradingData(detailCase).solution.steps, [
+    '明細の傷番号は2つなので、基準を超えた傷は2件です。',
+    '製品番号は1と3の2種類なので、不適合品は2個です。検査対象は5個ですが、全てが不適合品という意味ではありません。',
+  ])
+  assert.throws(() => generateLessonExercise('data-types', 'defect-aggregation', 2), RangeError)
+  assert.throws(() => generateLessonExercise('data-types', 'classify-record', 0), RangeError)
+})
+
+test('exercise tables accept optional labels and reject empty or mismatched metadata', () => {
+  const legacy = copy(lessonRegistryFixture)
+  const legacyQuestion = legacy.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'observed-counts').generation.question
+  legacyQuestion.display.table = { rows: [{ label: '観測', values: [1, 0] }] }
+  assert.equal(validateLessonRegistry(legacy), true)
+
+  const labeled = copy(legacy)
+  labeled.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'observed-counts').generation.question.display.table = {
+    caption: '製品ごとの記録',
+    rowHeaderLabel: '製品番号',
+    columnLabels: ['不適合品コード', '傷の件数'],
+    rows: [{ label: 'P-01', values: [1, 2] }],
+  }
+  assert.equal(validateLessonRegistry(labeled), true)
+
+  for (const mutate of [
+    (table) => { table.caption = ' ' },
+    (table) => { table.rowHeaderLabel = ' ' },
+    (table) => { table.columnLabels = ['不適合品コード'] },
+    (table) => { table.columnLabels[0] = '' },
+    (table) => { table.rows.push({ label: 'P-02', values: [0] }) },
+  ]) {
+    const invalid = copy(labeled)
+    mutate(invalid.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'observed-counts').generation.question.display.table)
+    assert.equal(validateLessonRegistry(invalid), false)
+  }
 })
 
 test('basic statistics course covers the worked comparison, drills, code figures, and sources', () => {
