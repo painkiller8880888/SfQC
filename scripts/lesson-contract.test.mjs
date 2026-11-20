@@ -174,11 +174,11 @@ test('data-types lesson maps observation units to fixed classification and switc
     revision: 1,
     placement: { kind: 'section', sectionId: 'types' },
     generation: {
-      kind: 'index', generatorId: 'data-types-cases', typeId: 'defect-aggregation', minimum: 0, maximum: 1,
+      kind: 'index', generatorId: 'data-types-cases', typeId: 'defect-aggregation', minimum: 0, maximum: 2,
     },
   })
   assert.deepEqual(lessonRegistry.exerciseCatalog.generators.find(({ generatorId }) => generatorId === 'data-types-cases').types, [
-    { typeId: 'defect-aggregation', mode: 'index', minimum: 0, maximum: 1 },
+    { typeId: 'defect-aggregation', mode: 'index', minimum: 0, maximum: 2 },
   ])
 
   const productCase = generateLessonExercise('data-types', 'defect-aggregation', 0)
@@ -201,16 +201,34 @@ test('data-types lesson maps observation units to fixed classification and switc
   const detailCase = generateLessonExercise('data-types', 'defect-aggregation', 1)
   const detailDisplay = getExerciseQuestionDisplay(detailCase)
   assert.deepEqual(detailDisplay.table, {
-    caption: '基準を超えた傷の明細（検査対象は製品1〜5の5個）',
+    caption: '同じ6製品から基準を超えた傷だけを抜き出した明細',
     rowHeaderLabel: '傷番号',
     columnLabels: ['製品番号'],
-    rows: [{ label: '傷1', values: [1] }, { label: '傷2', values: [3] }],
+    rows: [
+      { label: '傷1', values: [1] }, { label: '傷2', values: [1] },
+      { label: '傷3', values: [1] }, { label: '傷4', values: [3] },
+    ],
   })
+  assert.match(detailDisplay.prompt, /同じ6製品/u)
+  const productDefectIds = productDisplay.table.rows.flatMap(({ label, values }) =>
+    Array.from({ length: values[1] }, () => label))
+  const detailProductIds = detailDisplay.table.rows.map(({ values }) => `P-0${values[0]}`)
+  assert.deepEqual(detailProductIds, productDefectIds,
+    'the paired product table and defect detail represent the same four defects')
+  assert.match(detailDisplay.table.caption, /同じ6製品/u)
   assert.deepEqual(getExerciseGradingData(detailCase).solution.steps, [
-    '明細の傷番号は2つなので、基準を超えた傷は2件です。',
-    '製品番号は1と3の2種類なので、不適合品は2個です。検査対象は5個ですが、全てが不適合品という意味ではありません。',
+    '明細の1行は基準を超えた傷1件なので、4行で不適合は4件です。',
+    '製品番号P-01とP-03を重複なく数えると、不適合品は2個です。検査対象は6個で、明細はそのうち基準を超えた傷だけを示しています。',
   ])
-  assert.throws(() => generateLessonExercise('data-types', 'defect-aggregation', 2), RangeError)
+  assert.equal(getExerciseGradingData(detailCase).evaluation.correctChoiceId, 'choice-0')
+  assert.equal(getExerciseGradingData(detailCase).solution.choiceFeedback.length, 3)
+  assert.match(getExerciseGradingData(detailCase).solution.choiceFeedback[2].misconception, /P-03/u)
+  const equalCountCase = generateLessonExercise('data-types', 'defect-aggregation', 2)
+  assert.deepEqual(getExerciseQuestionDisplay(equalCountCase).table.rows, [
+    { label: '傷1', values: [1] }, { label: '傷2', values: [3] },
+  ])
+  assert.match(getExerciseGradingData(equalCountCase).solution.explanation, /どちらも2/u)
+  assert.throws(() => generateLessonExercise('data-types', 'defect-aggregation', 3), RangeError)
   assert.throws(() => generateLessonExercise('data-types', 'classify-record', 0), RangeError)
 })
 

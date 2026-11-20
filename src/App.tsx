@@ -242,7 +242,6 @@ function App() {
   const judgementIdRef = useRef(0)
   const [pendingBackupImport, setPendingBackupImport] = useState<LearningBackupImportResult | null>(null)
   const keepJudgementsAfterRestoreRef = useRef(true)
-  const returnFocusStackRef = useRef<Array<ExerciseReviewFocus | null>>([])
   const pendingReturnFocusRef = useRef<ExerciseReviewFocus | null>(null)
   const syncMapEntrySnapshot = (entryId: string, listOrigin?: MapListLocator) => {
     const previous = mapEntrySnapshotsRef.current.get(entryId)
@@ -690,7 +689,7 @@ function App() {
       ?? currentView.historyState
     let nextState: RouteHistoryState | null
     try {
-      nextState = navigateRouteHistory(currentState, route, hash, intent)
+      nextState = navigateRouteHistory(currentState, route, hash, intent, { focusTarget: sourceExerciseFocus })
     } catch {
       setDataMessage('画面の復帰情報を作成できませんでした。現在の画面に留まっています。')
       return false
@@ -705,9 +704,9 @@ function App() {
       setDataMessage('ブラウザー履歴に復帰情報を保存できませんでした。現在の画面に留まっています。')
       return false
     }
-    if (intent === 'review') returnFocusStackRef.current.push(sourceExerciseFocus)
-    else if (intent === 'return') pendingReturnFocusRef.current = returnFocusStackRef.current.pop() ?? null
-    else if (intent === 'normal') returnFocusStackRef.current = []
+    pendingReturnFocusRef.current = intent === 'return'
+      ? currentState.returnStack.at(-1)?.focusTarget ?? null
+      : null
     lastHandledRef.current = hash + '\u0000' + nextState.entryId
     resolveCurrentLocation(intent, nextState)
     if (screenForRoute(route) === 'map') syncMapEntrySnapshot(nextState.entryId)

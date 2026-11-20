@@ -342,7 +342,7 @@ const lessons = [
           ['傷1', 'P-01'], ['傷2', 'P-01'], ['傷3', 'P-03'],
         ] },
         { kind: 'exerciseSlot', exerciseId: 'identify-observation-unit' },
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '最後に、表示される事例を切り替えて、不適合品と不適合の数え方を確かめます。表にある観測対象と記録された行を先に確認してください。' }] },
+        { kind: 'paragraph', parts: [{ kind: 'text', text: '最後に、表示される事例を切り替えて、不適合品と不適合の数え方を確かめます。最初の2事例は同じ検査結果を製品記録と傷明細で示します。表にある観測対象と記録された行を先に確認してください。' }] },
         { kind: 'exerciseSlot', exerciseId: 'defect-aggregation' },
         { kind: 'paragraph', parts: [{ kind: 'text', text: '出典（確認日：2026-11-20）：OpenStax, Introductory Statistics 2e, §§1.2 “Data, Sampling, and Variation in Data and Sampling”・1.3 “Frequency, Frequency Tables, and Levels of Measurement”；ISO 2859-4:2020, 3rd edition (2020-06), Abstract, “The conforming-nonconforming model” and “The nonconformities model”。直接URLは https://openstax.org/books/introductory-statistics-2e/pages/1-2-data-sampling-and-variation-in-data-and-sampling 、https://openstax.org/books/introductory-statistics-2e/pages/1-3-frequency-frequency-tables-and-levels-of-measurement 、https://www.iso.org/standard/64506.html 。計量値・計数値・カテゴリの区別、適合／不適合品と不適合件数の集計対象を照合しました。例と設問は独自に作成。' }] },
       ],
@@ -580,7 +580,7 @@ const exerciseCatalog = {
   generators: [
     {
       generatorId: 'data-types-cases',
-      types: [{ typeId: 'defect-aggregation', mode: 'index', minimum: 0, maximum: 1 }],
+      types: [{ typeId: 'defect-aggregation', mode: 'index', minimum: 0, maximum: 2 }],
     },
     {
       generatorId: 'descriptive-statistics-inline',
@@ -674,7 +674,7 @@ const exerciseCatalog = {
         generatorId: 'data-types-cases',
         typeId: 'defect-aggregation',
         minimum: 0,
-        maximum: 1,
+        maximum: 2,
       },
     },
     ...Object.entries(previewExerciseDefinitions).map(([exerciseId, definition]) => ({

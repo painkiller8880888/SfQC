@@ -1952,6 +1952,14 @@ test('data-types exercises explain their table units and restore the active ques
     assert.equal(card.querySelector('details').open, false)
 
     await click(buttonFor(card, '別の問題'))
+    assert.equal(tableCaption(), '同じ6製品から基準を超えた傷だけを抜き出した明細')
+    assert.deepEqual(columnLabels(), ['傷番号', '製品番号'])
+    assert.deepEqual(tableRows(), [['傷1', 1], ['傷2', 1], ['傷3', 1], ['傷4', 3]])
+    assert.equal(card.querySelector('input[type="radio"]:checked'), null)
+    assert.equal(card.querySelector('.ds-exercise-feedback').textContent, '')
+    assert.equal(card.querySelector('details').open, false)
+
+    await click(buttonFor(card, '別の問題'))
     assert.equal(tableCaption(), '基準を超えた傷の明細（検査対象は製品1〜5の5個）')
     assert.deepEqual(columnLabels(), ['傷番号', '製品番号'])
     assert.deepEqual(tableRows(), [['傷1', 1], ['傷2', 3]])
@@ -1960,7 +1968,7 @@ test('data-types exercises explain their table units and restore the active ques
     assert.equal(card.querySelector('details').open, false)
 
     await click(buttonFor(card, '別の問題'))
-    assert.equal(tableCaption(), '製品ごとの検査記録', '0 → 1 → 0 restores the first case')
+    assert.equal(tableCaption(), '製品ごとの検査記録', '0 → 1 → 2 → 0 returns to the first case')
     assert.deepEqual(columnLabels(), ['製品番号', '見つかった傷（件）', '基準を超えた傷（件）'])
     await click(card.querySelector('input[value="choice-1"]'))
     await act(async () => card.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
@@ -1993,6 +2001,99 @@ test('data-types exercises explain their table units and restore the active ques
       'answering and switching lesson questions must preserve manual completion')
     assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), practiceResults,
       'lesson checks must preserve independent practice history and accuracy')
+  } finally {
+    await app.close()
+  }
+})
+
+test('nested same-route reviews restore focus from the browser history frame after Back', async () => {
+  const routeHash = '#/lesson/data-types/types'
+  const app = await createHarness({ url: testDocumentUrl(routeHash) })
+  const { window } = app.dom
+  window.HTMLElement.prototype.scrollIntoView = () => {}
+  let scrollY = 0
+  Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY })
+  window.scrollTo = (_x, y) => { scrollY = y }
+
+  try {
+    await settleEffects(window)
+    const sourceEntryId = window.history.state.entryId
+    scrollY = 540
+
+    const exerciseA = app.host.querySelector('[data-exercise-id="classify-record"]')
+    await click(exerciseA.querySelector('input[value="choice-0"]'))
+    await act(async () => exerciseA.querySelector('form').dispatchEvent(
+      new window.Event('submit', { bubbles: true, cancelable: true }),
+    ))
+    const reviewLinksA = exerciseA.querySelectorAll('a[data-nav-intent="review"]')
+    const reviewLinkA = reviewLinksA[0]
+    const reviewLinkIndexA = Array.from(reviewLinksA).indexOf(reviewLinkA)
+    assert.ok(reviewLinkA)
+    await click(reviewLinkA)
+    await settleEffects(window)
+    const firstReviewEntryId = window.history.state.entryId
+    assert.notEqual(firstReviewEntryId, sourceEntryId)
+    assert.deepEqual(window.history.state.returnStack.at(-1), {
+      routeHash,
+      route: { kind: 'lesson-id', lessonId: 'data-types', sectionId: 'types' },
+      entryId: sourceEntryId,
+      scrollY: 540,
+      focusTarget: { exerciseId: 'classify-record', linkIndex: reviewLinkIndexA },
+    })
+
+    scrollY = 860
+    const exerciseB = app.host.querySelector('[data-exercise-id="identify-observation-unit"]')
+    await click(exerciseB.querySelector('input[value="choice-1"]'))
+    await act(async () => exerciseB.querySelector('form').dispatchEvent(
+      new window.Event('submit', { bubbles: true, cancelable: true }),
+    ))
+    const reviewLinksB = exerciseB.querySelectorAll('a[data-nav-intent="review"]')
+    const reviewLinkB = reviewLinksB[0]
+    const reviewLinkIndexB = Array.from(reviewLinksB).indexOf(reviewLinkB)
+    assert.ok(reviewLinkB)
+    await click(reviewLinkB)
+    await settleEffects(window)
+    const secondReviewEntryId = window.history.state.entryId
+    assert.notEqual(secondReviewEntryId, firstReviewEntryId)
+    assert.deepEqual(window.history.state.returnStack.at(-1), {
+      routeHash,
+      route: { kind: 'lesson-id', lessonId: 'data-types', sectionId: 'types' },
+      entryId: firstReviewEntryId,
+      scrollY: 860,
+      focusTarget: { exerciseId: 'identify-observation-unit', linkIndex: reviewLinkIndexB },
+    })
+
+    await waitForHistory(window, 'back')
+    await settleEffects(window)
+    assert.equal(window.history.state.entryId, firstReviewEntryId)
+    assert.equal(window.history.state.returnStack.length, 1)
+    assert.deepEqual(window.history.state.returnStack[0].focusTarget, {
+      exerciseId: 'classify-record', linkIndex: reviewLinkIndexA,
+    })
+    assert.equal(scrollY, 860)
+
+    await click(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'))
+    await settleEffects(window)
+    const returnedEntryId = window.history.state.entryId
+    assert.notEqual(returnedEntryId, sourceEntryId)
+    assert.notEqual(returnedEntryId, firstReviewEntryId)
+    assert.equal(window.history.state.returnStack.length, 0)
+    assert.equal(window.history.state.scrollY, 540)
+    assert.equal(scrollY, 540)
+    const restoredA = app.host.querySelector('[data-exercise-id="classify-record"]')
+    assert.equal(restoredA.querySelector('input[value="choice-0"]').checked, true)
+    assert.match(restoredA.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.equal(window.document.activeElement,
+      restoredA.querySelectorAll('a[data-nav-intent="review"]')[reviewLinkIndexA],
+      'return focus uses the frame restored from browser history, not the latest in-memory review')
+
+    await waitForHistory(window, 'back')
+    await settleEffects(window)
+    assert.equal(window.history.state.entryId, firstReviewEntryId)
+    await waitForHistory(window, 'forward')
+    await settleEffects(window)
+    assert.equal(window.history.state.entryId, returnedEntryId)
+    assert.equal(scrollY, 540)
   } finally {
     await app.close()
   }

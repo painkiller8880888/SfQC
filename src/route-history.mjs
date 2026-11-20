@@ -26,11 +26,23 @@ function isFrameArray(value) {
     }).every(Boolean)
 }
 
+function isFocusTarget(value) {
+  return hasOnlyKeys(value, ['exerciseId', 'linkIndex'])
+    && Reflect.ownKeys(value).length === 2
+    && typeof value.exerciseId === 'string' && value.exerciseId.length > 0
+    && Number.isSafeInteger(value.linkIndex) && value.linkIndex >= 0
+}
+
 function isFrame(value) {
-  return hasOnlyKeys(value, ['routeHash', 'route', 'scrollY'])
-    && Reflect.ownKeys(value).length === 3
-    && routeMatchesHash(value.route, value.routeHash)
-    && Number.isFinite(value.scrollY) && value.scrollY >= 0
+  if (!hasOnlyKeys(value, ['routeHash', 'route', 'scrollY', 'entryId', 'focusTarget'])
+    || !routeMatchesHash(value.route, value.routeHash)
+    || !Number.isFinite(value.scrollY) || value.scrollY < 0) return false
+
+  const keys = Reflect.ownKeys(value)
+  if (keys.length === 3) return true
+  return keys.length === 5
+    && typeof value.entryId === 'string' && value.entryId.length > 0
+    && (value.focusTarget === null || isFocusTarget(value.focusTarget))
 }
 
 export function validateRouteHistoryState(value, expectedHash) {
@@ -41,30 +53,58 @@ export function validateRouteHistoryState(value, expectedHash) {
     || typeof value.entryId !== 'string' || value.entryId.length === 0
     || !Number.isFinite(value.scrollY) || value.scrollY < 0
     || !isFrameArray(value.returnStack)) return null
+  const entryIds = [value.entryId, ...value.returnStack.map((frame) => frame.entryId).filter(Boolean)]
+  if (new Set(entryIds).size !== entryIds.length) return null
   return value
 }
 
-function newEntryId() {
-  return globalThis.crypto?.randomUUID?.()
-    ?? `entry-${Date.now()}-${Math.random().toString(36).slice(2)}`
+function newEntryId(excluded = new Set()) {
+  let entryId
+  do {
+    entryId = globalThis.crypto?.randomUUID?.()
+      ?? `entry-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  } while (excluded.has(entryId))
+  return entryId
 }
 
 export function createRouteHistoryState(route, routeHash, options = {}) {
   if (!routeMatchesHash(route, routeHash)) throw new TypeError('Route and hash do not match')
+  const returnStack = options.returnStack ?? []
+  const reservedEntryIds = new Set(returnStack.map((frame) => frame.entryId).filter(Boolean))
+  const entryId = options.entryId ?? newEntryId(reservedEntryIds)
+  if (reservedEntryIds.has(entryId)) throw new TypeError('History entry ID must be unique')
   const state = {
     version: ROUTE_HISTORY_VERSION,
     routeHash,
     route,
-    entryId: options.entryId ?? newEntryId(),
+    entryId,
     scrollY: options.scrollY ?? 0,
-    returnStack: options.returnStack ?? [],
+    returnStack,
   }
   if (!validateRouteHistoryState(state, routeHash)) throw new TypeError('Invalid route history state')
   return state
 }
 
-function frameFor(state) {
-  return { routeHash: state.routeHash, route: state.route, scrollY: state.scrollY }
+function frameFor(state, focusTarget) {
+  return {
+    routeHash: state.routeHash,
+    route: state.route,
+    entryId: state.entryId,
+    scrollY: state.scrollY,
+    focusTarget: focusTarget ?? null,
+  }
+}
+
+function nextEntryId(state, requestedEntryId) {
+  const excluded = new Set([
+    state.entryId,
+    ...state.returnStack.map((frame) => frame.entryId).filter(Boolean),
+  ])
+  if (requestedEntryId !== undefined) {
+    if (excluded.has(requestedEntryId)) throw new TypeError('History entry ID must be unique')
+    return requestedEntryId
+  }
+  return newEntryId(excluded)
 }
 
 export function navigateRouteHistory(state, route, routeHash, intent = 'normal', options = {}) {
@@ -77,10 +117,11 @@ export function navigateRouteHistory(state, route, routeHash, intent = 'normal',
     if (frame && (!sameRoute(route, frame.route) || routeHash !== frame.routeHash)) {
       throw new TypeError('Return target does not match the last frame')
     }
+    const returnStack = frame ? state.returnStack.slice(0, -1) : []
     return frame ? createRouteHistoryState(frame.route, frame.routeHash, {
-      entryId: options.entryId,
+      entryId: nextEntryId(state, options.entryId),
       scrollY: frame.scrollY,
-      returnStack: state.returnStack.slice(0, -1),
+      returnStack,
     }) : null
   }
 
@@ -93,10 +134,13 @@ export function navigateRouteHistory(state, route, routeHash, intent = 'normal',
   }
   if (!['normal', 'review', 'section'].includes(intent)) throw new TypeError('Invalid navigation intent')
 
-  const returnStack = intent === 'review' ? [...state.returnStack, frameFor(state)]
+  const returnStack = intent === 'review' ? [...state.returnStack, frameFor(state, options.focusTarget)]
     : intent === 'section' ? state.returnStack
       : []
-  return createRouteHistoryState(route, routeHash, { entryId: options.entryId, returnStack })
+  return createRouteHistoryState(route, routeHash, {
+    entryId: nextEntryId(state, options.entryId),
+    returnStack,
+  })
 }
 
 export function updateRouteHistoryState(state, patch) {
