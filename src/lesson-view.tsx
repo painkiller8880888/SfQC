@@ -165,14 +165,14 @@ function ExerciseQuestionBody({ formId, display, grading, registry, onFirstGrade
   const tableRows = display.table?.rows
   const tableColumnCount = tableRows ? Math.max(0, ...tableRows.map((row) => row.values.length)) : 0
   const statusText = feedback?.text ?? (latestGrade === null ? '' : latestGrade
-    ? '正解です。解説で計算を確認できます。' : '違います。考え直すか、解説を確認してください。')
+    ? '正解です。解説で考え方を確認できます。' : '違います。考え直すか、解説を確認してください。')
 
   return <>
     <p className="ds-practice-prompt">{display.prompt}</p>
-    {tableRows && <div className="ds-practice-table-wrap"><table>
-      {tableCaption && <caption>{tableCaption}</caption>}
-      <thead><tr><th scope="col">{tableRowHeaderLabel ?? ''}</th>{Array.from({ length: tableColumnCount }, (_, index) => <th scope="col" key={index}>
-        {tableColumnLabel?.(index) ?? String(index + 1)}
+    {tableRows && <div className="ds-practice-table-wrap" tabIndex={0}><table>
+      {(tableCaption ?? display.table?.caption) && <caption>{tableCaption ?? display.table?.caption}</caption>}
+      <thead><tr><th scope="col">{tableRowHeaderLabel ?? display.table?.rowHeaderLabel ?? ''}</th>{Array.from({ length: tableColumnCount }, (_, index) => <th scope="col" key={index}>
+        {tableColumnLabel?.(index) ?? display.table?.columnLabels?.[index] ?? String(index + 1)}
       </th>)}</tr></thead>
       <tbody>{tableRows.map((row, rowIndex) => <tr key={rowIndex}>
         <th scope="row">{row.label}</th>{row.values.map((value, index) => <td className="num" key={index}>{value}</td>)}
@@ -394,7 +394,7 @@ function LessonBlock({ block, lesson, registry, exerciseGenerators }: {
   </p>
   if (block.kind === 'figureRef') return <FigureRef lesson={lesson} figureId={block.figureId} />
   if (block.kind === 'heading') return <h3>{block.text}</h3>
-  if (block.kind === 'table') return <div className="course-table-wrap"><table><caption>{block.caption}</caption><thead><tr>{block.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => cellIndex === 0 ? <th scope="row" key={cellIndex}>{cell}</th> : <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
+  if (block.kind === 'table') return <div className="course-table-wrap" tabIndex={0}><table><caption>{block.caption}</caption><thead><tr>{block.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => cellIndex === 0 ? <th scope="row" key={cellIndex}>{cell}</th> : <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
   if (block.kind === 'details') return <details><summary>{block.summary}</summary>{block.blocks.map((child, index) => <LessonBlock key={index} block={child} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />)}</details>
   return <LessonExerciseSlot key={`${lesson.lessonId}:${block.exerciseId}`} exerciseId={block.exerciseId} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />
 }

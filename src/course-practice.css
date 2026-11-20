@@ -113,6 +113,12 @@
   margin-block: 0.75rem 1rem;
 }
 
+.ds-practice-table-wrap:focus-visible,
+.course-table-wrap:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .ds-practice-table-wrap table {
   width: 100%;
   border-collapse: collapse;

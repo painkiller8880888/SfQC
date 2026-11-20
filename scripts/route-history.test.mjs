@@ -10,12 +10,15 @@ test('review navigation preserves a return path and its scroll position across l
   const mean = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'mean' }
   const variance = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance' }
   const state = createRouteHistoryState(practice, routeToHash(practice), { entryId: 'practice-entry', scrollY: 240 })
-  const review = navigateRouteHistory(state, mean, routeToHash(mean), 'review', { entryId: 'review-entry' })
+  const focusTarget = { exerciseId: 'source-exercise', linkIndex: 1 }
+  const review = navigateRouteHistory(state, mean, routeToHash(mean), 'review', {
+    entryId: 'review-entry', focusTarget,
+  })
   const changedSection = navigateRouteHistory(review, variance, routeToHash(variance), 'section', { entryId: 'variance-entry' })
 
   assert.equal(changedSection.returnStack.length, 1)
   assert.deepEqual(changedSection.returnStack[0], {
-    routeHash: routeToHash(practice), route: practice, scrollY: 240,
+    routeHash: routeToHash(practice), route: practice, entryId: 'practice-entry', scrollY: 240, focusTarget,
   })
   const returned = navigateRouteHistory(changedSection, practice, routeToHash(practice), 'return', { entryId: 'return-entry' })
   assert.equal(returned.returnStack.length, 0)
@@ -29,10 +32,19 @@ test('nested review links return in order and ordinary navigation clears the sta
   const second = { kind: 'lesson-id', lessonId: 'math-algebra-sigma', sectionId: 'sigma' }
   let state = navigateRouteHistory(
     createRouteHistoryState(practice, routeToHash(practice), { entryId: 'practice-entry' }),
-    first, routeToHash(first), 'review', { entryId: 'first-review' },
+    first, routeToHash(first), 'review', {
+      entryId: 'first-review', focusTarget: { exerciseId: 'exercise-a', linkIndex: 0 },
+    },
   )
-  state = navigateRouteHistory(state, second, routeToHash(second), 'review', { entryId: 'second-review' })
+  state = navigateRouteHistory(state, second, routeToHash(second), 'review', {
+    entryId: 'second-review', focusTarget: { exerciseId: 'exercise-b', linkIndex: 2 },
+  })
   assert.equal(state.returnStack.length, 2)
+  assert.deepEqual(state.returnStack.map((frame) => [frame.entryId, frame.focusTarget]), [
+    ['practice-entry', { exerciseId: 'exercise-a', linkIndex: 0 }],
+    ['first-review', { exerciseId: 'exercise-b', linkIndex: 2 }],
+  ])
+  assert.equal(new Set([state.entryId, ...state.returnStack.map((frame) => frame.entryId)]).size, 3)
   const returnToFirst = navigateRouteHistory(state, first, routeToHash(first), 'return', { entryId: 'return-first' })
   assert.equal(returnToFirst.returnStack.length, 1)
   const returnToPractice = navigateRouteHistory(returnToFirst, practice, routeToHash(practice), 'return', { entryId: 'return-practice' })
@@ -54,6 +66,9 @@ test('version 2 validates a strict route, scroll position and flat return frames
   assert.equal(validateRouteHistoryState({ ...state, scrollY: -1 }, state.routeHash), null)
   assert.equal(validateRouteHistoryState({ ...state, extra: true }, state.routeHash), null)
   assert.equal(validateRouteHistoryState({ ...state, draft: 'old answer', resumeAttemptId: 'old-attempt' }, state.routeHash), null)
+  const legacyFrame = { routeHash: state.routeHash, route: state.route, scrollY: 35 }
+  assert.ok(validateRouteHistoryState({ ...state, returnStack: [legacyFrame] }, state.routeHash),
+    'existing version 2 frames remain valid without focus metadata')
   assert.equal(validateRouteHistoryState({
     ...state, returnStack: [{ ...state, returnStack: [] }],
   }, state.routeHash), null)
@@ -65,4 +80,37 @@ test('version 2 validates a strict route, scroll position and flat return frames
   assert.equal(updated.entryId, state.entryId)
   assert.equal(updated.scrollY, 88)
   assert.throws(() => updateRouteHistoryState(state, { draft: 'legacy' }), TypeError)
+})
+
+test('history frames keep focus targets tied to unique source entry IDs', () => {
+  const route = { kind: 'lesson-id', lessonId: 'data-types', sectionId: 'types' }
+  const hash = routeToHash(route)
+  const initial = createRouteHistoryState(route, hash, { entryId: 'source-entry', scrollY: 510 })
+  const firstReview = navigateRouteHistory(initial, route, hash, 'review', {
+    entryId: 'review-a', focusTarget: { exerciseId: 'exercise-a', linkIndex: 0 },
+  })
+  const secondReview = navigateRouteHistory(firstReview, route, hash, 'review', {
+    entryId: 'review-b', focusTarget: { exerciseId: 'exercise-b', linkIndex: 2 },
+  })
+
+  assert.deepEqual(secondReview.returnStack.map(({ entryId, focusTarget }) => [entryId, focusTarget]), [
+    ['source-entry', { exerciseId: 'exercise-a', linkIndex: 0 }],
+    ['review-a', { exerciseId: 'exercise-b', linkIndex: 2 }],
+  ])
+  assert.equal(new Set([initial.entryId, firstReview.entryId, secondReview.entryId]).size, 3)
+  assert.equal(validateRouteHistoryState({
+    ...secondReview,
+    returnStack: [...secondReview.returnStack, { ...secondReview.returnStack[0] }],
+  }, hash), null, 'a source entry ID cannot appear twice in one return stack')
+  assert.equal(validateRouteHistoryState({
+    ...firstReview,
+    returnStack: [{ ...firstReview.returnStack[0], entryId: firstReview.entryId }],
+  }, hash), null, 'the current history entry ID cannot duplicate a return frame ID')
+  assert.equal(validateRouteHistoryState({
+    ...firstReview,
+    returnStack: [{ ...firstReview.returnStack[0], focusTarget: { exerciseId: '', linkIndex: 0 } }],
+  }, hash), null, 'focus locators must pass strict validation')
+  assert.throws(() => navigateRouteHistory(initial, route, hash, 'review', {
+    entryId: 'source-entry', focusTarget: { exerciseId: 'exercise-a', linkIndex: 0 },
+  }), /unique/u)
 })

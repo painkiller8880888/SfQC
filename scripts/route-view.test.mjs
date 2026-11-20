@@ -77,3 +77,21 @@ test('explicit return focuses the destination heading and restores its saved scr
   assert.deepEqual(focusOptions, { preventScroll: true })
   assert.equal(page.scrollY, 640)
 })
+
+test('explicit return prefers the originating exercise target and restores its saved scroll position', () => {
+  const page = { activeElement: null, scrollY: 0 }
+  const heading = { focus() { page.activeElement = heading } }
+  const returnTarget = { focus(options) {
+    assert.deepEqual(options, { preventScroll: true })
+    page.activeElement = returnTarget
+  } }
+  applyRouteNavigationEffect('return', { scrollY: 840 }, {
+    heading,
+    sectionHeading: null,
+    returnTarget,
+    scrollTo(_x, y) { page.scrollY = y },
+  })
+
+  assert.equal(page.activeElement, returnTarget)
+  assert.equal(page.scrollY, 840)
+})

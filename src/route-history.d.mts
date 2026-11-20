@@ -2,15 +2,27 @@ import type { AppRoute } from './resolve-screen.mjs'
 
 export const ROUTE_HISTORY_VERSION: 2
 
+export type RouteHistoryFocusTarget = {
+  exerciseId: string
+  linkIndex: number
+}
+
 export type RouteHistoryFrame = {
   routeHash: string
   route: AppRoute
   scrollY: number
+  /** Missing in existing version 2 browser history entries. */
+  entryId?: string
+  /** Missing in existing version 2 browser history entries. */
+  focusTarget?: RouteHistoryFocusTarget | null
 }
 
-export type RouteHistoryState = RouteHistoryFrame & {
+export type RouteHistoryState = {
   version: 2
+  routeHash: string
+  route: AppRoute
   entryId: string
+  scrollY: number
   returnStack: RouteHistoryFrame[]
 }
 
@@ -26,7 +38,7 @@ export function navigateRouteHistory(
   route: AppRoute,
   routeHash: string,
   intent?: NavigationIntent,
-  options?: { entryId?: string },
+  options?: { entryId?: string; focusTarget?: RouteHistoryFocusTarget | null },
 ): RouteHistoryState | null
 export function updateRouteHistoryState(
   state: RouteHistoryState,

@@ -73,6 +73,7 @@ type MapUiState = {
   mobileDetailOpen: boolean
 }
 type MapListLocator = { href: string; text: string; cardTitle: string }
+type ExerciseReviewFocus = { exerciseId: string; linkIndex: number }
 type MapEntrySnapshot = MapUiState & {
   graphScrollTop: number
   graphScrollLeft: number
@@ -241,6 +242,7 @@ function App() {
   const judgementIdRef = useRef(0)
   const [pendingBackupImport, setPendingBackupImport] = useState<LearningBackupImportResult | null>(null)
   const keepJudgementsAfterRestoreRef = useRef(true)
+  const pendingReturnFocusRef = useRef<ExerciseReviewFocus | null>(null)
   const syncMapEntrySnapshot = (entryId: string, listOrigin?: MapListLocator) => {
     const previous = mapEntrySnapshotsRef.current.get(entryId)
     mapEntrySnapshotsRef.current.set(entryId, {
@@ -673,6 +675,12 @@ function App() {
 
   const pushNavigation = (route: AppRoute, hash: string, intent: NavigationIntent, sourceAnchor?: HTMLAnchorElement) => {
     const currentView = viewRef.current
+    const sourceExercise = intent === 'review' ? sourceAnchor?.closest<HTMLElement>('[data-exercise-id]') ?? null : null
+    const sourceReviewLinks = sourceExercise?.querySelectorAll<HTMLAnchorElement>('a[data-nav-intent="review"]')
+    const sourceReviewLinkIndex = sourceAnchor && sourceReviewLinks ? Array.from(sourceReviewLinks).indexOf(sourceAnchor) : -1
+    const sourceExerciseFocus = sourceExercise?.dataset.exerciseId && sourceReviewLinkIndex >= 0
+      ? { exerciseId: sourceExercise.dataset.exerciseId, linkIndex: sourceReviewLinkIndex }
+      : null
     if (screenForRoute(currentView.route) === 'map') {
       syncMapEntrySnapshot(currentView.historyState.entryId, sourceAnchor ? mapListLocatorFor(sourceAnchor) : undefined)
     }
@@ -681,7 +689,7 @@ function App() {
       ?? currentView.historyState
     let nextState: RouteHistoryState | null
     try {
-      nextState = navigateRouteHistory(currentState, route, hash, intent)
+      nextState = navigateRouteHistory(currentState, route, hash, intent, { focusTarget: sourceExerciseFocus })
     } catch {
       setDataMessage('画面の復帰情報を作成できませんでした。現在の画面に留まっています。')
       return false
@@ -696,6 +704,9 @@ function App() {
       setDataMessage('ブラウザー履歴に復帰情報を保存できませんでした。現在の画面に留まっています。')
       return false
     }
+    pendingReturnFocusRef.current = intent === 'return'
+      ? currentState.returnStack.at(-1)?.focusTarget ?? null
+      : null
     lastHandledRef.current = hash + '\u0000' + nextState.entryId
     resolveCurrentLocation(intent, nextState)
     if (screenForRoute(route) === 'map') syncMapEntrySnapshot(nextState.entryId)
@@ -935,9 +946,18 @@ function App() {
     let restoreFrame: number | null = null
     const frame = window.requestAnimationFrame(() => {
       if (!isCurrent()) return
+      const returnLocator = viewAtSchedule.navigation === 'return' ? pendingReturnFocusRef.current : null
+      let returnTarget: HTMLAnchorElement | null = null
+      if (returnLocator) {
+        const returnCard = Array.from(document.querySelectorAll<HTMLElement>('[data-exercise-id]'))
+          .find((card) => card.dataset.exerciseId === returnLocator.exerciseId)
+        returnTarget = returnCard?.querySelectorAll<HTMLAnchorElement>('a[data-nav-intent="review"]')[returnLocator.linkIndex] ?? null
+      }
+      if (viewAtSchedule.navigation === 'return') pendingReturnFocusRef.current = null
       applyRouteNavigationEffect(viewAtSchedule.navigation, viewAtSchedule.historyState, {
         heading: headingRef.current,
         sectionHeading: sectionHeadingRef.current,
+        returnTarget,
         scrollTo: (x, y) => window.scrollTo(x, y),
       })
       if (viewAtSchedule.navigation === 'restore' && screenForRoute(viewAtSchedule.route) === 'map') {
