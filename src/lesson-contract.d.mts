@@ -123,7 +123,7 @@ export type ExerciseQuestionDisplay = {
     caption?: string
     rowHeaderLabel?: string
     columnLabels?: string[]
-    rows: Array<{ label: string; values: number[] }>
+    rows: Array<{ label: string; values: Array<number | string> }>
   }
   calculations?: string[]
   reviewSectionRefs: LessonRef[]

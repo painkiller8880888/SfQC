@@ -38,6 +38,19 @@ test('a direct course deep link focuses and scrolls to its section when history 
   assert.equal(page.scrolledTo, true)
 })
 
+test('data-types opens at the overview and deep links focus the requested section', () => {
+  const root = resolveRouteView('#/lesson/data-types', null, 'initial', 0)
+  assert.equal(root.navigation, 'initial')
+  assert.ok(root.resolved.lesson.overview.length > 0)
+  assert.equal(root.resolved.section, null)
+
+  for (const sectionId of ['observation-unit', 'counting', 'types']) {
+    const view = resolveRouteView(`#/lesson/data-types/${sectionId}`, null, 'initial', 0)
+    assert.equal(view.navigation, 'section')
+    assert.equal(view.resolved.section?.sectionId, sectionId)
+  }
+})
+
 test('a v1 answer draft and resume frame are rejected and rebuilt from the URL as v2', () => {
   const route = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance' }
   const hash = routeToHash(route)

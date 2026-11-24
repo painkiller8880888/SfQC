@@ -343,7 +343,7 @@ function isExerciseQuestion(value, path, lessonsById, errors) {
       || !isArray(table.rows) || table.rows.length === 0
       || !table.rows.every((row) => hasOnlyKeys(row, ['label', 'values']) && hasKeys(row, ['label', 'values'])
         && isText(row.label) && isArray(row.values) && row.values.length > 0
-        && row.values.every((number) => typeof number === 'number' && Number.isFinite(number)))
+        && row.values.every((cell) => isText(cell) || Number.isFinite(cell)))
       || table.rows.some((row) => row.values.length !== table.rows[0]?.values.length)) {
       errors.push(`${path}.display.table is invalid`)
       valid = false

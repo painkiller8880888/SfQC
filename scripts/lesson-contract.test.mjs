@@ -31,14 +31,14 @@ test('fixture and the six included lessons satisfy the contract and keep other l
   assert.equal(validateLessonRegistry(lessonRegistryFixture), true)
   assert.equal(validateLessonRegistry(lessonRegistry), true)
   assert.equal(lessonRegistry.lessons.length, 34)
-  assert.equal(lessonRegistry.curriculumRevision, 3)
+  assert.equal(lessonRegistry.curriculumRevision, 4)
   assert.ok(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds.includes('variance'))
   assert.ok(lesson(lessonRegistry, 'math-algebra-sigma').declaredSectionIds.includes('sigma'))
   assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').availability, 'included')
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 5)
   const expectedSections = new Map([
-    ['data-types', ['types']],
+    ['data-types', ['observation-unit', 'counting', 'types']],
     ['math-arithmetic', ['operations']],
     ['math-ratios-percentages', ['ratio']],
     ['math-powers-roots', ['powers-roots']],
@@ -54,14 +54,14 @@ test('fixture and the six included lessons satisfy the contract and keep other l
       assert.equal(item.revision, 1)
       continue
     }
-    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 5 : item.lessonId === 'data-types' ? 3 : 2)
+    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 5 : item.lessonId === 'data-types' ? 4 : 2)
     assert.deepEqual(item.declaredSectionIds, sectionIds)
     assert.equal(item.sections.length, sectionIds.length)
     const paragraphs = item.sections.flatMap((section) => section.blocks
       .filter((block) => block.kind === 'paragraph')
       .map((block) => block.parts.filter((part) => part.kind === 'text').map((part) => part.text).join('')))
     if (item.lessonId === 'data-types') {
-      assert.ok(paragraphs.some((paragraph) => paragraph.includes('基準を超える傷が3件')))
+      assert.ok(item.overview.some((block) => block.kind === 'table'))
       assert.ok(item.sections[0].blocks.some((block) => block.kind === 'table'))
     } else if (item.lessonId !== 'descriptive-statistics') {
       assert.ok(paragraphs.some((paragraph) => paragraph.includes('例：')))
@@ -75,7 +75,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
   assert.deepEqual(lessonRegistry.exerciseCatalog.categories.map(({ categoryId }) => categoryId), PRACTICE_CATEGORY_IDS)
   assert.deepEqual(lessonRegistry.exerciseCatalog.definitions
     .filter(({ placement }) => placement.kind === 'section').map(({ exerciseId }) => exerciseId),
-  ['classify-record', 'identify-observation-unit', 'defect-aggregation', 'mean', 'deviation', 'variance', 'standard-deviation'])
+  ['identify-observation-unit', 'defect-aggregation', 'classify-record', 'mean', 'deviation', 'variance', 'standard-deviation'])
   assert.equal(lessonRegistry.exerciseCatalog.definitions.length, 22)
   assert.equal(lessonRegistry.exerciseCatalog.generators.find(({ generatorId }) =>
     generatorId === 'descriptive-statistics-independent').types.length, 15)
@@ -154,37 +154,43 @@ test('fixed and seeded exercise APIs keep display data separate from grading and
   }), /data-types:generated-counts.*reviewSectionRefs/u)
 })
 
-test('data-types lesson maps observation units to fixed classification and switchable aggregation questions', () => {
+test('data-types uses a shared overview and places one exercise after each section explanation', () => {
   const dataTypes = lesson(lessonRegistry, 'data-types')
-  const blocks = dataTypes.sections[0].blocks
-  const slots = blocks.filter((block) => block.kind === 'exerciseSlot')
-  const firstTableIndex = blocks.findIndex((block) => block.kind === 'table')
-  const observationUnitIndex = blocks.findIndex((block) => block.kind === 'paragraph'
-    && block.parts.some((part) => part.kind === 'text' && part.text.includes('1観測')))
-  assert.ok(observationUnitIndex >= 0 && observationUnitIndex < firstTableIndex,
-    'the lesson states what one observation represents before the first table')
-  assert.deepEqual(slots.map((block) => block.exerciseId), [
-    'classify-record', 'identify-observation-unit', 'defect-aggregation',
+  assert.deepEqual(dataTypes.overview.map(({ kind }) => kind), ['paragraph', 'paragraph', 'table', 'paragraph'])
+  assert.equal(dataTypes.overview[0].parts[0].text, '検査で基準を超える傷が3件見つかりました。しかし不適合品は2個です。なぜでしょうか？')
+  assert.deepEqual(dataTypes.overview[2].rows, [
+    ['A', '3', '2'], ['B', '1', '1'], ['C', '1', '0'], ['D〜J', '0', '0'],
   ])
-  const definitions = lessonRegistry.exerciseCatalog.definitions.filter(({ lessonId }) => lessonId === 'data-types')
-  assert.ok(definitions.slice(0, 2).every(({ revision, generation }) => revision === 1 && generation.kind === 'fixed'))
-  assert.deepEqual(definitions[2], {
-    lessonId: 'data-types',
-    exerciseId: 'defect-aggregation',
-    revision: 1,
-    placement: { kind: 'section', sectionId: 'types' },
-    generation: {
-      kind: 'index', generatorId: 'data-types-cases', typeId: 'defect-aggregation', minimum: 0, maximum: 2,
-    },
-  })
-  assert.deepEqual(lessonRegistry.exerciseCatalog.generators.find(({ generatorId }) => generatorId === 'data-types-cases').types, [
-    { typeId: 'defect-aggregation', mode: 'index', minimum: 0, maximum: 2 },
+  assert.deepEqual(dataTypes.sections.map(({ sectionId, blocks }) => {
+    assert.equal(blocks[0].kind, 'paragraph')
+    assert.ok(blocks.some(({ kind, summary }) => kind === 'details' && summary.startsWith('もっと正確に')))
+    assert.equal(blocks.at(-1).kind, 'exerciseSlot')
+    return [sectionId, blocks.at(-1).exerciseId]
+  }), [
+    ['observation-unit', 'identify-observation-unit'],
+    ['counting', 'defect-aggregation'],
+    ['types', 'classify-record'],
   ])
+  assert.equal(dataTypes.figures.length, 0)
+  assert.equal(dataTypes.references.length, 3)
+  assert.ok(dataTypes.references.every(({ details }) => details.includes('2026-11-20')))
+  assert.ok(lesson(lessonRegistry, 'population-sample').commonPrerequisites.includes('data-types#observation-unit'))
+  assert.ok(lesson(lessonRegistry, 'descriptive-statistics').commonPrerequisites.includes('data-types#types'))
 
+  const definitions = lessonRegistry.exerciseCatalog.definitions.filter(({ lessonId }) => lessonId === 'data-types')
+  assert.deepEqual(definitions.map(({ placement }) => placement.sectionId), dataTypes.declaredSectionIds)
+  assert.ok(definitions.every(({ revision }) => revision === 2))
+  assert.deepEqual(definitions.map(({ generation }) => generation.kind), ['fixed', 'index', 'fixed'])
+  assert.deepEqual(definitions[1].generation, {
+    kind: 'index', generatorId: 'data-types-cases', typeId: 'defect-aggregation', minimum: 0, maximum: 1,
+  })
+})
+
+test('data-types cases reproduce the product record and the independent two-row detail', () => {
   const productCase = generateLessonExercise('data-types', 'defect-aggregation', 0)
   const productDisplay = getExerciseQuestionDisplay(productCase)
   assert.deepEqual(productDisplay.table, {
-    caption: '製品ごとの検査記録',
+    caption: '製品ごとの検査記録（1行＝製品1個）',
     rowHeaderLabel: '製品番号',
     columnLabels: ['見つかった傷（件）', '基準を超えた傷（件）'],
     rows: [
@@ -193,46 +199,51 @@ test('data-types lesson maps observation units to fixed classification and switc
       { label: 'P-05', values: [1, 0] }, { label: 'P-06', values: [0, 0] },
     ],
   })
-  assert.deepEqual(productDisplay.reviewSectionRefs, ['data-types#types'])
-  assert.ok(!collectKeys(productDisplay).some((key) => ['evaluation', 'solution', 'correctChoiceId', 'explanation'].includes(key)))
-  assert.equal(getExerciseGradingData(productCase).evaluation.correctChoiceId, 'choice-0')
-  assert.equal(getExerciseGradingData(productCase).solution.choiceFeedback.length, 3)
-
   const detailCase = generateLessonExercise('data-types', 'defect-aggregation', 1)
   const detailDisplay = getExerciseQuestionDisplay(detailCase)
+  assert.match(detailDisplay.prompt, /検査対象は P-01〜P-05 の5個/u)
   assert.deepEqual(detailDisplay.table, {
-    caption: '同じ6製品から基準を超えた傷だけを抜き出した明細',
+    caption: '基準を超えた傷の明細（1行＝傷1件）',
     rowHeaderLabel: '傷番号',
     columnLabels: ['製品番号'],
-    rows: [
-      { label: '傷1', values: [1] }, { label: '傷2', values: [1] },
-      { label: '傷3', values: [1] }, { label: '傷4', values: [3] },
-    ],
+    rows: [{ label: '傷1', values: ['P-01'] }, { label: '傷2', values: ['P-03'] }],
   })
-  assert.match(detailDisplay.prompt, /同じ6製品/u)
-  const productDefectIds = productDisplay.table.rows.flatMap(({ label, values }) =>
-    Array.from({ length: values[1] }, () => label))
-  const detailProductIds = detailDisplay.table.rows.map(({ values }) => `P-0${values[0]}`)
-  assert.deepEqual(detailProductIds, productDefectIds,
-    'the paired product table and defect detail represent the same four defects')
-  assert.match(detailDisplay.table.caption, /同じ6製品/u)
-  assert.deepEqual(getExerciseGradingData(detailCase).solution.steps, [
-    '明細の1行は基準を超えた傷1件なので、4行で不適合は4件です。',
-    '製品番号P-01とP-03を重複なく数えると、不適合品は2個です。検査対象は6個で、明細はそのうち基準を超えた傷だけを示しています。',
-  ])
-  assert.equal(getExerciseGradingData(detailCase).evaluation.correctChoiceId, 'choice-0')
-  assert.equal(getExerciseGradingData(detailCase).solution.choiceFeedback.length, 3)
-  assert.match(getExerciseGradingData(detailCase).solution.choiceFeedback[2].misconception, /P-03/u)
-  const equalCountCase = generateLessonExercise('data-types', 'defect-aggregation', 2)
-  assert.deepEqual(getExerciseQuestionDisplay(equalCountCase).table.rows, [
-    { label: '傷1', values: [1] }, { label: '傷2', values: [3] },
-  ])
-  assert.match(getExerciseGradingData(equalCountCase).solution.explanation, /どちらも2/u)
-  assert.throws(() => generateLessonExercise('data-types', 'defect-aggregation', 3), RangeError)
+  assert.throws(() => generateLessonExercise('data-types', 'defect-aggregation', 2), RangeError)
   assert.throws(() => generateLessonExercise('data-types', 'classify-record', 0), RangeError)
+
+  const answerPositions = []
+  for (const [exerciseId, input, sectionId, answer] of [
+    ['identify-observation-unit', undefined, 'observation-unit', /検査した製品は一覧の5個/u],
+    ['defect-aggregation', 0, 'counting', /^不適合品2個、不適合4件。/u],
+    ['defect-aggregation', 1, 'observation-unit', /^不適合品2個、不適合2件。製品番号を重複なく数える/u],
+    ['classify-record', undefined, 'types', /コードの合計2は不適合品数（2個）。$/u],
+  ]) {
+    const instance = generateLessonExercise('data-types', exerciseId, input)
+    const duplicate = generateLessonExercise('data-types', exerciseId, input)
+    const display = getExerciseQuestionDisplay(instance)
+    const grading = getExerciseGradingData(instance)
+    assert.deepEqual(getExerciseQuestionDisplay(duplicate), display)
+    assert.deepEqual(getExerciseGradingData(duplicate), grading)
+    assert.ok(!collectKeys(display).some((key) => ['evaluation', 'solution', 'correctChoiceId', 'explanation'].includes(key)))
+    const position = display.response.choices.findIndex(({ id }) => id === grading.evaluation.correctChoiceId)
+    assert.match(display.response.choices[position].text, answer)
+    answerPositions.push(position)
+    assert.ok(grading.solution.steps.length >= 2)
+    assert.deepEqual(display.reviewSectionRefs, [`data-types#${sectionId}`])
+    assert.deepEqual(grading.solution.choiceFeedback.map(({ choiceId }) => choiceId), display.response.choices
+      .filter(({ id }) => id !== grading.evaluation.correctChoiceId).map(({ id }) => id))
+    assert.ok(grading.solution.choiceFeedback.every(({ reviewSectionRefs }) =>
+      reviewSectionRefs.length === 1 && reviewSectionRefs[0] === display.reviewSectionRefs[0]))
+  }
+  assert.equal(new Set(answerPositions).size, 4)
+
+  const wrongReason = detailDisplay.response.choices.find(({ text }) => text.includes('明細の1行は製品1個'))
+  assert.match(wrongReason.text, /^不適合品2個、不適合2件。/u)
+  assert.match(getExerciseGradingData(detailCase).solution.choiceFeedback
+    .find(({ choiceId }) => choiceId === wrongReason.id).misconception, /数は合っていますが、理由が誤り/u)
 })
 
-test('exercise tables accept optional labels and reject empty or mismatched metadata', () => {
+test('exercise tables accept text and numeric cells with matching column metadata', () => {
   const legacy = copy(lessonRegistryFixture)
   const legacyQuestion = legacy.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'observed-counts').generation.question
   legacyQuestion.display.table = { rows: [{ label: '観測', values: [1, 0] }] }
@@ -242,8 +253,8 @@ test('exercise tables accept optional labels and reject empty or mismatched meta
   labeled.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'observed-counts').generation.question.display.table = {
     caption: '製品ごとの記録',
     rowHeaderLabel: '製品番号',
-    columnLabels: ['不適合品コード', '傷の件数'],
-    rows: [{ label: 'P-01', values: [1, 2] }],
+    columnLabels: ['適合状態', '傷の件数'],
+    rows: [{ label: 'P-01', values: ['不適合', 2] }],
   }
   assert.equal(validateLessonRegistry(labeled), true)
 
@@ -253,6 +264,9 @@ test('exercise tables accept optional labels and reject empty or mismatched meta
     (table) => { table.columnLabels = ['不適合品コード'] },
     (table) => { table.columnLabels[0] = '' },
     (table) => { table.rows.push({ label: 'P-02', values: [0] }) },
+    (table) => { table.rows[0].values[0] = '' },
+    (table) => { table.rows[0].values[0] = true },
+    (table) => { table.rows[0].values[1] = Infinity },
   ]) {
     const invalid = copy(labeled)
     mutate(invalid.exerciseCatalog.definitions.find(({ exerciseId }) => exerciseId === 'observed-counts').generation.question.display.table)
