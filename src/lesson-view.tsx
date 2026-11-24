@@ -560,10 +560,11 @@ export function LessonMap({ registry = lessonRegistry, progress, manualProgress,
   </div>
 }
 
-export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, registry, exerciseGenerators = lessonExerciseGenerators, renderExercise, children }: {
+export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, sectionReturn, registry, exerciseGenerators = lessonExerciseGenerators, renderExercise, children }: {
   lesson: IncludedLessonDefinition
   activeSectionId: string | null
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
+  sectionReturn?: ReactNode
   registry: LessonRegistry
   exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
   renderExercise?: (exerciseId: string) => ReactNode
@@ -584,6 +585,7 @@ export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, regis
     </nav>
     <div className="course-sections">{lesson.sections.map((section) => <section className="course-section" key={section.sectionId} id={`section-${section.sectionId}`}>
       <h2 id={`course-section-${section.sectionId}`} tabIndex={-1} ref={section.sectionId === activeSectionId ? sectionHeadingRef : undefined}>{section.title}</h2>
+      {section.sectionId === activeSectionId && sectionReturn}
       {section.blocks.map((block, index) => <LessonBlock key={index} block={block} {...blockProps} />)}
     </section>)}</div>
     {!!lesson.references?.length && <details className="course-references"><summary>{lesson.credit ? '参考資料・クレジット' : '出典'}</summary>
@@ -596,15 +598,16 @@ export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, regis
   </section>
 }
 
-export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, registry = lessonRegistry, exerciseGenerators = lessonExerciseGenerators }: {
+export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, sectionReturn, registry = lessonRegistry, exerciseGenerators = lessonExerciseGenerators }: {
   lesson: IncludedLessonDefinition
   sectionId: string | null
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
+  sectionReturn?: ReactNode
   registry?: LessonRegistry
   exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
 }) {
   if (lesson.overview) return <LessonCourse key={lesson.lessonId} lesson={lesson} activeSectionId={sectionId}
-    sectionHeadingRef={sectionHeadingRef} registry={registry} exerciseGenerators={exerciseGenerators} />
+    sectionHeadingRef={sectionHeadingRef} sectionReturn={sectionReturn} registry={registry} exerciseGenerators={exerciseGenerators} />
 
   const section = sectionId ? lesson.sections.find((item) => item.sectionId === sectionId) : undefined
   const currentRef = section ? `${lesson.lessonId}#${section.sectionId}` : undefined
@@ -612,6 +615,7 @@ export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, regis
     {section ? <>
       <p className="lesson-context">単元：<InternalLink route={{ kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: null }} intent="section">{lesson.title}</InternalLink></p>
       <h2 id="route-lesson-title" ref={sectionHeadingRef} tabIndex={-1}>解説</h2>
+      {sectionReturn}
       <div className="lesson-body">
         {section.blocks.map((block, index) => <LessonBlock key={index} block={block} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />)}
       </div>

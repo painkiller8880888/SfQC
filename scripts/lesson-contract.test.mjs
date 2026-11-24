@@ -54,7 +54,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
       assert.equal(item.revision, 1)
       continue
     }
-    assert.equal(item.revision, item.lessonId === 'descriptive-statistics' ? 5 : item.lessonId === 'data-types' ? 4 : 2)
+    assert.equal(item.revision, ['descriptive-statistics', 'data-types'].includes(item.lessonId) ? 5 : 2)
     assert.deepEqual(item.declaredSectionIds, sectionIds)
     assert.equal(item.sections.length, sectionIds.length)
     const paragraphs = item.sections.flatMap((section) => section.blocks
@@ -171,6 +171,11 @@ test('data-types uses a shared overview and places one exercise after each secti
     ['counting', 'defect-aggregation'],
     ['types', 'classify-record'],
   ])
+  const typesBlocks = dataTypes.sections.find(({ sectionId }) => sectionId === 'types').blocks
+  const classificationTableIndex = typesBlocks.findIndex(({ kind, caption }) => kind === 'table' && caption.startsWith('分類を確認する検査記録'))
+  assert.match(typesBlocks[classificationTableIndex - 1].parts[0].text, /検査した4個をすべて、1製品1行で記録しました。/u)
+  const codeExplanation = typesBlocks.find(({ kind, parts }) => kind === 'paragraph' && parts[0].text.includes('0/1の合計'))
+  assert.match(codeExplanation.parts[0].text, /不適合品数と一致するとは限りません。.*複数.*重複.*過大/u)
   assert.equal(dataTypes.figures.length, 0)
   assert.equal(dataTypes.references.length, 3)
   assert.ok(dataTypes.references.every(({ details }) => details.includes('2026-11-20')))
@@ -179,7 +184,7 @@ test('data-types uses a shared overview and places one exercise after each secti
 
   const definitions = lessonRegistry.exerciseCatalog.definitions.filter(({ lessonId }) => lessonId === 'data-types')
   assert.deepEqual(definitions.map(({ placement }) => placement.sectionId), dataTypes.declaredSectionIds)
-  assert.ok(definitions.every(({ revision }) => revision === 2))
+  assert.deepEqual(definitions.map(({ revision }) => revision), [3, 3, 2])
   assert.deepEqual(definitions.map(({ generation }) => generation.kind), ['fixed', 'index', 'fixed'])
   assert.deepEqual(definitions[1].generation, {
     kind: 'index', generatorId: 'data-types-cases', typeId: 'defect-aggregation', minimum: 0, maximum: 1,
@@ -213,7 +218,7 @@ test('data-types cases reproduce the product record and the independent two-row 
 
   const answerPositions = []
   for (const [exerciseId, input, sectionId, answer] of [
-    ['identify-observation-unit', undefined, 'observation-unit', /検査した製品は一覧の5個/u],
+    ['identify-observation-unit', undefined, 'observation-unit', /P-02・P-05の傷は基準内で、P-04には傷がない。検査総数は一覧の5個。$/u],
     ['defect-aggregation', 0, 'counting', /^不適合品2個、不適合4件。/u],
     ['defect-aggregation', 1, 'observation-unit', /^不適合品2個、不適合2件。製品番号を重複なく数える/u],
     ['classify-record', undefined, 'types', /コードの合計2は不適合品数（2個）。$/u],
@@ -241,6 +246,21 @@ test('data-types cases reproduce the product record and the independent two-row 
   assert.match(wrongReason.text, /^不適合品2個、不適合2件。/u)
   assert.match(getExerciseGradingData(detailCase).solution.choiceFeedback
     .find(({ choiceId }) => choiceId === wrongReason.id).misconception, /数は合っていますが、理由が誤り/u)
+  const countAllScratches = productDisplay.response.choices.find(({ text }) => text.startsWith('不適合品2個、不適合8件。'))
+  assert.equal(countAllScratches.text, '不適合品2個、不適合8件。基準を超えた傷が1件以上ある製品を数え、見つかった傷の列を合計する。')
+  assert.match(getExerciseGradingData(productCase).solution.choiceFeedback
+    .find(({ choiceId }) => choiceId === countAllScratches.id).misconception, /8件.*基準内の傷.*4件/u)
+  assert.match(getExerciseGradingData(detailCase).solution.explanation, /1行ずつ.*2個.*2件.*重複.*不適合品数より多く/u)
+})
+
+test('each observation-unit option covers the same four points in a similar length', () => {
+  const instance = generateLessonExercise('data-types', 'identify-observation-unit')
+  const { response } = getExerciseQuestionDisplay(instance)
+  for (const { text } of response.choices) {
+    assert.match(text, /^明細の1行は[^。]+。P-01の2行は[^。]+。明細にない[^。]+。検査総数は[^。]+。$/u)
+  }
+  const lengths = response.choices.map(({ text }) => text.length)
+  assert.ok(Math.max(...lengths) - Math.min(...lengths) <= 8)
 })
 
 test('exercise tables accept text and numeric cells with matching column metadata', () => {

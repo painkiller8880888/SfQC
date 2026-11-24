@@ -1,4 +1,4 @@
-import { useState, type RefObject } from 'react'
+import { useState, type ReactNode, type RefObject } from 'react'
 import type { ExerciseInstance, IncludedLessonDefinition, LessonRegistry } from './lesson-contract.mjs'
 import { lessonRegistry } from './lesson-registry.mjs'
 import { routeToHash } from './resolve-screen.mjs'
@@ -40,13 +40,15 @@ function InlineExercise({ exerciseId, registry }: {
     onRegenerate={canRegenerate ? regenerate : undefined} regenerateLabel="別の問題" />
 }
 
-export function DescriptiveStatisticsCourse({ lesson, activeSectionId, sectionHeadingRef, registry = lessonRegistry }: {
+export function DescriptiveStatisticsCourse({ lesson, activeSectionId, sectionHeadingRef, sectionReturn, registry = lessonRegistry }: {
   lesson: IncludedLessonDefinition
   activeSectionId: string
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
+  sectionReturn?: ReactNode
   registry?: LessonRegistry
 }) {
   return <LessonCourse lesson={lesson} activeSectionId={activeSectionId} sectionHeadingRef={sectionHeadingRef} registry={registry}
+    sectionReturn={sectionReturn}
     renderExercise={(exerciseId) => <InlineExercise exerciseId={exerciseId} registry={registry} />}>
     <p className="lesson-actions"><a href={routeToHash({ kind: 'course-practice', courseId: lesson.lessonId })}>5分野の演習へ</a></p>
   </LessonCourse>

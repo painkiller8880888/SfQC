@@ -1927,7 +1927,8 @@ test('the map opens the data-types explanation directly and its review link rest
     [PRACTICE_RESULTS_KEY]: practiceResults,
   } })
   const { window } = app.dom
-  window.HTMLElement.prototype.scrollIntoView = () => {}
+  const scrollTargets = []
+  window.HTMLElement.prototype.scrollIntoView = function () { scrollTargets.push(this) }
   try {
     await click(app.host.querySelector('[data-lesson-id="data-types"]'))
     const explanationLink = linkFor(app.host.querySelector('.lesson-detail-card'), '解説を読む')
@@ -1954,10 +1955,17 @@ test('the map opens the data-types explanation directly and its review link rest
     assert.equal(observation.querySelector('details').open, false)
     assert.equal(observation.querySelector('.ds-practice-question-heading a').getAttribute('href'), '#/lesson/data-types/observation-unit')
 
-    await click(app.host.querySelector('.course-section-nav a[href="#/lesson/data-types/counting"]'))
+    const countingHash = '#/lesson/data-types/counting'
+    await act(async () => {
+      const changed = new Promise((resolve) => window.addEventListener('hashchange', resolve, { once: true }))
+      window.location.hash = countingHash
+      await changed
+    })
     await settleEffects(window)
-    assert.equal(window.location.hash, '#/lesson/data-types/counting')
-    assert.equal(window.document.activeElement, app.host.querySelector('#course-section-counting'))
+    assert.equal(window.location.hash, countingHash)
+    const countingHeading = app.host.querySelector('#course-section-counting')
+    assert.equal(window.document.activeElement, countingHeading)
+    assert.equal(scrollTargets.at(-1), countingHeading)
 
     const card = app.host.querySelector('#section-counting [data-exercise-id="defect-aggregation"]')
     const caption = () => card.querySelector('caption').textContent
@@ -1993,8 +2001,14 @@ test('the map opens the data-types explanation directly and its review link rest
     await click(reviewLink)
     await settleEffects(window)
     assert.equal(window.location.hash, '#/lesson/data-types/observation-unit')
-    assert.equal(window.document.activeElement, app.host.querySelector('#course-section-observation-unit'))
-    await click(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'))
+    const reviewedHeading = app.host.querySelector('#course-section-observation-unit')
+    assert.equal(window.document.activeElement, reviewedHeading)
+    const returnLink = reviewedHeading.nextElementSibling.querySelector('a[data-nav-intent="return"]')
+    assert.equal(returnLink.textContent, '演習に戻る')
+    assert.equal(returnLink.getAttribute('href'), '#/lesson/data-types/counting')
+    assert.equal(returnLink.tabIndex, 0)
+    assert.equal(app.host.querySelectorAll('a[data-nav-intent="return"]').length, 1)
+    await click(returnLink)
     await settleEffects(window)
 
     assert.equal(window.location.hash, '#/lesson/data-types/counting')

@@ -51,6 +51,32 @@ test('data-types opens at the overview and deep links focus the requested sectio
   }
 })
 
+test('a same-tab hash change without history focuses the requested data-types section', () => {
+  const root = resolveRouteView('#/lesson/data-types', null, 'initial', 0)
+  const hash = '#/lesson/data-types/counting'
+  const view = resolveRouteView(hash, null, 'normal', root.navigationId + 1)
+  assert.equal(view.resolved.section.sectionId, 'counting')
+  assert.equal(view.navigation, 'section')
+
+  const effects = []
+  const targets = {
+    heading: { focus() { effects.push('page heading') } },
+    sectionHeading: {
+      focus() { effects.push('counting heading') },
+      scrollIntoView() { effects.push('counting scroll') },
+    },
+    scrollTo(_x, y) { effects.push(y) },
+  }
+  applyRouteNavigationEffect(view.navigation, view.historyState, targets)
+  assert.deepEqual(effects, ['counting heading', 'counting scroll'])
+
+  effects.length = 0
+  const restored = resolveRouteView(hash, { ...view.historyState, scrollY: 240 }, 'restore', view.navigationId + 1)
+  assert.equal(restored.navigation, 'restore')
+  applyRouteNavigationEffect(restored.navigation, restored.historyState, targets)
+  assert.deepEqual(effects, [240])
+})
+
 test('a v1 answer draft and resume frame are rejected and rebuilt from the URL as v2', () => {
   const route = { kind: 'course-lesson', courseId: 'descriptive-statistics', sectionId: 'variance' }
   const hash = routeToHash(route)

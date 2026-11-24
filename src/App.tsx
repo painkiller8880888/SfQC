@@ -595,6 +595,12 @@ function App() {
   }, [pendingJudgements.length, pendingLearningWrite !== null])
 
   const screen = screenForRoute(view.route)
+  const returnFrame = view.historyState.returnStack.at(-1)
+  const sectionReturn = view.resolved.status === 'lesson' && view.resolved.section && returnFrame?.focusTarget
+    ? <nav className="return-navigation" aria-label="復習から戻る">
+      <a href={returnFrame.routeHash} data-nav-intent="return">演習に戻る</a>
+    </nav>
+    : null
   const current = screens[screen]
   const entityTitle = view.resolved.status === 'lesson'
     ? view.resolved.section?.title ?? view.resolved.lesson.title
@@ -1120,6 +1126,7 @@ function App() {
         lesson={view.resolved.lesson}
         sectionId={view.route.sectionId}
         sectionHeadingRef={sectionHeadingRef}
+        sectionReturn={sectionReturn}
       />
     </>
   }
@@ -1133,6 +1140,7 @@ function App() {
       lesson={view.resolved.lesson}
       activeSectionId={view.route.sectionId}
       sectionHeadingRef={sectionHeadingRef}
+      sectionReturn={sectionReturn}
     />
   }
 
@@ -1198,9 +1206,9 @@ function App() {
           onPointerDownCapture={() => { mapRestoreGenerationRef.current += 1 }}
           onWheelCapture={() => { mapRestoreGenerationRef.current += 1 }}>
           <div className="map-route-messages">{routeMessages}</div>
-          {view.historyState.returnStack.length > 0 && (
+          {returnFrame && (
             <nav className="return-navigation map-return-navigation" aria-label="復習から戻る">
-              <a href={view.historyState.returnStack.at(-1)?.routeHash} data-nav-intent="return">1段戻る</a>
+              <a href={returnFrame.routeHash} data-nav-intent="return">1段戻る</a>
             </nav>
           )}
           <header className="map-toolbar">
@@ -1306,10 +1314,10 @@ function App() {
             </section>
           )}
 
-          {view.historyState.returnStack.length > 0 && (
+          {returnFrame && !sectionReturn && (
             <nav className="return-navigation" aria-label="復習から戻る">
               <a
-                href={view.historyState.returnStack.at(-1)?.routeHash}
+                href={returnFrame.routeHash}
                 data-nav-intent="return"
               >
                 1段戻る
