@@ -14,13 +14,16 @@ P2はIssue #16〜#28、PR #30〜#42で平均・分散・標準偏差の解説と
 
 ## 保存資料と旧パス
 
-移設元に案内スタブを残し、既知のblob/mainリンクが404にならないようにしています。保存本文は変更していません。
+移設元に案内スタブを残し、既知のblob/mainリンクが404にならないようにしています。P2計画資料の保存本文は変更していません。
 
 | 旧パスの案内 | 保存した原文 | 移設前commitの固定リンク |
 |---|---|---|
 | [`docs/P2_IMPLEMENTATION_PLAN.md`](../P2_IMPLEMENTATION_PLAN.md) | [P2_IMPLEMENTATION_PLAN.md](p2/P2_IMPLEMENTATION_PLAN.md) | [原文](https://github.com/painkiller8880888/SfQC/blob/423d44294cf34684b89b1571cb31e9fd8f7100df/docs/P2_IMPLEMENTATION_PLAN.md) |
 | [`docs/ISSUE_19_IMPLEMENTATION_PLAN.md`](../ISSUE_19_IMPLEMENTATION_PLAN.md) | [ISSUE_19_IMPLEMENTATION_PLAN.md](p2/ISSUE_19_IMPLEMENTATION_PLAN.md) | [原文](https://github.com/painkiller8880888/SfQC/blob/423d44294cf34684b89b1571cb31e9fd8f7100df/docs/ISSUE_19_IMPLEMENTATION_PLAN.md) |
 | [`docs/ISSUE_28_IMPLEMENTATION_PLAN.md`](../ISSUE_28_IMPLEMENTATION_PLAN.md) | [ISSUE_28_IMPLEMENTATION_PLAN.md](p2/ISSUE_28_IMPLEMENTATION_PLAN.md) | [原文](https://github.com/painkiller8880888/SfQC/blob/423d44294cf34684b89b1571cb31e9fd8f7100df/docs/ISSUE_28_IMPLEMENTATION_PLAN.md) |
+| [`docs/LESSON_AUTHORING_GUIDELINES_V0.md`](../LESSON_AUTHORING_GUIDELINES_V0.md) | [LESSON_AUTHORING_GUIDELINES_V0.md](LESSON_AUTHORING_GUIDELINES_V0.md) | [原文](https://github.com/painkiller8880888/SfQC/blob/1744bfd0a99b31e4e2d3356027967a3a33c38d50/docs/LESSON_AUTHORING_GUIDELINES_V0.md) |
+
+教材作成ガイドライン v0 は [Issue #112](https://github.com/painkiller8880888/SfQC/issues/112) の成果物です。2026-11-25 に [教材作成ガイドライン v1](../LESSON_AUTHORING_GUIDELINES.md) に置き換えました。v0 は履歴資料であり、現在の制作基準は v1 です。移設した v0 の本文は、冒頭の廃止案内1行と、移設に伴う相対リンクのパス修正以外は当時の内容を保っています。
 
 ## 既知のIssue・PR参照の監査
 
@@ -33,7 +36,7 @@ P2はIssue #16〜#28、PR #30〜#42で平均・分散・標準偏差の解説と
 | [Issue #22 計画コメント](https://github.com/painkiller8880888/SfQC/issues/22#issuecomment-6407373998)、[Issue #23 計画コメント](https://github.com/painkiller8880888/SfQC/issues/23#issuecomment-6408510436) | `docs/P2_IMPLEMENTATION_PLAN.md`の通常パス表記 | 旧パスのスタブから[保存原文](p2/P2_IMPLEMENTATION_PLAN.md)へ | blob URL・fragment・raw URLは検出されなかった |
 | [Issue #28](https://github.com/painkiller8880888/SfQC/issues/28)本文、[計画コメント](https://github.com/painkiller8880888/SfQC/issues/28#issuecomment-6435612804)、[レビュー指摘コメント](https://github.com/painkiller8880888/SfQC/issues/28#issuecomment-6435798835) | `docs/P2_IMPLEMENTATION_PLAN.md`の通常パス表記 | 旧パスのスタブから[保存原文](p2/P2_IMPLEMENTATION_PLAN.md)へ | blob URL・fragment・raw URLは検出されなかった。最終QAは上記Issue #28最終受入コメントを参照 |
 | [Issue #43](https://github.com/painkiller8880888/SfQC/issues/43) | [`blob/main/docs/P2_IMPLEMENTATION_PLAN.md`](https://github.com/painkiller8880888/SfQC/blob/main/docs/P2_IMPLEMENTATION_PLAN.md)。パスfragmentなし | mainの旧パスはスタブとなり、そこから[保存原文](p2/P2_IMPLEMENTATION_PLAN.md)へ | blob pathの到達性とarchive案内を維持。行・見出しfragmentの互換ではない |
-| [Issue #44](https://github.com/painkiller8880888/SfQC/issues/44)本文・[実装計画コメント](https://github.com/painkiller8880888/SfQC/issues/44#issuecomment-6461331575) | 3旧パスを通常のコードパスとして列挙。計画コメントはP2計画の81–105行付近を指すが、行fragment URLではない | 各旧パスのスタブから対応する[3保存文書](p2/)へ | G5の根拠は[移設前81–105行](https://github.com/painkiller8880888/SfQC/blob/423d44294cf34684b89b1571cb31e9fd8f7100df/docs/P2_IMPLEMENTATION_PLAN.md#L81-L105)の固定リンクで参照可能 |
+| [Issue #44](https://github.com/painkiller8880888/SfQC/issues/44)本文・[実装計画コメント](https://github.com/painkiller8880888/SfQC/issues/44#issuecomment-6461331575) | 3旧パスを通常のコードパスとして列挙。計画コメントはP2計画の81–105行付近を指すが、行fragment URLではない | 各旧パスのスタブから対応する[3保存文書](README.md#保存資料と旧パス)へ | G5の根拠は[移設前81–105行](https://github.com/painkiller8880888/SfQC/blob/423d44294cf34684b89b1571cb31e9fd8f7100df/docs/P2_IMPLEMENTATION_PLAN.md#L81-L105)の固定リンクで参照可能 |
 | [Issue #45](https://github.com/painkiller8880888/SfQC/issues/45) | 3旧パスへの参照なし | 該当なし | 今回の外部リンク監査対象に該当なし |
 | [PR #42](https://github.com/painkiller8880888/SfQC/pull/42)本文・[レビュー](https://github.com/painkiller8880888/SfQC/pull/42) | 本文・再レビューは通常パス表記。初回レビューのG5参照は[`blob/49b83cd…/docs/P2_IMPLEMENTATION_PLAN.md`](https://github.com/painkiller8880888/SfQC/blob/49b83cd35a4331776ec324a259439202adf40c68/docs/P2_IMPLEMENTATION_PLAN.md)のcommit固定blob | `blob/main`の旧パスはスタブとなり、[保存原文](p2/P2_IMPLEMENTATION_PLAN.md)へ。commit固定リンクは引き続き原文を表示 | commit固定blobにfragment/rawはない。選択したIssue/PR本文・コメントにraw.githubusercontent.comまたは移設先3文書への行/見出しfragmentは検出されなかった |
 
