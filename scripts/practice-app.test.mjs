@@ -1162,6 +1162,36 @@ test('closing mobile detail restores the opening page scroll before focusing its
   }
 })
 
+test('map list section links focus and scroll to the requested heading in both course layouts', async () => {
+  const app = await createHarness({ url: testDocumentUrl('#/map') })
+  const { window } = app.dom
+  const scrollTargets = []
+  window.HTMLElement.prototype.scrollIntoView = function () { scrollTargets.push(this) }
+
+  try {
+    await click(buttonFor(app.host, '教材一覧'))
+    for (const [hash, sectionId] of [
+      ['#/course/descriptive-statistics/lesson/variance', 'variance'],
+      ['#/lesson/data-types/counting', 'counting'],
+    ]) {
+      const source = app.host.querySelector('.map-list-content .section-list a[href="' + hash + '"]')
+      await click(source)
+      await settleEffects(window)
+      const heading = app.host.querySelector('#course-section-' + sectionId)
+      assert.ok(heading)
+      assert.equal(window.location.hash, hash)
+      assert.equal(window.document.activeElement, heading)
+      assert.equal(scrollTargets.at(-1), heading)
+      await waitForHistory(window, 'back')
+      await settleEffects(window)
+      assert.equal(window.location.hash, '#/map')
+      assert.ok(app.host.querySelector('.map-list-content'))
+    }
+  } finally {
+    await app.close()
+  }
+})
+
 test('list history return restores the source link, window scroll, and list mode', async () => {
   const app = await createHarness({ url: 'https://sfqc.test/SfQC/#/map' })
   const { window } = app.dom
@@ -1648,10 +1678,10 @@ test('published basic statistics figures remain interactive without saving measu
 
     const simulation = app.host.querySelector('.ivc-simulation')
     assert.ok(simulation)
-    assert.match(simulation.textContent, /全部で 125 通り/u)
-    assert.match(simulation.textContent, /n で割った場合は 1\.33/u)
-    assert.match(simulation.textContent, /n − 1 で割った場合は 2\.00/u)
-    assert.equal(simulation.querySelector('.ivc-bar').getAttribute('aria-valuemax'), '4')
+    assert.match(simulation.textContent, /復元抽出では、順序も含めた3本の取り方が 125 通り/u)
+    assert.match(simulation.textContent, /n で割った値の期待値は 1\.33 mm²/u)
+    assert.match(simulation.textContent, /n − 1 で割った値の期待値は 2\.00 mm²/u)
+    assert.equal(simulation.querySelector('.ivc-bar').getAttribute('aria-valuemax'), '6')
     assert.equal(simulation.querySelector('.ivc-simulation-last').textContent, 'まだ取り出していません。')
     const [oneDraw, oneHundred, reset] = simulation.querySelectorAll('.ivc-simulation-actions button')
     await click(oneDraw)
@@ -2013,7 +2043,7 @@ test('the map opens the data-types explanation directly and its review link rest
     assert.match(card.querySelector('.ds-exercise-feedback').textContent, /^正解です/u)
 
     await click(buttonFor(card, '別の問題'))
-    assert.equal(caption(), '基準を超えた傷の明細（1行＝傷1件）')
+    assert.equal(caption(), '基準を超えた傷の明細')
     assert.deepEqual(columnLabels(), ['傷番号', '製品番号'])
     assert.deepEqual(tableRows(), [['傷1', 'P-01'], ['傷2', 'P-03']])
     assert.equal(card.querySelector('input[type="radio"]:checked'), null)
@@ -2042,7 +2072,7 @@ test('the map opens the data-types explanation directly and its review link rest
     assert.equal(card.querySelector('input[value="choice-0"]').checked, true)
     assert.match(card.querySelector('.ds-exercise-feedback').textContent, /違います/u)
     assert.equal(window.document.activeElement, reviewLink, 'return restores focus to the originating review link')
-    assert.equal(caption(), '基準を超えた傷の明細（1行＝傷1件）')
+    assert.equal(caption(), '基準を超えた傷の明細')
     assert.equal(card.querySelector('details').open, false)
 
     await answer('choice-2')
@@ -2378,6 +2408,107 @@ test('course practice presents five categories, records one valid judgment, and 
     assert.match(app.host.querySelector('.progress-card').textContent, /未完了/u,
       'answering a question must not mark the lesson manually complete')
   } finally {
+    await app.close()
+  }
+})
+
+test('independent practice restores the regenerated question and first judgment across nested review', async () => {
+  const practiceHash = '#/course/descriptive-statistics/practice'
+  const app = await createHarness()
+  const { window } = app.dom
+  const originalRandom = Math.random
+  const cardFor = (category) => app.host.querySelector('.ds-practice-question[data-practice-category="' + category + '"]')
+  const submit = async (card) => act(async () => card.querySelector('form').dispatchEvent(
+    new window.Event('submit', { bubbles: true, cancelable: true }),
+  ))
+  const returnLink = () => window.document.activeElement.nextElementSibling?.querySelector('a[data-nav-intent="return"]')
+  const openQuestions = () => [...app.host.querySelectorAll('.ds-practice-question')]
+    .map((card) => [card.dataset.practiceType, card.dataset.practiceSeed, card.querySelector('.ds-practice-prompt').textContent])
+  const reviewSelector = 'a[data-nav-intent="review"]'
+
+  try {
+    const initialRandomValues = [0, 10 / 2 ** 32, 0.4, 11 / 2 ** 32, 0, 12 / 2 ** 32]
+    Math.random = () => initialRandomValues.shift() ?? 0.2
+    await app.remountAt(practiceHash)
+    const before = openQuestions()
+
+    const regenerationRandomValues = [0.9, 314 / 2 ** 32]
+    Math.random = () => regenerationRandomValues.shift() ?? 0.2
+    await click(buttonFor(cardFor(2), 'この問題を入れ替える'))
+    const regenerated = openQuestions()
+    assert.deepEqual(regenerated[2].slice(0, 2), ['2', '314'])
+    assert.notDeepEqual(regenerated[2], before[2])
+    assert.deepEqual(regenerated.filter((_, index) => index !== 2), before.filter((_, index) => index !== 2))
+
+    const choice = cardFor(2)
+    const question = generateDescriptiveStatisticsExercisePreviewQuestion(2, 2, 314)
+    assert.equal(question.type, 'choice')
+    const wrongIndex = question.answer === 0 ? 1 : 0
+    await click(choice.querySelectorAll('input[type="radio"]')[question.answer])
+    await submit(choice)
+    await click(choice.querySelectorAll('input[type="radio"]')[wrongIndex])
+    await submit(choice)
+    await changeTextInput(window, cardFor(1).querySelector('input[type="text"]'), '１２.５')
+
+    const saved = window.localStorage.getItem(PRACTICE_RESULTS_KEY)
+    assert.equal(JSON.parse(saved).records.length, 1)
+    assert.equal(JSON.parse(saved).records[0].isCorrect, true)
+    assert.match(choice.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.equal(choice.querySelector('details').open, true)
+
+    const reviewLinks = [...choice.querySelectorAll(reviewSelector)]
+    const sourceIndex = reviewLinks.length - 1
+    const source = reviewLinks[sourceIndex]
+    const reviewHash = source.getAttribute('href')
+    await click(source)
+    await settleEffects(window)
+    assert.equal(window.location.hash, reviewHash)
+    const firstReturn = returnLink()
+    assert.equal(firstReturn?.textContent, '演習に戻る')
+
+    const nestedSource = window.document.activeElement.closest('.course-section')
+      .querySelector('a[href="#/lesson/math-algebra-sigma/sigma"]')
+    assert.ok(nestedSource)
+    nestedSource.closest('details').open = true
+    await click(nestedSource)
+    await settleEffects(window)
+    assert.equal(window.history.state.returnStack.length, 2)
+    const backFromNestedReview = () => app.host.querySelector('.return-navigation a[data-nav-intent="return"]')
+    await click(backFromNestedReview())
+    await settleEffects(window)
+    assert.equal(window.location.hash, reviewHash)
+    assert.equal(window.history.state.returnStack.length, 1)
+    await click(backFromNestedReview())
+    await settleEffects(window)
+
+    assert.equal(window.location.hash, practiceHash)
+    assert.deepEqual(openQuestions(), regenerated)
+    const restored = cardFor(2)
+    assert.equal(restored.querySelectorAll('input[type="radio"]')[wrongIndex].checked, true)
+    assert.equal(cardFor(1).querySelector('input[type="text"]').value, '１２.５')
+    assert.match(restored.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.equal(restored.querySelector('details').open, true)
+    assert.match(app.host.querySelector('.ds-practice-toolbar [role="status"]').textContent, /正解 1 \/ 5 問（答え合わせ済み 1 問）/u)
+    assert.equal(window.document.activeElement, restored.querySelectorAll(reviewSelector)[sourceIndex])
+    await submit(restored)
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), saved)
+
+    await click(restored.querySelectorAll(reviewSelector)[sourceIndex])
+    await app.remount()
+    await settleEffects(window)
+    Math.random = () => 0.4
+    await click(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'))
+    await settleEffects(window)
+
+    assert.equal(window.location.hash, practiceHash)
+    assert.equal(window.document.activeElement, app.host.querySelector('#page-title'))
+    assert.notDeepEqual(openQuestions(), regenerated)
+    assert.equal(app.host.querySelector('.ds-practice-toolbar [role="status"]').textContent, '')
+    assert.equal(app.host.querySelector('input[type="radio"]:checked'), null)
+    assert.equal(cardFor(1).querySelector('input[type="text"]').value, '')
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), saved)
+  } finally {
+    Math.random = originalRandom
     await app.close()
   }
 })

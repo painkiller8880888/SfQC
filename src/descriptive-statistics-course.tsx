@@ -36,7 +36,6 @@ function InlineExercise({ exerciseId, registry }: {
 
   return <ExerciseQuestionCard instance={question.instance} exerciseId={exerciseId} title="確認問題" headingLevel={4}
     registry={registry} error={question.error} className="course-inline-exercise"
-    tableCaption="ラインごとに測った値" tableRowHeaderLabel="ライン" tableColumnLabel={(index) => `${index + 1}個目`}
     onRegenerate={canRegenerate ? regenerate : undefined} regenerateLabel="別の問題" />
 }
 

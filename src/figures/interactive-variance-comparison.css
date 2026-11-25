@@ -55,7 +55,7 @@
 }
 
 .ivc-grid {
-  stroke: var(--ds-grid, var(--border));
+  stroke: var(--control-border);
   stroke-width: 1;
 }
 
@@ -66,7 +66,7 @@
 }
 
 .ivc-base {
-  stroke: var(--border);
+  stroke: var(--control-border);
   stroke-width: 2;
 }
 
@@ -116,7 +116,7 @@
 
 .ivc-square {
   fill: currentColor;
-  fill-opacity: 0.22;
+  fill-opacity: 0.19;
   stroke: currentColor;
   stroke-width: 1.5;
 }
@@ -180,8 +180,7 @@
 }
 
 .ivc-readout td.num {
-  font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .ivc-caption {
@@ -222,7 +221,7 @@
 
 .ivc-population span {
   padding: 0.125rem 0.625rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 0.375rem;
   background: var(--surface-subtle);
   font-family: var(--font-num);
@@ -245,6 +244,7 @@
   position: relative;
   height: 0.875rem;
   border-radius: 0.5rem;
+  outline: 1px solid var(--control-border);
   background: var(--surface-subtle);
 }
 
@@ -262,8 +262,9 @@
 
 .ivc-bar > b {
   position: absolute;
-  inset: -0.25rem auto -0.25rem 80%;
+  inset: -0.25rem auto -0.25rem;
   width: 2px;
+  outline: 1px solid var(--surface-subtle);
   background: var(--text);
 }
 

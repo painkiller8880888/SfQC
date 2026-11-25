@@ -36,7 +36,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
   assert.ok(lesson(lessonRegistry, 'math-algebra-sigma').declaredSectionIds.includes('sigma'))
   assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').availability, 'included')
-  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 5)
+  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 6)
   const expectedSections = new Map([
     ['data-types', ['observation-unit', 'counting', 'types']],
     ['math-arithmetic', ['operations']],
@@ -54,7 +54,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
       assert.equal(item.revision, 1)
       continue
     }
-    assert.equal(item.revision, item.lessonId === 'data-types' ? 8 : item.lessonId === 'descriptive-statistics' ? 5 : 2)
+    assert.equal(item.revision, item.lessonId === 'data-types' ? 9 : item.lessonId === 'descriptive-statistics' ? 6 : 2)
     assert.deepEqual(item.declaredSectionIds, sectionIds)
     assert.equal(item.sections.length, sectionIds.length)
     const paragraphs = item.sections.flatMap((section) => section.blocks
@@ -204,7 +204,7 @@ test('data-types uses a shared overview and places one exercise after each secti
 
   const definitions = lessonRegistry.exerciseCatalog.definitions.filter(({ lessonId }) => lessonId === 'data-types')
   assert.deepEqual(definitions.map(({ placement }) => placement.sectionId), dataTypes.declaredSectionIds)
-  assert.deepEqual(definitions.map(({ revision }) => revision), [4, 5, 5])
+  assert.deepEqual(definitions.map(({ revision }) => revision), [5, 6, 5])
   assert.deepEqual(definitions.map(({ generation }) => generation.kind), ['fixed', 'index', 'fixed'])
   assert.deepEqual(definitions[1].generation, {
     kind: 'index', generatorId: 'data-types-cases', typeId: 'defect-aggregation', minimum: 0, maximum: 2,
@@ -213,7 +213,7 @@ test('data-types uses a shared overview and places one exercise after each secti
 
 test('the fixed data-types exercises contain their own tables and the inspection conditions', () => {
   const observation = getExerciseQuestionDisplay(generateLessonExercise('data-types', 'identify-observation-unit'))
-  assert.match(observation.prompt, /検査した製品をすべて.*2つの表/u)
+  assert.match(observation.prompt, /検査した製品をすべて.*基準を超えた傷をすべて.*2つの表/u)
   assert.deepEqual(observation.table.map(({ caption }) => caption), ['検査対象の製品一覧（1行＝製品1個）', '基準を超えた傷の明細'])
   assert.deepEqual(observation.table[0].rows.map(({ label, values }) => [label, ...values]), [
     ['P-01', 2], ['P-02', 1], ['P-03', 1], ['P-04', 0], ['P-05', 1],
@@ -278,9 +278,9 @@ test('data-types cases reproduce two formats of the same inspection and a separa
 
   const detailCase = generateLessonExercise('data-types', 'defect-aggregation', 2)
   const detailDisplay = getExerciseQuestionDisplay(detailCase)
-  assert.match(detailDisplay.prompt, /検査対象は P-01〜P-05 の5個/u)
+  assert.match(detailDisplay.prompt, /検査対象は P-01〜P-05 の5個.*基準を超えた傷をすべて/u)
   assert.deepEqual(detailDisplay.table, {
-    caption: '基準を超えた傷の明細（1行＝傷1件）',
+    caption: '基準を超えた傷の明細',
     rowHeaderLabel: '傷番号',
     columnLabels: ['製品番号'],
     rows: [{ label: '傷1', values: ['P-01'] }, { label: '傷2', values: ['P-03'] }],
@@ -319,8 +319,8 @@ test('data-types cases reproduce two formats of the same inspection and a separa
   assert.equal(new Set(answerPositions).size, 4)
   assert.equal(new Set(answerPositions.slice(1, 4)).size, 3)
 
-  const wrongReason = detailDisplay.response.choices.find(({ text }) => text.includes('明細の1行は製品1個'))
-  assert.match(wrongReason.text, /^不適合品2個、不適合2件。/u)
+  const wrongReason = detailDisplay.response.choices.find(({ text }) => text.includes('明細の各行を製品1個として数え'))
+  assert.match(wrongReason.text, /^不適合品2個、不適合2件。.*傷の件数は明細の行数で求める。$/u)
   assert.match(getExerciseGradingData(detailCase).solution.choiceFeedback
     .find(({ choiceId }) => choiceId === wrongReason.id).misconception, /数は合っていますが、理由が誤り.*行数と不適合品数が一致/u)
   const countAllScratches = productDisplay.response.choices.find(({ text }) => text.startsWith('不適合品2個、不適合8件。'))
@@ -395,7 +395,7 @@ test('basic statistics course covers the worked comparison, drills, code figures
 
   assert.equal(validateLessonRegistry(lessonRegistry), true)
   assert.deepEqual(descriptive.declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
-  assert.equal(descriptive.revision, 5)
+  assert.equal(descriptive.revision, 6)
   assert.ok(courseText.includes('100 mm'))
   assert.ok(courseText.includes('偏差'))
   assert.ok(courseText.includes('偏差平方和'))
@@ -406,7 +406,13 @@ test('basic statistics course covers the worked comparison, drills, code figures
     ['mean', 'deviation', 'variance', 'standard-deviation'])
   assert.equal(descriptive.figures.length, 5)
   assert.ok(descriptive.figures.every((figure) => figure.rendererRef.startsWith('code:')))
-  assert.ok(descriptive.references.some((reference) => reference.url.includes('openstax.org')))
+  assert.ok(descriptive.references.some(({ url, details }) => url.includes('openstax.org') && details.includes('例と設問は独自に作成')))
+  assert.deepEqual(descriptive.references.filter(({ title }) => title.startsWith('JSA')).map(({ url }) => url), [
+    'https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf#page=1', 'https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf#page=1',
+  ])
+  assert.match(descriptive.references.find(({ title }) => title.includes('自由度')).details, /確認日：2026-11-25/u)
+  assert.match(courseText, /標本が変わると V も変わりえますが、異なる標本で同じ値/u)
+  assert.match(courseText, /戻さずに単純無作為抽出.*N ÷ \(N − 1\) 倍/u)
   assert.match(descriptive.credit, /Solarized/u)
 
   const sampleVariance = (values) => {

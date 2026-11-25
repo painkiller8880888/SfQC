@@ -6,6 +6,7 @@ export type DescriptiveStatisticsPreviewExercise = Readonly<{
   prompt: string
   fields: readonly Readonly<{ label: string; unit: string }>[]
   answers: readonly string[]
+  steps: readonly string[]
   solution: string
 }>
 

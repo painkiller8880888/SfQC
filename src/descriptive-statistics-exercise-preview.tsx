@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { ExerciseQuestionCard } from './lesson-view'
+import { useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { ExerciseQuestionCard, type ExerciseAttemptSnapshot } from './lesson-view'
 import type { ExerciseInstance } from './lesson-contract.mjs'
 import { generateLessonExercise } from './lesson-exercise-adapters.mjs'
 import {
@@ -15,6 +15,12 @@ type PracticeQuestion = {
   state: DescriptiveStatisticsExercisePreviewState
   instance: ExerciseInstance | null
   error: string | null
+  initialAttempt?: ExerciseAttemptSnapshot | null
+}
+
+export type PracticeScreenSnapshot = {
+  questions: PracticeQuestion[]
+  grades: (boolean | null)[]
 }
 
 function createPracticeQuestion(categoryIndex: number, state: DescriptiveStatisticsExercisePreviewState): PracticeQuestion {
@@ -26,14 +32,26 @@ function createPracticeQuestion(categoryIndex: number, state: DescriptiveStatist
   }
 }
 
-export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirstGrade }: {
+export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirstGrade, initialSnapshot, snapshotRef }: {
   currentLessonHref: string
   onFirstGrade?: (categoryId: string, isCorrect: boolean) => void
+  initialSnapshot?: PracticeScreenSnapshot
+  snapshotRef?: Ref<() => PracticeScreenSnapshot>
 }) {
-  const [questions, setQuestions] = useState(() => descriptiveStatisticsExerciseCategories.map((_, index) =>
-    createPracticeQuestion(index, createDescriptiveStatisticsExercisePreviewState(index))))
-  const [grades, setGrades] = useState<(boolean | null)[]>(() => Array(descriptiveStatisticsExerciseCategories.length).fill(null))
+  const [questions, setQuestions] = useState(() => initialSnapshot?.questions
+    ?? descriptiveStatisticsExerciseCategories.map((_, index) =>
+      createPracticeQuestion(index, createDescriptiveStatisticsExercisePreviewState(index))))
+  const [grades, setGrades] = useState<(boolean | null)[]>(() => initialSnapshot?.grades
+    ?? Array(descriptiveStatisticsExerciseCategories.length).fill(null))
   const questionListRef = useRef<HTMLDivElement>(null)
+  const attemptRefs = useRef<((() => ExerciseAttemptSnapshot) | null)[]>([])
+
+  useImperativeHandle(snapshotRef, () => () => ({
+    questions: questions.map((question, index) => ({
+      ...question, initialAttempt: attemptRefs.current[index]?.() ?? null,
+    })),
+    grades,
+  }), [questions, grades])
 
   const nextQuestion = (categoryIndex: number, current: PracticeQuestion) => {
     try {
@@ -84,9 +102,8 @@ export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirs
             onFirstGrade?.(descriptiveStatisticsExerciseCategories[categoryIndex].id, isCorrect)
           }}
           onRegenerate={() => regenerateOne(categoryIndex)}
-          tableCaption="ラインごとに測った値"
-          tableRowHeaderLabel="ライン"
-          tableColumnLabel={(index) => `${index + 1}個目`}
+          initialAttempt={question.initialAttempt}
+          attemptRef={(getAttempt) => { attemptRefs.current[categoryIndex] = getAttempt }}
           dataPracticeCategory={categoryIndex}
           dataPracticeType={question.state.typeIndex}
           dataPracticeSeed={question.state.seed}

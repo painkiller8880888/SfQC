@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { summarizeMeasurements } from './interactive-variance-comparison-data.mjs'
+import { measurementRange, standardDeviationPlotRange, summarizeMeasurements, varianceSimulation } from './interactive-variance-comparison-data.mjs'
 import type { MeasurementSummary, MeasurementValues } from './interactive-variance-comparison-data.mjs'
 
 type Series = 'A' | 'B'
@@ -8,24 +8,8 @@ type FigureValues = Record<Series, MeasurementValues>
 type PointKey = `${Series}${number}`
 
 const seriesList: readonly Series[] = ['A', 'B']
-const minimum = 96
-const maximum = 104
+const { minimum, maximum } = measurementRange
 const defaults: FigureValues = { A: [98, 100, 102], B: [99, 100, 101] }
-const population = [98, 99, 100, 101, 102]
-const trueVariance = 2
-const varianceScale = 4
-const expectedSimulation = (() => {
-  let sumByN = 0
-  let sumByNMinusOne = 0
-  let count = 0
-  for (const first of population) for (const second of population) for (const third of population) {
-    const statistics = summarizeMeasurements([first, second, third])
-    sumByN += statistics.variance
-    sumByNMinusOne += statistics.sumOfSquaredDeviations / 2
-    count += 1
-  }
-  return { count, byN: sumByN / count, byNMinusOne: sumByNMinusOne / count }
-})()
 
 const formatValue = (value: number) => {
   const rounded = Math.round(value * 100) / 100
@@ -89,13 +73,14 @@ export function InteractiveVarianceComparison({ mode }: { mode: FigureMode }) {
     B: measurementSummary(values.B),
   }
   const padding = width < 480 ? 22 : 32
-  const pixelsPerMm = (width - 2 * padding) / (maximum - minimum)
+  const { minimum: plotMinimum, maximum: plotMaximum } = mode === 'sd' ? standardDeviationPlotRange : measurementRange
+  const pixelsPerMm = (width - 2 * padding) / (plotMaximum - plotMinimum)
   const squareScale = Math.min(22, pixelsPerMm * 0.32)
   const rowHeight = mode === 'mean' ? 104 : mode === 'deviation' ? 134 : mode === 'sd' ? 96 : Math.round(106 + 5.4 * squareScale)
   const gridBottom = 2 * rowHeight + 8
   const axisY = 2 * rowHeight + 20
   const height = axisY + 40
-  const xPosition = (value: number) => padding + (value - minimum) * pixelsPerMm
+  const xPosition = (value: number) => padding + (value - plotMinimum) * pixelsPerMm
   const label = (x: number, y: number, text: string, className: string) => <text
     className={className}
     x={x}
@@ -155,7 +140,7 @@ export function InteractiveVarianceComparison({ mode }: { mode: FigureMode }) {
           if (!key) return
           const rect = event.currentTarget.getBoundingClientRect()
           const x = (event.clientX - rect.left) * (width / rect.width)
-          setValue(key, Math.round(minimum + (x - padding) / pixelsPerMm))
+          setValue(key, Math.round(plotMinimum + (x - padding) / pixelsPerMm))
         }}
         onPointerUp={() => { dragKeyRef.current = null }}
         onPointerCancel={() => { dragKeyRef.current = null }}
@@ -172,14 +157,15 @@ export function InteractiveVarianceComparison({ mode }: { mode: FigureMode }) {
           setValue(key, next)
         }}
       >
-        {Array.from({ length: maximum - minimum + 1 }, (_, index) => minimum + index).map((tick) => <g key={tick}>
+        {Array.from({ length: plotMaximum - plotMinimum + 1 }, (_, index) => plotMinimum + index).map((tick) => <g key={tick}>
           <line className="ivc-grid" x1={xPosition(tick)} y1="6" x2={xPosition(tick)} y2={gridBottom} />
-          {(width < 480 ? (tick - minimum) % 2 === 0 : true) && <text className="ivc-axis-label" x={xPosition(tick)} y={axisY + 14} textAnchor="middle">{tick}</text>}
+          {(width < 480 ? (tick - plotMinimum) % 2 === 0 : true) && <text className="ivc-axis-label" x={xPosition(tick)} y={axisY + 14} textAnchor="middle">{tick}</text>}
         </g>)}
         <text className="ivc-axis-label" x={width / 2} y={axisY + 32} textAnchor="middle">長さ (mm)</text>
         {seriesList.map((series, rowIndex) => {
           const summary = summaries[series]
           const meanX = xPosition(summary.mean)
+          const spread = Math.sqrt(summary.unbiasedVariance)
           const baselineY = 6 + rowIndex * rowHeight + 50
           const className = `ivc-series-${series.toLowerCase()}`
           const pointCount = new Map<number, number>()
@@ -226,12 +212,12 @@ export function InteractiveVarianceComparison({ mode }: { mode: FigureMode }) {
             </>}
             {mode === 'sd' && <>
               <line className={`ivc-dash ${className}`} x1={meanX} y1={baselineY - 16} x2={meanX} y2={baselineY + 16} />
-              {label(meanX, baselineY - 24, `平均 ± s = ± ${formatValue(Math.sqrt(summary.unbiasedVariance))} mm`, `ivc-series-label ${className}`)}
+              {label(meanX, baselineY + 44, `${formatValue(summary.mean)} ± ${formatValue(spread)} mm`, `ivc-series-label ${className}`)}
               <rect
                 className={`ivc-band ${className}`}
-                x={Math.max(padding, xPosition(summary.mean - Math.sqrt(summary.unbiasedVariance)))}
+                x={xPosition(summary.mean - spread)}
                 y={baselineY - 16}
-                width={Math.max(0, Math.min(width - padding, xPosition(summary.mean + Math.sqrt(summary.unbiasedVariance))) - Math.max(padding, xPosition(summary.mean - Math.sqrt(summary.unbiasedVariance))))}
+                width={2 * spread * pixelsPerMm}
                 height="32"
                 rx="4"
               />
@@ -241,7 +227,8 @@ export function InteractiveVarianceComparison({ mode }: { mode: FigureMode }) {
               const duplicate = pointCount.get(value) ?? 0
               pointCount.set(value, duplicate + 1)
               const x = xPosition(value)
-              const y = baselineY - duplicate * 17
+              const offset = mode === 'sd' && duplicate === 2 ? 17 : -duplicate * 17
+              const y = baselineY + offset
               const common = {
                 'data-k': key,
                 tabIndex: 0,
@@ -283,6 +270,7 @@ type SimulationResult = {
 }
 
 export function VarianceSimulation() {
+  const { population, trueVariance, scale, count: possibleSamples, byN, byNMinusOne } = varianceSimulation
   const [result, setResult] = useState<SimulationResult>({ count: 0, sumByN: 0, sumByNMinusOne: 0, last: null })
   const averageByN = result.count ? result.sumByN / result.count : null
   const averageByNMinusOne = result.count ? result.sumByNMinusOne / result.count : null
@@ -310,17 +298,17 @@ export function VarianceSimulation() {
   }
   const bar = (label: string, value: number | null, className: string) => <div className="ivc-bar-row" key={label}>
     <span>{label}</span>
-    <div className="ivc-bar" role="progressbar" aria-label={`${label}の平均値`} aria-valuemin={0} aria-valuemax={varianceScale} aria-valuenow={value === null ? 0 : Math.min(value, varianceScale)}>
-      <i className={className} style={{ width: `${value === null ? 0 : Math.min(100, value / varianceScale * 100)}%` }} />
-      <b aria-hidden="true" style={{ left: `${trueVariance / varianceScale * 100}%` }} />
+    <div className="ivc-bar" role="progressbar" aria-label={`${label}の平均値`} aria-valuemin={0} aria-valuemax={scale} aria-valuenow={value ?? 0}>
+      <i className={className} style={{ width: `${(value ?? 0) / scale * 100}%` }} />
+      <b aria-hidden="true" style={{ left: `${trueVariance / scale * 100}%` }} />
     </div>
     <span className="num">{value === null ? '—' : value.toFixed(2)}</span>
   </div>
   return <section className="ivc-simulation" aria-label="復元抽出シミュレーション">
-    <p>上で例にしたロットでは、母分散が 2 mm² だと分かっています。ここから3本を取り出し（取り出したら戻す）、S を n = 3 で割った値と、n − 1 = 2 で割った値を比べます。</p>
+    <p>このロットの母分散は {trueVariance} mm² です。3本の測定値から偏差平方和 S を求め、n = 3 で割った値と、n − 1 = 2 で割った値を比べます。</p>
     <div className="ivc-population" aria-label="ロットに含まれる寸法">{population.map((value) => <span key={value}>{value}</span>)}</div>
-    <p>3本の取り方は全部で <strong>{expectedSimulation.count}</strong> 通りあります。そのすべてについて分散を計算して平均すると、n で割った場合は <strong>{expectedSimulation.byN.toFixed(2)}</strong>、n − 1 で割った場合は <strong>{expectedSimulation.byNMinusOne.toFixed(2)}</strong> です。母分散 2 と合うのは、n − 1 で割った場合です。</p>
-    <p>実際に何回か取り出して確かめます。黒い縦線が母分散 2 mm² です。</p>
+    <p>復元抽出では、順序も含めた3本の取り方が <strong>{possibleSamples}</strong> 通りあり、どれも同じ確率です。すべての取り方で計算して平均すると、n で割った値の期待値は <strong>{byN.toFixed(2)} mm²</strong>（丸め表示）、n − 1 で割った値の期待値は <strong>{byNMinusOne.toFixed(2)} mm²</strong> です。n − 1 で割った値の期待値は、このロットの母分散と一致します。</p>
+    <p>棒の範囲は 0〜{scale} mm² で、縦線は母分散 {trueVariance} mm² を示します。</p>
     <div className="ivc-bars">{bar('n で割る', averageByN, 'ivc-bar-n')}{bar('n − 1 で割る', averageByNMinusOne, 'ivc-bar-n-minus-one')}</div>
     <p className="ivc-simulation-last" role="status" aria-live="polite">{result.count === 0
       ? 'まだ取り出していません。'
@@ -332,6 +320,6 @@ export function VarianceSimulation() {
       <button className="ds-button" type="button" onClick={() => run(100, false)}>100回くり返す</button>
       <button className="ds-button" type="button" onClick={() => setResult({ count: 0, sumByN: 0, sumByNMinusOne: 0, last: null })}>やり直す</button>
     </div>
-    <p className="ivc-simulation-explanation">この実験は、ロットの中身が分かっているから、母分散と比べられます。現実に標本を取れるのは1回だけで、n − 1 で割った V を1つ使います。1回ごとの値は母分散とずれます（「直前の3本」の値で確かめられます）。同じ取り方を何度もくり返して平均したとき、母分散に一致する、という性質です。</p>
+    <p className="ivc-simulation-explanation">1回ごとの値は母分散からずれることがあります。試行を追加すると、有限回の平均も上下します。</p>
   </section>
 }

@@ -4,13 +4,24 @@ type QuestionBase = {
   prompt: string
   sections: string[]
   explanation: string
-  table?: { rows: { label: string; values: number[] }[] }
+  steps?: string[]
+  table?: {
+    caption: string
+    rowHeaderLabel: string
+    columnLabels: string[]
+    rows: { label: string; values: number[] }[]
+  }
   calculation?: string[]
 }
 
 export type DescriptiveStatisticsExercisePreviewQuestion = QuestionBase & (
   | { type: 'numeric'; unit: string; answer: string }
-  | { type: 'choice'; choices: string[]; answer: number }
+  | {
+    type: 'choice'
+    choices: string[]
+    answer: number
+    choiceFeedback: { choiceIndex: number; misconception: string; sections: string[] }[]
+  }
 )
 
 export const descriptiveStatisticsExerciseCategories: readonly {

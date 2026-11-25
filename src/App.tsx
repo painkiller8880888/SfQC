@@ -17,7 +17,7 @@ import { exportLearningBackup, importLearningBackup, recheckLearningBackupImport
 import { lessonRegistry } from './lesson-registry.mjs'
 import { parseLessonRef } from './lesson-contract.mjs'
 import { LessonMap, LessonRouteContent } from './lesson-view'
-import { DescriptiveStatisticsExercisePreview } from './descriptive-statistics-exercise-preview'
+import { DescriptiveStatisticsExercisePreview, type PracticeScreenSnapshot } from './descriptive-statistics-exercise-preview'
 import { DescriptiveStatisticsCourse } from './descriptive-statistics-course'
 import { CourseProgressView } from './course-progress-view'
 import { LessonMapView } from './lesson-map-view'
@@ -243,6 +243,13 @@ function App() {
   const [pendingBackupImport, setPendingBackupImport] = useState<LearningBackupImportResult | null>(null)
   const keepJudgementsAfterRestoreRef = useRef(true)
   const pendingReturnFocusRef = useRef<ExerciseReviewFocus | null>(null)
+  const practiceSnapshotRef = useRef<(() => PracticeScreenSnapshot) | null>(null)
+  const practiceEntrySnapshotsRef = useRef(new Map<string, PracticeScreenSnapshot>())
+  const savePracticeEntrySnapshot = (currentView: RouteView) => {
+    if (currentView.resolved.status === 'course-practice' && practiceSnapshotRef.current) {
+      practiceEntrySnapshotsRef.current.set(currentView.historyState.entryId, practiceSnapshotRef.current())
+    }
+  }
   const syncMapEntrySnapshot = (entryId: string, listOrigin?: MapListLocator) => {
     const previous = mapEntrySnapshotsRef.current.get(entryId)
     mapEntrySnapshotsRef.current.set(entryId, {
@@ -596,7 +603,8 @@ function App() {
 
   const screen = screenForRoute(view.route)
   const returnFrame = view.historyState.returnStack.at(-1)
-  const sectionReturn = view.resolved.status === 'lesson' && view.resolved.section && returnFrame?.focusTarget
+  const sectionReturn = view.resolved.status === 'lesson' && view.resolved.section
+    && (returnFrame?.focusTarget || returnFrame?.route.kind === 'course-practice')
     ? <nav className="return-navigation" aria-label="復習から戻る">
       <a href={returnFrame.routeHash} data-nav-intent="return">演習に戻る</a>
     </nav>
@@ -710,9 +718,13 @@ function App() {
       setDataMessage('ブラウザー履歴に復帰情報を保存できませんでした。現在の画面に留まっています。')
       return false
     }
-    pendingReturnFocusRef.current = intent === 'return'
-      ? currentState.returnStack.at(-1)?.focusTarget ?? null
-      : null
+    savePracticeEntrySnapshot(currentView)
+    const sourceFrame = intent === 'return' ? currentState.returnStack.at(-1) : undefined
+    pendingReturnFocusRef.current = sourceFrame?.focusTarget ?? null
+    if (sourceFrame?.route.kind === 'course-practice' && sourceFrame.entryId) {
+      const snapshot = practiceEntrySnapshotsRef.current.get(sourceFrame.entryId)
+      if (snapshot) practiceEntrySnapshotsRef.current.set(nextState.entryId, snapshot)
+    }
     lastHandledRef.current = hash + '\u0000' + nextState.entryId
     resolveCurrentLocation(intent, nextState)
     if (screenForRoute(route) === 'map') syncMapEntrySnapshot(nextState.entryId)
@@ -899,6 +911,7 @@ function App() {
       const structuralState = validateRouteHistoryState(rawState, hash)
       const signature = structuralState ? hash + '\u0000' + structuralState.entryId : hash + '\u0000invalid'
       if (signature === lastHandledRef.current) return
+      savePracticeEntrySnapshot(viewRef.current)
       const next = resolveRouteView(hash, rawState, structuralState ? 'restore' : 'normal', ++navigationIdRef.current)
       if (next.stateNeedsRepair) {
         try {
@@ -952,7 +965,10 @@ function App() {
     let restoreFrame: number | null = null
     const frame = window.requestAnimationFrame(() => {
       if (!isCurrent()) return
-      const returnLocator = viewAtSchedule.navigation === 'return' ? pendingReturnFocusRef.current : null
+      const practiceWithoutSnapshot = viewAtSchedule.resolved.status === 'course-practice'
+        && !practiceEntrySnapshotsRef.current.has(viewAtSchedule.historyState.entryId)
+      const navigation = practiceWithoutSnapshot ? 'normal' : viewAtSchedule.navigation
+      const returnLocator = navigation === 'return' ? pendingReturnFocusRef.current : null
       let returnTarget: HTMLAnchorElement | null = null
       if (returnLocator) {
         const returnCard = Array.from(document.querySelectorAll<HTMLElement>('[data-exercise-id]'))
@@ -960,7 +976,7 @@ function App() {
         returnTarget = returnCard?.querySelectorAll<HTMLAnchorElement>('a[data-nav-intent="review"]')[returnLocator.linkIndex] ?? null
       }
       if (viewAtSchedule.navigation === 'return') pendingReturnFocusRef.current = null
-      applyRouteNavigationEffect(viewAtSchedule.navigation, viewAtSchedule.historyState, {
+      applyRouteNavigationEffect(navigation, viewAtSchedule.historyState, {
         heading: headingRef.current,
         sectionHeading: sectionHeadingRef.current,
         returnTarget,
@@ -1151,6 +1167,9 @@ function App() {
     if (view.resolved.status !== 'course-practice') return null
     if (view.route.courseId !== 'descriptive-statistics') return <RouteProblem message="この単元の演習は準備中です。" />
     return <DescriptiveStatisticsExercisePreview
+      key={view.historyState.entryId}
+      initialSnapshot={practiceEntrySnapshotsRef.current.get(view.historyState.entryId)}
+      snapshotRef={practiceSnapshotRef}
       currentLessonHref={routeToHash({ kind: 'course-lesson', courseId: view.route.courseId, sectionId: 'mean' })}
       onFirstGrade={handleFirstGrade}
     />
