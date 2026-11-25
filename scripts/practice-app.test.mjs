@@ -322,8 +322,13 @@ function assertIncludedLessonRoute(app, lesson, sectionId) {
     ? `${section.title} | ${lesson.title} | SfQC`
     : `${lesson.title} | SfQC`)
   assert.ok(app.host.querySelector('.lesson-panel'))
-  assert.equal(app.host.querySelector('.lesson-body') !== null, section !== null)
-  assert.equal(app.host.querySelector('.course-section'), null)
+  if (lesson.overview) {
+    assert.equal(app.host.querySelectorAll('.course-section').length, lesson.sections.length)
+    assert.equal(app.host.querySelector('.course-section-nav [aria-current="location"]')?.textContent, section?.title)
+  } else {
+    assert.equal(app.host.querySelector('.lesson-body') !== null, section !== null)
+    assert.equal(app.host.querySelector('.course-section'), null)
+  }
 }
 
 test('initial app load repairs a retired v1 history state from the current URL', async () => {
@@ -1910,103 +1915,150 @@ test('general lesson slots share numeric grading and keep each question isolated
   }
 })
 
-test('data-types exercises explain their table units and restore the active question after review', async () => {
+test('the map opens the data-types explanation directly and its review link restores the active case', async () => {
   const learningState = serializeLearningState({ schemaVersion: 2, lessons: {
     'data-types': { completedAt: '2026-11-14T00:00:00.000Z' },
   } })
   const practiceResults = serializePracticeResults({ schemaVersion: 1, records: [
     { categoryId: 'mean-deviation', isCorrect: false, attemptedAt: '2026-11-14T01:00:00.000Z' },
   ] })
-  const app = await createHarness({ localStorageEntries: {
+  const app = await createHarness({ url: testDocumentUrl('#/map'), localStorageEntries: {
     [LEARNING_STATE_KEY]: learningState,
     [PRACTICE_RESULTS_KEY]: practiceResults,
   } })
   const { window } = app.dom
-  window.HTMLElement.prototype.scrollIntoView = () => {}
+  const scrollTargets = []
+  window.HTMLElement.prototype.scrollIntoView = function () { scrollTargets.push(this) }
   try {
-    await app.remountAt('#/lesson/data-types/types')
+    await click(app.host.querySelector('[data-lesson-id="data-types"]'))
+    const explanationLink = linkFor(app.host.querySelector('.lesson-detail-card'), '解説を読む')
+    assert.equal(explanationLink.getAttribute('href'), '#/lesson/data-types')
+    await click(explanationLink)
     await settleEffects(window)
+    assert.equal(window.location.hash, '#/lesson/data-types')
+    assert.match(app.host.querySelector('.lesson-course .lesson-paragraph').textContent, /なぜでしょうか？$/u)
+    assert.equal(app.host.querySelector('.lesson-course caption').textContent, '製品1個を1行にした検査記録')
+    assert.deepEqual([...app.host.querySelectorAll('.course-section > h2')].map((heading) => heading.textContent),
+      ['観測単位', '不適合数と不適合品数', '計量値・計数値・カテゴリ'])
+    assert.equal(app.host.querySelector('.course-references summary').textContent, '出典')
+    assert.equal(app.host.querySelectorAll('.course-references a').length, 3)
 
-    const fixedClassification = app.host.querySelector('[data-exercise-id="classify-record"]')
+    const typesSection = app.host.querySelector('#section-types')
+    const diagram = typesSection.querySelector('.data-type-flow [role="img"]')
+    assert.match(diagram.getAttribute('aria-label'), /種類・判定ならカテゴリ.*測った値は計量値、数えた値は計数値/u)
+    assert.deepEqual([...diagram.querySelectorAll('strong')].map((node) => node.textContent), ['カテゴリ', '計量値', '計数値'])
+    const diagramText = [...typesSection.querySelectorAll('.data-type-flow figcaption li')].map((node) => node.textContent)
+    assert.equal(diagramText.length, 2)
+    assert.match(diagramText[0], /種類や判定なら、カテゴリ/u)
+    assert.match(diagramText[1], /連続量.*計量値.*離散的.*計数値/u)
+
+    const fixedClassification = typesSection.querySelector('[data-exercise-id="classify-record"]')
+    const classificationTable = fixedClassification.querySelector('table')
+    assert.match(fixedClassification.querySelector('.ds-practice-prompt').textContent, /^検査した5個をすべて、1製品1行で記録しました。適合状態コードは0＝適合、1＝不適合です。/u)
+    assert.equal(classificationTable.caption.textContent, '分類を確認する検査記録（1行＝製品1個）')
+    assert.deepEqual([...classificationTable.tBodies[0].rows].map((row) => row.cells[0].textContent), ['Q-01', 'Q-02', 'Q-03', 'Q-04', 'Q-05'])
     assert.equal(fixedClassification.querySelector('details').open, false)
     assert.equal(fixedClassification.querySelectorAll('input[type="radio"]').length, 4)
-    assert.match(fixedClassification.textContent, /正しく説明/u)
 
-    const observation = app.host.querySelector('[data-exercise-id="identify-observation-unit"]')
-    assert.deepEqual([...observation.querySelectorAll('table caption')].map((caption) => caption.textContent), [])
-    assert.equal(observation.querySelector('details').open, false)
-    assert.ok(observation.querySelector('.ds-practice-question-heading a[data-nav-intent="review"]'))
-
-    const card = app.host.querySelector('[data-exercise-id="defect-aggregation"]')
-    const tableCaption = () => card.querySelector('.ds-practice-table-wrap caption')?.textContent
-    const columnLabels = () => [...card.querySelectorAll('.ds-practice-table-wrap thead th')].map((cell) => cell.textContent)
-    const tableRows = () => [...card.querySelectorAll('.ds-practice-table-wrap tbody tr')].map((row) => [
-      row.querySelector('th').textContent,
-      ...[...row.querySelectorAll('td')].map((cell) => Number(cell.textContent)),
+    const unitSection = app.host.querySelector('#section-observation-unit')
+    const observation = unitSection.querySelector('[data-exercise-id="identify-observation-unit"]')
+    assert.deepEqual([...observation.querySelectorAll('caption')].map((caption) => caption.textContent), [
+      '検査対象の製品一覧（1行＝製品1個）', '基準を超えた傷の明細',
     ])
-    assert.equal(tableCaption(), '製品ごとの検査記録')
+    assert.equal(unitSection.querySelector('.course-table-wrap caption').textContent, '基準を超えた傷の明細（1行＝傷1件）')
+    assert.deepEqual([...observation.querySelectorAll('table')].map((table) => table.tBodies[0].rows.length), [5, 3])
+    assert.equal(observation.querySelector('details').open, false)
+    assert.equal(observation.querySelector('.ds-practice-question-heading a').getAttribute('href'), '#/lesson/data-types/observation-unit')
+
+    const countingHash = '#/lesson/data-types/counting'
+    await act(async () => {
+      const changed = new Promise((resolve) => window.addEventListener('hashchange', resolve, { once: true }))
+      window.location.hash = countingHash
+      await changed
+    })
+    await settleEffects(window)
+    assert.equal(window.location.hash, countingHash)
+    const countingHeading = app.host.querySelector('#course-section-counting')
+    assert.equal(window.document.activeElement, countingHeading)
+    assert.equal(scrollTargets.at(-1), countingHeading)
+
+    const card = app.host.querySelector('#section-counting [data-exercise-id="defect-aggregation"]')
+    const caption = () => card.querySelector('caption').textContent
+    const columnLabels = () => [...card.querySelectorAll('thead th')].map((cell) => cell.textContent)
+    const tableRows = () => [...card.querySelectorAll('tbody tr')].map((row) =>
+      [...row.cells].map((cell) => cell.textContent))
+    const answer = async (choiceId) => {
+      await click(card.querySelector(`input[value="${choiceId}"]`))
+      await act(async () => card.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    }
+    assert.equal(caption(), '製品ごとの検査記録（1行＝製品1個）')
     assert.deepEqual(columnLabels(), ['製品番号', '見つかった傷（件）', '基準を超えた傷（件）'])
     assert.deepEqual(tableRows(), [
-      ['P-01', 4, 3], ['P-02', 1, 0], ['P-03', 2, 1], ['P-04', 0, 0], ['P-05', 1, 0], ['P-06', 0, 0],
+      ['P-01', '4', '3'], ['P-02', '1', '0'], ['P-03', '2', '1'], ['P-04', '0', '0'], ['P-05', '1', '0'], ['P-06', '0', '0'],
     ])
-    assert.equal(card.querySelector('details').open, false)
+    await answer('choice-0')
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /^正解です/u)
+    assert.equal(card.querySelector('details').open, true)
 
     await click(buttonFor(card, '別の問題'))
-    assert.equal(tableCaption(), '同じ6製品から基準を超えた傷だけを抜き出した明細')
+    assert.match(card.querySelector('.ds-practice-prompt').textContent, /事例1と同じ6製品/u)
+    assert.deepEqual(tableRows(), [['傷1', 'P-01'], ['傷2', 'P-01'], ['傷3', 'P-01'], ['傷4', 'P-03']])
+    assert.equal(card.querySelector('input[type="radio"]:checked'), null)
+    await answer('choice-0')
+    assert.match(card.querySelector('.ds-exercise-misconception').textContent, /P-01の3行は同じ製品/u)
+    assert.deepEqual([...card.querySelectorAll('.ds-exercise-review-links a')].map((anchor) => anchor.getAttribute('href')), [
+      '#/lesson/data-types/observation-unit', '#/lesson/data-types/counting',
+    ])
+    await answer('choice-3')
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /^正解です/u)
+
+    await click(buttonFor(card, '別の問題'))
+    assert.equal(caption(), '基準を超えた傷の明細（1行＝傷1件）')
     assert.deepEqual(columnLabels(), ['傷番号', '製品番号'])
-    assert.deepEqual(tableRows(), [['傷1', 1], ['傷2', 1], ['傷3', 1], ['傷4', 3]])
+    assert.deepEqual(tableRows(), [['傷1', 'P-01'], ['傷2', 'P-03']])
     assert.equal(card.querySelector('input[type="radio"]:checked'), null)
     assert.equal(card.querySelector('.ds-exercise-feedback').textContent, '')
     assert.equal(card.querySelector('details').open, false)
 
-    await click(buttonFor(card, '別の問題'))
-    assert.equal(tableCaption(), '基準を超えた傷の明細（検査対象は製品1〜5の5個）')
-    assert.deepEqual(columnLabels(), ['傷番号', '製品番号'])
-    assert.deepEqual(tableRows(), [['傷1', 1], ['傷2', 3]])
-    assert.equal(card.querySelector('input[type="radio"]:checked'), null)
-    assert.equal(card.querySelector('.ds-exercise-feedback').textContent, '')
-    assert.equal(card.querySelector('details').open, false)
-
-    await click(buttonFor(card, '別の問題'))
-    assert.equal(tableCaption(), '製品ごとの検査記録', '0 → 1 → 2 → 0 returns to the first case')
-    assert.deepEqual(columnLabels(), ['製品番号', '見つかった傷（件）', '基準を超えた傷（件）'])
-    await click(card.querySelector('input[value="choice-1"]'))
-    await act(async () => card.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
+    await answer('choice-0')
     assert.match(card.querySelector('.ds-exercise-feedback').textContent, /違います/u)
-    assert.match(card.querySelector('.ds-exercise-misconception').textContent, /基準を超えた傷/u)
-    assert.equal(card.querySelector('details').open, false)
-
+    assert.match(card.querySelector('.ds-exercise-misconception').textContent, /数は合っていますが、理由が誤り/u)
     const reviewLink = card.querySelector('.ds-exercise-review-links a[data-nav-intent="review"]')
-    assert.ok(reviewLink)
+    assert.equal(reviewLink.getAttribute('href'), '#/lesson/data-types/observation-unit')
     await click(reviewLink)
     await settleEffects(window)
-    assert.equal(window.location.hash, '#/lesson/data-types/types')
-    assert.ok(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'))
-    await click(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'))
+    assert.equal(window.location.hash, '#/lesson/data-types/observation-unit')
+    const reviewedHeading = app.host.querySelector('#course-section-observation-unit')
+    assert.equal(window.document.activeElement, reviewedHeading)
+    const returnLink = reviewedHeading.nextElementSibling.querySelector('a[data-nav-intent="return"]')
+    assert.equal(returnLink.textContent, '演習に戻る')
+    assert.equal(returnLink.getAttribute('href'), '#/lesson/data-types/counting')
+    assert.equal(returnLink.tabIndex, 0)
+    assert.equal(app.host.querySelectorAll('a[data-nav-intent="return"]').length, 1)
+    await click(returnLink)
     await settleEffects(window)
 
-    const restored = app.host.querySelector('[data-exercise-id="defect-aggregation"]')
-    assert.equal(restored.querySelector('input[value="choice-1"]').checked, true)
-    assert.match(restored.querySelector('.ds-exercise-feedback').textContent, /違います/u)
-    assert.equal(restored.querySelector('details').open, false)
-    assert.equal(window.document.activeElement,
-      restored.querySelectorAll('a[data-nav-intent="review"]')[1],
-      'return focus goes to the review link that opened the lesson')
+    assert.equal(window.location.hash, '#/lesson/data-types/counting')
+    assert.equal(card.querySelector('input[value="choice-0"]').checked, true)
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.equal(window.document.activeElement, reviewLink, 'return restores focus to the originating review link')
+    assert.equal(caption(), '基準を超えた傷の明細（1行＝傷1件）')
+    assert.equal(card.querySelector('details').open, false)
 
-    await click(restored.querySelector('input[value="choice-0"]'))
-    await act(async () => restored.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })))
-    assert.equal(restored.querySelector('.ds-exercise-feedback').textContent, '正解です。解説で考え方を確認できます。')
-    assert.equal(restored.querySelector('details').open, true)
-    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), learningState,
-      'answering and switching lesson questions must preserve manual completion')
-    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), practiceResults,
-      'lesson checks must preserve independent practice history and accuracy')
+    await answer('choice-2')
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /^正解です/u)
+    assert.equal(card.querySelector('details').open, true)
+    assert.equal(card.querySelectorAll('.ds-exercise-steps li').length, 2)
+    await click(buttonFor(card, '別の問題'))
+    assert.equal(caption(), '製品ごとの検査記録（1行＝製品1個）', '0 → 1 → 2 → 0 returns to the first case')
+    assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), learningState)
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), practiceResults)
   } finally {
     await app.close()
   }
 })
 
-test('nested same-route reviews restore focus from the browser history frame after Back', async () => {
+test('nested lesson reviews restore focus from the browser history frame after Back', async () => {
   const routeHash = '#/lesson/data-types/types'
   const app = await createHarness({ url: testDocumentUrl(routeHash) })
   const { window } = app.dom
@@ -2043,7 +2095,7 @@ test('nested same-route reviews restore focus from the browser history frame aft
 
     scrollY = 860
     const exerciseB = app.host.querySelector('[data-exercise-id="identify-observation-unit"]')
-    await click(exerciseB.querySelector('input[value="choice-1"]'))
+    await click(exerciseB.querySelector('input[value="choice-0"]'))
     await act(async () => exerciseB.querySelector('form').dispatchEvent(
       new window.Event('submit', { bubbles: true, cancelable: true }),
     ))
@@ -2053,6 +2105,7 @@ test('nested same-route reviews restore focus from the browser history frame aft
     assert.ok(reviewLinkB)
     await click(reviewLinkB)
     await settleEffects(window)
+    assert.equal(window.location.hash, '#/lesson/data-types/observation-unit')
     const secondReviewEntryId = window.history.state.entryId
     assert.notEqual(secondReviewEntryId, firstReviewEntryId)
     assert.deepEqual(window.history.state.returnStack.at(-1), {

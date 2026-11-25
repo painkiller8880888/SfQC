@@ -5,14 +5,20 @@ import { resolveRouteData } from './route-data.mjs'
 export function resolveRouteView(hash, rawState, navigationCause, navigationId) {
   const route = resolveRoute(hash)
   const historyState = validateRouteHistoryState(rawState, hash)
+  const resolved = resolveRouteData(route)
+  const courseSection = resolved.status === 'lesson' && resolved.section !== null && resolved.lesson.overview !== undefined
   const stateNeedsRepair = historyState === null
-  const navigation = stateNeedsRepair && navigationCause !== 'initial' ? 'normal'
-    : stateNeedsRepair && route.kind === 'course-lesson' ? 'section'
+  const openSection = stateNeedsRepair && (
+    (navigationCause === 'initial' && (route.kind === 'course-lesson' || courseSection))
+    || (navigationCause === 'normal' && courseSection)
+  )
+  const navigation = openSection ? 'section'
+    : stateNeedsRepair && navigationCause !== 'initial' ? 'normal'
       : navigationCause
   return {
     route,
     historyState: historyState ?? createRouteHistoryState(route, hash),
-    resolved: resolveRouteData(route),
+    resolved,
     navigation,
     navigationId,
     historyWarning: rawState !== null && stateNeedsRepair,

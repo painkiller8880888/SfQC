@@ -466,25 +466,26 @@ h1 {
   border-left: 3px solid var(--success);
   background: var(--surface);
   font-family: math, "Cambria Math", "Yu Mincho", serif;
+  white-space: pre-line;
   line-height: 2;
   overflow-wrap: anywhere;
 }
 
-.descriptive-statistics-course .course-sections {
+.lesson-course .course-sections {
   display: grid;
   gap: 1.25rem;
 }
 
-.descriptive-statistics-course .course-section {
+.lesson-course .course-section {
   min-width: 0;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
   scroll-margin-top: 1rem;
 }
 
-.descriptive-statistics-course .course-section h2,
-.descriptive-statistics-course h3,
-.descriptive-statistics-course h4 {
+.lesson-course .course-section h2,
+.lesson-course h3,
+.lesson-course h4 {
   line-height: 1.35;
 }
 

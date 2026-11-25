@@ -162,22 +162,24 @@ function ExerciseQuestionBody({ formId, display, grading, registry, onFirstGrade
     }
   }
 
-  const tableRows = display.table?.rows
-  const tableColumnCount = tableRows ? Math.max(0, ...tableRows.map((row) => row.values.length)) : 0
+  const tables = Array.isArray(display.table) ? display.table : display.table ? [display.table] : []
   const statusText = feedback?.text ?? (latestGrade === null ? '' : latestGrade
     ? '正解です。解説で考え方を確認できます。' : '違います。考え直すか、解説を確認してください。')
 
   return <>
     <p className="ds-practice-prompt">{display.prompt}</p>
-    {tableRows && <div className="ds-practice-table-wrap" tabIndex={0}><table>
-      {(tableCaption ?? display.table?.caption) && <caption>{tableCaption ?? display.table?.caption}</caption>}
-      <thead><tr><th scope="col">{tableRowHeaderLabel ?? display.table?.rowHeaderLabel ?? ''}</th>{Array.from({ length: tableColumnCount }, (_, index) => <th scope="col" key={index}>
-        {tableColumnLabel?.(index) ?? display.table?.columnLabels?.[index] ?? String(index + 1)}
-      </th>)}</tr></thead>
-      <tbody>{tableRows.map((row, rowIndex) => <tr key={rowIndex}>
-        <th scope="row">{row.label}</th>{row.values.map((value, index) => <td className="num" key={index}>{value}</td>)}
-      </tr>)}</tbody>
-    </table></div>}
+    {tables.map((table, tableIndex) => {
+      const caption = tableCaption ?? table.caption
+      return <div className="ds-practice-table-wrap" tabIndex={0} key={tableIndex}><table>
+        {caption && <caption>{caption}</caption>}
+        <thead><tr><th scope="col">{tableRowHeaderLabel ?? table.rowHeaderLabel ?? ''}</th>{table.rows[0].values.map((_, index) => <th scope="col" key={index}>
+          {tableColumnLabel?.(index) ?? table.columnLabels?.[index] ?? String(index + 1)}
+        </th>)}</tr></thead>
+        <tbody>{table.rows.map((row, rowIndex) => <tr key={rowIndex}>
+          <th scope="row">{row.label}</th>{row.values.map((value, index) => <td className={typeof value === 'number' ? 'num' : undefined} key={index}>{value}</td>)}
+        </tr>)}</tbody>
+      </table></div>
+    })}
     {display.calculations && <div className="ds-practice-calculation" aria-label="計算過程">
       {display.calculations.map((calculation, index) => <p key={index}>{calculation}</p>)}
     </div>}
@@ -365,11 +367,12 @@ function LessonExerciseSlot({ exerciseId, lesson, registry, exerciseGenerators }
     registry={registry} error={question.error} onRegenerate={canRegenerate ? regenerate : undefined} regenerateLabel="別の問題" />
 }
 
-function LessonBlock({ block, lesson, registry, exerciseGenerators }: {
+function LessonBlock({ block, lesson, registry, exerciseGenerators, renderExercise }: {
   block: IncludedLessonDefinition['sections'][number]['blocks'][number]
   lesson: IncludedLessonDefinition
   registry: LessonRegistry
   exerciseGenerators: Readonly<Record<string, ExerciseGenerator>>
+  renderExercise?: (exerciseId: string) => ReactNode
 }) {
   if (block.kind === 'paragraph') return <p className="lesson-paragraph">
     {block.parts.map((part, index) => part.kind === 'text'
@@ -395,7 +398,8 @@ function LessonBlock({ block, lesson, registry, exerciseGenerators }: {
   if (block.kind === 'figureRef') return <FigureRef lesson={lesson} figureId={block.figureId} />
   if (block.kind === 'heading') return <h3>{block.text}</h3>
   if (block.kind === 'table') return <div className="course-table-wrap" tabIndex={0}><table><caption>{block.caption}</caption><thead><tr>{block.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => cellIndex === 0 ? <th scope="row" key={cellIndex}>{cell}</th> : <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
-  if (block.kind === 'details') return <details><summary>{block.summary}</summary>{block.blocks.map((child, index) => <LessonBlock key={index} block={child} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />)}</details>
+  if (block.kind === 'details') return <details className="course-details"><summary>{block.summary}</summary>{block.blocks.map((child, index) => <LessonBlock key={index} block={child} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} renderExercise={renderExercise} />)}</details>
+  if (renderExercise) return renderExercise(block.exerciseId)
   return <LessonExerciseSlot key={`${lesson.lessonId}:${block.exerciseId}`} exerciseId={block.exerciseId} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />
 }
 
@@ -504,9 +508,8 @@ export function LessonDetailCard({ lesson, registry = lessonRegistry, manualProg
     </header>
     <div className="lesson-detail-content">
       <nav className="lesson-detail-actions" aria-label={`${lesson.title}の関連画面`}>
-        {lesson.availability === 'included' && <InternalLink route={lesson.lessonId === 'descriptive-statistics'
-          ? { kind: 'course-lesson', courseId: lesson.lessonId, sectionId: lesson.sections[0].sectionId }
-          : { kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: null }}>解説を読む</InternalLink>}
+        {lesson.availability === 'included' && <LessonReference targetRef={lesson.lessonId} label="解説を読む"
+          intent="normal" registry={registry} />}
         {hasPractice && <InternalLink route={{ kind: 'course-practice', courseId: lesson.lessonId }}>演習問題一覧を開く</InternalLink>}
         <InternalLink route={{ kind: 'progress' }}>進捗を見る</InternalLink>
       </nav>
@@ -559,19 +562,62 @@ export function LessonMap({ registry = lessonRegistry, progress, manualProgress,
   </div>
 }
 
-export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, registry = lessonRegistry, exerciseGenerators = lessonExerciseGenerators }: {
+export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, sectionReturn, registry, exerciseGenerators = lessonExerciseGenerators, renderExercise, children }: {
+  lesson: IncludedLessonDefinition
+  activeSectionId: string | null
+  sectionHeadingRef: RefObject<HTMLHeadingElement | null>
+  sectionReturn?: ReactNode
+  registry: LessonRegistry
+  exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
+  renderExercise?: (exerciseId: string) => ReactNode
+  children?: ReactNode
+}) {
+  const blockProps = { lesson, registry, exerciseGenerators, renderExercise }
+  return <section className="lesson-panel lesson-course" aria-labelledby="course-title">
+    <p className="lesson-context"><a href="#/map">学習マップ</a> / {lesson.title}</p>
+    <h2 id="course-title" tabIndex={-1}>{lesson.title}</h2>
+    <p>{lesson.learningObjectives.join(' ')}</p>
+    {lesson.overview?.map((block, index) => <LessonBlock key={index} block={block} {...blockProps} />)}
+    <nav className="course-section-nav" aria-label={`${lesson.title}の目次`}>
+      <h3>この単元の節</h3>
+      <ol>{lesson.sections.map((section) => <li key={section.sectionId}>
+        {section.sectionId === activeSectionId ? <span aria-current="location">{section.title}</span>
+          : <LessonReference targetRef={`${lesson.lessonId}#${section.sectionId}`} label={section.title} intent="section" registry={registry} />}
+      </li>)}</ol>
+    </nav>
+    <div className="course-sections">{lesson.sections.map((section) => <section className="course-section" key={section.sectionId} id={`section-${section.sectionId}`}>
+      <h2 id={`course-section-${section.sectionId}`} tabIndex={-1} ref={section.sectionId === activeSectionId ? sectionHeadingRef : undefined}>{section.title}</h2>
+      {section.sectionId === activeSectionId && sectionReturn}
+      {section.blocks.map((block, index) => <LessonBlock key={index} block={block} {...blockProps} />)}
+    </section>)}</div>
+    {!!lesson.references?.length && <details className="course-references"><summary>{lesson.credit ? '参考資料・クレジット' : '出典'}</summary>
+      <ul>{lesson.references.map((reference) => <li key={reference.url + reference.title}>
+        <a href={reference.url} target="_blank" rel="noreferrer">{reference.title}</a><p>{reference.details}</p>
+      </li>)}</ul>
+    </details>}
+    {lesson.credit && <p className="lesson-credit">{lesson.credit}</p>}
+    {children}
+  </section>
+}
+
+export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, sectionReturn, registry = lessonRegistry, exerciseGenerators = lessonExerciseGenerators }: {
   lesson: IncludedLessonDefinition
   sectionId: string | null
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
+  sectionReturn?: ReactNode
   registry?: LessonRegistry
   exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
 }) {
+  if (lesson.overview) return <LessonCourse key={lesson.lessonId} lesson={lesson} activeSectionId={sectionId}
+    sectionHeadingRef={sectionHeadingRef} sectionReturn={sectionReturn} registry={registry} exerciseGenerators={exerciseGenerators} />
+
   const section = sectionId ? lesson.sections.find((item) => item.sectionId === sectionId) : undefined
   const currentRef = section ? `${lesson.lessonId}#${section.sectionId}` : undefined
   return <section className="lesson-panel" aria-labelledby="route-lesson-title">
     {section ? <>
       <p className="lesson-context">単元：<InternalLink route={{ kind: 'lesson-id', lessonId: lesson.lessonId, sectionId: null }} intent="section">{lesson.title}</InternalLink></p>
       <h2 id="route-lesson-title" ref={sectionHeadingRef} tabIndex={-1}>解説</h2>
+      {sectionReturn}
       <div className="lesson-body">
         {section.blocks.map((block, index) => <LessonBlock key={index} block={block} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />)}
       </div>

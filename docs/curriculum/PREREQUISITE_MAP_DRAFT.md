@@ -29,11 +29,11 @@
 | math-algebra-sigma | 文字式・一次式・式変形・総和記号を使って統計式を読む。 | なし（数学の橋渡し） | math-ratios-percentages; math-powers-roots | 分母・比率を含む式と二乗・平方根を正しく変形するため。 | 0 数学 |
 | math-counting | 積の法則・順列・組合せの基本を数える。 | なし（数学の橋渡し） | math-ratios-percentages | 二項分布で組合せ係数を計算するため。 | 0 数学 |
 | data-types | 計量値・計数値、カテゴリ・数値、単位と観測単位を区別する。 | SRC-0001 | — | — | 1 データ |
-| population-sample | 母集団・標本・抽出単位・推定対象を例で区別する。 | SRC-0003 | data-types | 何を数え・測った標本かを定義しないと母集団との対応が定まらないため。 | 1 データ |
-| descriptive-statistics | 平均・範囲・分散・標準偏差を計算し、分布の中心と散らばりを説明する。 | SRC-0005 | data-types; math-ratios-percentages; math-powers-roots | 集計前にデータ型を選び、比率・平方・平方根を正しく計算するため。 | 1 データ |
+| population-sample | 母集団・標本・抽出単位・推定対象を例で区別する。 | SRC-0003 | data-types#observation-unit | 何を数え・測った標本かを定義しないと母集団との対応が定まらないため。 | 1 データ |
+| descriptive-statistics | 平均・範囲・分散・標準偏差を計算し、分布の中心と散らばりを説明する。 | SRC-0005 | data-types#types; math-ratios-percentages; math-powers-roots | 集計前にデータ型を選び、比率・平方・平方根を正しく計算するため。 | 1 データ |
 | sampling | 標本抽出・誤差・抽出方式を区別し、標本からの一般化の限界を説明する。 | SRC-0004; SRC-0006 | population-sample; descriptive-statistics | 抽出対象と、標本内のばらつき・要約値を理解するため。 | 1 データ |
-| data-transform | 変換の目的、尺度、変換前後の解釈を説明する。 | SRC-0002 | data-types; math-algebra-sigma | 適用できる変換はデータ型と式の意味に依存するため。 | 1 データ |
-| qc-seven-tools | 七つ道具を目的に応じて選び、作成・読取り・結論の限界を説明する。 | SRC-0007; SRC-0008; SRC-0009; SRC-0010; SRC-0011; SRC-0012; SRC-0013 | data-types | 何の値・分類を可視化するかを定めるため。詳細な統計量は各図の理解を助けるが、全ツールの必須条件にはしない。 | 1 データ |
+| data-transform | 変換の目的、尺度、変換前後の解釈を説明する。 | SRC-0002 | data-types#types; math-algebra-sigma | 適用できる変換はデータ型と式の意味に依存するため。 | 1 データ |
+| qc-seven-tools | 七つ道具を目的に応じて選び、作成・読取り・結論の限界を説明する。 | SRC-0007; SRC-0008; SRC-0009; SRC-0010; SRC-0011; SRC-0012; SRC-0013 | data-types#types | 何の値・分類を可視化するかを定めるため。詳細な統計量は各図の理解を助けるが、全ツールの必須条件にはしない。 | 1 データ |
 | new-qc-tools | 新QC七つ道具の用途、基本手順、読み方を説明する。 | SRC-0014; SRC-0015; SRC-0016; SRC-0017; SRC-0018; SRC-0019; SRC-0020 | — | 公式資料上は各道具の定義・基本の理解が独立目標で、統計計算を前提にしない。 | 4 QC手法 |
 | probability-foundations | 事象・確率・独立・条件付き確率の基本を計算・解釈する。 | なし（数学・統計の橋渡し単元） | math-ratios-percentages | 確率を比として計算し、具体的な試行例から条件付き確率を理解するため。 | 2 確率 |
 | random-variables | 離散・連続確率変数、確率分布、期待値・分散を結び付ける。 | SRC-0025 | probability-foundations; math-algebra-sigma | 確率変数の値と確率を定め、期待値・分散の和を式で表すため。 | 2 確率 |
@@ -54,7 +54,7 @@
 | process-capability | 工程の安定性や分布条件を確認し、選んだ方法の工程能力指数を計算・解釈する。 | SRC-0044 | descriptive-statistics; sampling | 工程の散らばりと抽出の意味が必要。正規工程を仮定するCp/Cpkの分布条件は条件表の方法を選ぶ場合だけ必要。 | 4 QC手法 |
 | sampling-inspection | ロット・抽出・判定の関係と計数・計量方式を説明する。 | SRC-0045; SRC-0046; SRC-0047; SRC-0062; SRC-0063 | population-sample; data-types; probability-foundations | 母集団・標本・計測/計数値・判定確率を区別するため。 | 4 QC手法 |
 | experimental-design | 因子・水準・応答・実験単位を定め、1元・2元配置を条件付きで分析する。 | SRC-0048; SRC-0049; SRC-0050 | data-types; descriptive-statistics | 実験因子と測定結果の型・要約を理解するため。分散分析を行う場合の推論前提は条件付き経路に置く。 | 4 QC手法 |
-| correlation | 相関係数の意味・計算・限界を説明する。 | SRC-0051 | data-types; descriptive-statistics | 二変数の数値とその周辺分布を正しく解釈するため。 | 4 QC手法 |
+| correlation | 相関係数の意味・計算・限界を説明する。 | SRC-0051 | data-types#types; descriptive-statistics | 二変数の数値とその周辺分布を正しく解釈するため。 | 4 QC手法 |
 | serial-correlation | 時系列順の相関が独立観測の前提に与える影響を説明する。 | SRC-0052 | correlation | 系列順を含む関連性を、通常の相関係数との違いで説明するため。 | 4 QC手法 |
 | simple-regression | 単回帰式と残差の基本を説明し、推論を行う場合は方法条件を確認する。 | SRC-0053; SRC-0054; SRC-0055 | correlation; math-algebra-sigma | 散布図・相関と回帰式の係数計算を理解するため。推論関連は方法別の条件付き前提に分ける。 | 4 QC手法 |
 
@@ -83,7 +83,7 @@
 sourceItemId欄・前提欄・条件付き経路・任意復習に記したsection anchorは次の固定IDとする。設問・誤答から該当節を直接開けるようにする。
 
 - math-algebra-sigma: sigma
-- data-types: types
+- data-types: observation-unit, counting, types
 - math-arithmetic: operations
 - math-ratios-percentages: ratio
 - math-powers-roots: powers-roots

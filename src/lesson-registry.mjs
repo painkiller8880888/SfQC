@@ -309,47 +309,115 @@ const lessons = [
     title: 'データの種類',
     domain: 'data-description',
     learningObjectives: ['記録する1観測の単位を決め、測定・計数・カテゴリの違いと、集計対象に合う数え方を説明する。'],
-    declaredSectionIds: ['types'],
+    declaredSectionIds: ['observation-unit', 'counting', 'types'],
     commonPrerequisites: [],
     conditionalPrerequisites: [],
     optionalReviews: [],
     sourceItemIds: ['SRC-0001'],
     sourceRefs: sourceRefsFor(['SRC-0001']),
-    revision: 3,
-    sections: [{
-      sectionId: 'types',
-      title: '観測単位とデータ型',
-      blocks: [
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '「基準を超える傷が3件あるのに、不適合品はなぜ2個なのでしょう。」製品1個の寸法・傷の件数・適合状態を記録するなら、製品1個を1観測（表の1行）とします。この例では、検査前に決めた基準を超える傷が1件以上ある製品を不適合品とします。' }] },
-        { kind: 'table', caption: '製品1個を1行にした検査記録', columns: ['製品番号', '見つかった傷（件）', '基準を超えた傷（件）'], rows: [
-          ['A', '3', '2'], ['B', '1', '1'], ['C', '1', '0'], ['D', '0', '0'], ['E', '0', '0'],
-          ['F', '0', '0'], ['G', '0', '0'], ['H', '0', '0'], ['I', '0', '0'], ['J', '0', '0'],
-        ] },
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '見つかった傷は3 + 1 + 1 = 5件です。基準を超えた傷は2 + 1 = 3件です。その傷が1件以上ある製品はAとBなので、不適合品は2個です。傷を数えるときは「見つかった傷」と「不適合と判定した傷」を分けます。' }] },
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '製品ごとの長さ・傷の件数・適合状態を記録するなら、1観測は製品1個です。長さは測った量なので、整数mmに丸めて記録しても量そのものは連続的です。傷の件数は数えた量で、整数を取る離散的な計数値です。傷の種類や適合状態はカテゴリです。' }] },
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '適合状態を「0＝適合、1＝不適合」と記録しても、この0と1は判定を表すコードです。ただし、検査対象の製品を漏れなく1製品1行で記録し、コードの意味を全行で保てば、1の合計は不適合品数を数えます。各行が傷1件を表す明細では、同じ製品番号が繰り返され、傷がない製品や不適合の傷がない製品の行もありません。検査した製品数は、製品の検査記録から確認します。' }] },
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '次の表は、分類を確認するための別の製品記録です。長さはmm単位で整数に丸め、基準を超えた傷の件数と、製品ごとの適合状態コードも記録しています。' }] },
-        { kind: 'table', caption: '分類を確認する検査記録', columns: ['製品番号', '長さ（mm・整数記録）', '基準を超えた傷（件）', '適合状態コード（0／1）'], rows: [
-          ['P-01', '12', '2', '1'], ['P-02', '15', '0', '0'], ['P-03', '13', '1', '1'], ['P-04', '12', '0', '0'],
-        ] },
-        { kind: 'exerciseSlot', exerciseId: 'classify-record' },
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '次は、検査した製品の一覧と、基準を超えた傷だけの明細を比べます。製品番号P-01〜P-05の5個をすべて検査しました。' }] },
-        { kind: 'table', caption: '検査対象の製品一覧', columns: ['製品番号', '見つかった傷（件）'], rows: [
-          ['P-01', '2'], ['P-02', '1'], ['P-03', '1'], ['P-04', '0'], ['P-05', '1'],
-        ] },
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '次の明細は、検査基準を超えた傷だけを1件ずつ記録したものです。P-02とP-05にも傷は見つかりましたが、どれも基準内だったため明細にはありません。P-04には傷がありません。' }] },
-        { kind: 'table', caption: '基準を超えた傷の明細（1行＝傷1件）', columns: ['傷番号', '製品番号'], rows: [
-          ['傷1', 'P-01'], ['傷2', 'P-01'], ['傷3', 'P-03'],
-        ] },
-        { kind: 'exerciseSlot', exerciseId: 'identify-observation-unit' },
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '最後に、表示される事例を切り替えて、不適合品と不適合の数え方を確かめます。最初の2事例は同じ検査結果を製品記録と傷明細で示します。表にある観測対象と記録された行を先に確認してください。' }] },
-        { kind: 'exerciseSlot', exerciseId: 'defect-aggregation' },
-        { kind: 'paragraph', parts: [{ kind: 'text', text: '出典（確認日：2026-11-20）：OpenStax, Introductory Statistics 2e, §§1.2 “Data, Sampling, and Variation in Data and Sampling”・1.3 “Frequency, Frequency Tables, and Levels of Measurement”；ISO 2859-4:2020, 3rd edition (2020-06), Abstract, “The conforming-nonconforming model” and “The nonconformities model”。直接URLは https://openstax.org/books/introductory-statistics-2e/pages/1-2-data-sampling-and-variation-in-data-and-sampling 、https://openstax.org/books/introductory-statistics-2e/pages/1-3-frequency-frequency-tables-and-levels-of-measurement 、https://www.iso.org/standard/64506.html 。計量値・計数値・カテゴリの区別、適合／不適合品と不適合件数の集計対象を照合しました。例と設問は独自に作成。' }] },
+    revision: 8,
+    overview: [
+      { kind: 'paragraph', parts: [{ kind: 'text', text: '検査で基準を超える傷が3件見つかりました。しかし不適合品は2個です。なぜでしょうか？' }] },
+      { kind: 'paragraph', parts: [{ kind: 'text', text: '製品10個を検査し、製品ごとに見つかった傷と、検査前に決めた基準を超えた傷を記録しました。' }] },
+      { kind: 'table', caption: '製品1個を1行にした検査記録', columns: ['製品番号', '見つかった傷（件）', '基準を超えた傷（件）'], rows: [
+        ['A', '3', '2'], ['B', '1', '1'], ['C', '1', '0'], ['D〜J', '0', '0'],
+      ] },
+      { kind: 'paragraph', parts: [{ kind: 'text', text: 'D〜Jは7製品分の記録を1行にまとめて表示しています。3つの節を続けて読み、何を観測対象とするか、何を数えると答えになるか、記録した値をどう分類するかを順に確かめます。' }] },
+    ],
+    sections: [
+      {
+        sectionId: 'observation-unit',
+        title: '観測単位',
+        blocks: [
+          { kind: 'paragraph', parts: [{ kind: 'text', text: 'データを記録するときには、まず何を一つの観測対象とするかを決めます。この一つ分の対象を観測単位といいます。製品を観測単位とする場合、この例では製品1個につき1行の記録を作ります。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '観測単位を決めてから、どの項目をどう記録するかを決めます。同じ検査結果でも、傷1件を観測単位にすると、傷1件につき1行の記録になります。次の明細には、基準を超えた傷を載せています。' }] },
+          { kind: 'table', caption: '基準を超えた傷の明細（1行＝傷1件）', columns: ['傷番号', '製品番号'], rows: [
+            ['傷1', 'A'], ['傷2', 'A'], ['傷3', 'B'],
+          ] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '製品Aは2行に現れ、製品C〜Jは1行もありません。Cには傷が1件ありますが、基準内なのでこの明細には載りません。D〜Jには傷がありません。明細に行がない理由は1つではないので、検査した製品数（10個）は明細からは分かりません。検査した製品数は、製品1個を1行にした検査記録で確かめます。' }] },
+          { kind: 'details', summary: 'もっと正確に（観測単位を決める順序）', blocks: [
+            { kind: 'paragraph', parts: [{ kind: 'text', text: '記録を作る前に、何について記録するか（製品か、傷か）を決めます。製品の長さ・傷の件数・適合状態を記録するなら、観測単位は製品1個です。傷の種類や位置を記録するなら、観測単位は傷1件です。抽出した明細を読むときは、どんな条件で行を選んだ表かも確認します。' }] },
+          ] },
+          { kind: 'exerciseSlot', exerciseId: 'identify-observation-unit' },
+        ],
+      },
+      {
+        sectionId: 'counting',
+        title: '不適合数と不適合品数',
+        blocks: [
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '「不適合はいくつ？」と聞かれたら、傷を数えるのか、製品を数えるのか。この単元では、基準を超えた傷1件を不適合1件、基準を超えた傷が1件以上ある製品を不適合品とします。' }] },
+          { kind: 'formula', parts: [{ kind: 'mathText', text: [
+            '見つかった傷 = 3 + 1 + 1 = 5 件',
+            '不適合数 = 2 + 1 = 3 件（基準を超えた傷を数える）',
+            '不適合品数 = A, B の 2 個（基準を超えた傷がある製品を数える）',
+          ].join('\n') }] },
+          { kind: 'table', caption: '同じ検査結果から得られる数',
+            columns: ['数', '数える対象', '製品記録での数え方', '傷明細での数え方', '結果'],
+            rows: [
+              ['不適合数', '傷', '基準を超えた傷の列を合計', '明細の行を数える', '3 件'],
+              ['不適合品数', '製品', '基準を超えた傷が1以上の行を数える', '製品番号を重複なく数える', '2 個'],
+              ['検査した製品数', '製品', '元の記録の行を数える', '分からない', '10 個'],
+            ] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '不適合は「件」、不適合品は「個」と単位を書き分けると、どちらを数えたかが答えに残ります。冒頭の問いの答えは、不適合3件・不適合品2個です。' }] },
+          { kind: 'details', summary: 'もっと正確に（2つの数え方を使う場面）', blocks: [
+            { kind: 'paragraph', parts: [{ kind: 'text', text: '製品ごとに適合・不適合を判定して数える見方と、製品にある不適合の件数を数える見方は、抜取検査でも別のモデルとして扱われます。どちらを数えるかは、記録を集計する前に決めます。' }] },
+          ] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '演習の事例1と事例2では、同じ6製品の検査結果を製品記録と傷明細の両方で確かめます。事例3では、別の検査の傷明細を使い、製品と傷の数え方を確かめます。「別の問題」で事例を切り替えられます。' }] },
+          { kind: 'exerciseSlot', exerciseId: 'defect-aggregation' },
+        ],
+      },
+      {
+        sectionId: 'types',
+        title: '計量値・計数値・カテゴリ',
+        blocks: [
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '記録した値は何を表しているでしょうか。種類や判定を表すか、数量を表すかを先に確かめます。数量なら、その値を測って得たのか、数えて得たのかを考えます。' }] },
+          { kind: 'figureRef', figureId: 'FIG-DT-TYPES' },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '長さを整数mmに丸めて記録すると、表には整数しか並びません。それでも長さは計数値になりません。丸めで変わるのは記録の細かさで、長さそのものは連続的な量です。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '適合状態を「0＝適合、1＝不適合」と記録すると、0と1は判定を表すコードです。0/1の合計は常に、集計した行にある1の個数です。その合計から検査全体の不適合品数を求めるには、各不適合品が過不足なく1回ずつ1として現れることを確かめます。検査した全製品を1製品1行で記録し、全行でコードの意味をそろえると、この条件を満たせます。傷明細の行数は不適合品数と一致するとは限りません。明細では製品番号を重複なく数えます。' }] },
+          { kind: 'heading', level: 3, text: '記録と集計の違い' },
+          { kind: 'table', caption: '製品ごとの適合状態', columns: ['製品番号', '適合状態コード', '判定'], rows: [
+            ['P-01', '1', '不適合'], ['P-02', '0', '適合'], ['P-03', '1', '不適合'], ['P-04', '0', '適合'],
+          ] },
+          { kind: 'formula', parts: [{ kind: 'mathText', text: '不適合品数 = 1 + 0 + 1 + 0 = 2 個' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '製品ごとの0と1は適合状態を区別するカテゴリのコードです。この表では全製品を1製品1行で記録しているので、不適合品のP-01とP-03がそれぞれ1回ずつ1として現れます。集計した1の個数は検査全体の不適合品2個を表します。この2個は離散的な計数値です。' }] },
+          { kind: 'details', summary: 'もっと正確に（数字で書かれた値の扱い）', blocks: [
+            { kind: 'paragraph', parts: [{ kind: 'text', text: '数字で記録されていても、量を表すとは限りません。適合状態コードや製品番号は、種類や個体を区別するための記号です。不適合品が記録から漏れると過少計上の原因に、同じ不適合品を複数行で1と記録すると過大計上の原因になります。漏れと重複が同時にあると数が打ち消し合い、合計だけでは誤りに気づけないことがあります。' }] },
+          ] },
+          { kind: 'exerciseSlot', exerciseId: 'classify-record' },
+        ],
+      },
+    ],
+    figures: [{
+      kind: 'diagram',
+      figureId: 'FIG-DT-TYPES',
+      rendererRef: 'code:data-type-flow',
+      educationalPurpose: '記録した値が表す内容と、数量の得かたを順に確認して分類する。',
+      legend: [
+        { label: 'カテゴリ', meaning: '種類・判定を記録した値。' },
+        { label: '計量値', meaning: '連続量を測って得た値。' },
+        { label: '計数値', meaning: '個数を数えて得た離散的な値。' },
       ],
+      altText: '記録した値が種類・判定ならカテゴリ。数量なら得かたを確認し、測った値は計量値、数えた値は計数値に分ける。',
     }],
-    figures: [],
+    references: [
+      {
+        title: 'OpenStax, Introductory Statistics 2e, §1.2 “Data, Sampling, and Variation in Data and Sampling”',
+        url: 'https://openstax.org/books/introductory-statistics-2e/pages/1-2-data-sampling-and-variation-in-data-and-sampling',
+        details: '計量値・計数値・カテゴリの区別を照合。確認日：2026-11-20。',
+      },
+      {
+        title: 'OpenStax, Introductory Statistics 2e, §1.3 “Frequency, Frequency Tables, and Levels of Measurement”',
+        url: 'https://openstax.org/books/introductory-statistics-2e/pages/1-3-frequency-frequency-tables-and-levels-of-measurement',
+        details: '計量値・計数値・カテゴリの区別を照合。確認日：2026-11-20。',
+      },
+      {
+        title: 'ISO 2859-4:2020, 3rd edition (2020-06), Abstract',
+        url: 'https://www.iso.org/standard/64506.html',
+        details: '“The conforming-nonconforming model” と “The nonconformities model” で、不適合品と不適合件数の集計対象を照合。確認日：2026-11-20。例と設問は独自に作成。',
+      },
+    ],
   },
-  plannedLesson('population-sample', 'data-description', '母集団と標本', '母集団・標本・抽出単位・推定対象を例で区別する。', [], ['data-types'], ['SRC-0003']),
+  plannedLesson('population-sample', 'data-description', '母集団と標本', '母集団・標本・抽出単位・推定対象を例で区別する。', [], ['data-types#observation-unit'], ['SRC-0003']),
   {
     availability: 'included',
     lessonId: 'descriptive-statistics',
@@ -357,7 +425,7 @@ const lessons = [
     domain: 'data-description',
     learningObjectives: ['量的データの平均、偏差、分散、標準偏差を計算し、中心と散らばりを単位と目的に沿って説明する。'],
     declaredSectionIds: ['mean', 'deviation', 'variance', 'standard-deviation'],
-    commonPrerequisites: ['data-types', 'math-ratios-percentages', 'math-powers-roots'],
+    commonPrerequisites: ['data-types#types', 'math-ratios-percentages', 'math-powers-roots'],
     conditionalPrerequisites: [],
     optionalReviews: [
       { fromRef: 'descriptive-statistics#variance', targetRef: 'math-algebra-sigma#sigma', context: '平均節で意味を説明したΣを分散の最初の公式でも使う。必要ならその近くのリンクから総和記号を復習できる。' },
@@ -479,8 +547,8 @@ const lessons = [
     credit: '配色：Solarized by Ethan Schoonover (Copyright (c) 2011; MIT License).',
   },
   plannedLesson('sampling', 'data-description', '標本抽出と誤差', '標本抽出・誤差・抽出方式を区別し、標本からの一般化の限界を説明する。', ['error', 'design'], ['population-sample', 'descriptive-statistics'], ['SRC-0004', 'SRC-0006']),
-  plannedLesson('data-transform', 'data-description', 'データ変換', '変換の目的、尺度、変換前後の解釈を説明する。', [], ['data-types', 'math-algebra-sigma'], ['SRC-0002']),
-  plannedLesson('qc-seven-tools', 'quality-methods', 'QC七つ道具', '七つ道具を目的に応じて選び、作成・読取り・結論の限界を説明する。', ['pareto', 'cause-effect', 'check-sheet', 'histogram', 'scatter', 'graphs', 'stratification'], ['data-types'], ['SRC-0007', 'SRC-0008', 'SRC-0009', 'SRC-0010', 'SRC-0011', 'SRC-0012', 'SRC-0013'], [], [
+  plannedLesson('data-transform', 'data-description', 'データ変換', '変換の目的、尺度、変換前後の解釈を説明する。', [], ['data-types#types', 'math-algebra-sigma'], ['SRC-0002']),
+  plannedLesson('qc-seven-tools', 'quality-methods', 'QC七つ道具', '七つ道具を目的に応じて選び、作成・読取り・結論の限界を説明する。', ['pareto', 'cause-effect', 'check-sheet', 'histogram', 'scatter', 'graphs', 'stratification'], ['data-types#types'], ['SRC-0007', 'SRC-0008', 'SRC-0009', 'SRC-0010', 'SRC-0011', 'SRC-0012', 'SRC-0013'], [], [
     { fromRef: 'qc-seven-tools', targetRef: 'descriptive-statistics', context: 'ヒストグラムや散布図を読む際に、中心・散らばりの見方を振り返る場合。' },
   ]),
   plannedLesson('new-qc-tools', 'quality-methods', '新QC七つ道具', '新QC七つ道具の用途、基本手順、読み方を説明する。', ['affinity', 'relations', 'tree', 'matrix', 'arrow', 'pdpc', 'matrix-data'], [], ['SRC-0014', 'SRC-0015', 'SRC-0016', 'SRC-0017', 'SRC-0018', 'SRC-0019', 'SRC-0020'], [], [
@@ -555,7 +623,7 @@ const lessons = [
   ], [
     { fromRef: 'experimental-design', targetRef: 'qc-seven-tools#graphs', context: '因子・応答を図で比べる例を復習する場合。' },
   ]),
-  plannedLesson('correlation', 'statistical-analysis', '相関係数', '相関係数の意味・計算・限界を説明する。', [], ['data-types', 'descriptive-statistics'], ['SRC-0051'], [], [
+  plannedLesson('correlation', 'statistical-analysis', '相関係数', '相関係数の意味・計算・限界を説明する。', [], ['data-types#types', 'descriptive-statistics'], ['SRC-0051'], [], [
     { fromRef: 'correlation', targetRef: 'qc-seven-tools#scatter', context: '相関係数の前に散布図で二変数の関係を確認する場合。' },
   ]),
   plannedLesson('serial-correlation', 'statistical-analysis', '系列相関', '時系列順の相関が独立観測の前提に与える影響を説明する。', [], ['correlation'], ['SRC-0052']),
@@ -604,61 +672,53 @@ const exerciseCatalog = {
   definitions: [
     {
       lessonId: 'data-types',
-      exerciseId: 'classify-record',
-      revision: 1,
-      placement: { kind: 'section', sectionId: 'types' },
-      generation: {
-        kind: 'fixed',
-        question: {
-          display: {
-            prompt: '上の記録について、長さ・傷の件数・適合状態コードの意味と、コードを集計できる条件を正しく説明している選択肢を選んでください。',
-            response: { type: 'choice', choices: [
-              { id: 'choice-0', text: '長さは連続量、傷の件数は離散量、0／1はカテゴリコード。コードの合計2は、この表でも製品数ではなく不適合の傷の件数を表す。' },
-              { id: 'choice-1', text: '長さは整数で記録されているので離散量、傷の件数は連続量。0／1は数値なので量的データであり、どの表でも合計すれば不適合品数になる。' },
-              { id: 'choice-2', text: '長さはカテゴリ、傷の件数は離散量、0／1はカテゴリコード。ただし、コードを合計して個数を出せるのは傷1件を1行にした明細である。' },
-              { id: 'choice-3', text: '長さは連続量、傷の件数は離散量、0／1はカテゴリコード。1の合計は検査した製品を1製品1行で記録した場合に不適合品数を表す。' },
-            ] },
-            reviewSectionRefs: ['data-types#types'],
-          },
-          evaluation: { type: 'choice', correctChoiceId: 'choice-3' },
-          solution: {
-            steps: ['長さは測定値なので、整数mmへの丸めは記録精度を変えるだけです。', '傷の件数は数えた値、適合状態コードはカテゴリです。', '1行が検査した製品1個を表すので、コードの1を2個数えて不適合品数は2個です。'],
-            explanation: '数値が書かれていても、何を表すかで分類します。0／1の合計で個数を数えられるのは、全対象を1対象1行で記録しているからです。',
-            choiceFeedback: [
-              { choiceId: 'choice-0', misconception: '製品ごとのコードを数える合計は不適合品数を表します。傷の件数を数えるなら、傷の記録を集計します。', reviewSectionRefs: ['data-types#types'] },
-              { choiceId: 'choice-1', misconception: '記録精度だけで長さを離散量とは判定しません。また、0／1の合計が数える対象は、行が何を表すかで変わります。', reviewSectionRefs: ['data-types#types'] },
-              { choiceId: 'choice-2', misconception: '傷明細は傷1件が1行です。0／1の製品コードの合計で製品数を数える条件は、製品1個を1行にした記録です。', reviewSectionRefs: ['data-types#types'] },
-            ],
-          },
-        },
-      },
-    },
-    {
-      lessonId: 'data-types',
       exerciseId: 'identify-observation-unit',
-      revision: 1,
-      placement: { kind: 'section', sectionId: 'types' },
+      revision: 4,
+      placement: { kind: 'section', sectionId: 'observation-unit' },
       generation: {
         kind: 'fixed',
         question: {
           display: {
-            prompt: '上の検査記録と傷明細について、明細の1行が表すものと、記録に現れない製品の読み方として正しいものを選んでください。',
+            prompt: '一覧には検査した製品をすべて載せています。2つの表を読み、明細の1行が表すもの、製品番号が重複する理由、明細にない製品、検査総数について正しいものを選んでください。',
+            table: [
+              {
+                caption: '検査対象の製品一覧（1行＝製品1個）',
+                rowHeaderLabel: '製品番号',
+                columnLabels: ['見つかった傷（件）'],
+                rows: [
+                  { label: 'P-01', values: [2] }, { label: 'P-02', values: [1] }, { label: 'P-03', values: [1] },
+                  { label: 'P-04', values: [0] }, { label: 'P-05', values: [1] },
+                ],
+              },
+              {
+                caption: '基準を超えた傷の明細',
+                rowHeaderLabel: '傷番号',
+                columnLabels: ['製品番号'],
+                rows: [
+                  { label: '傷1', values: ['P-01'] }, { label: '傷2', values: ['P-01'] }, { label: '傷3', values: ['P-03'] },
+                ],
+              },
+            ],
             response: { type: 'choice', choices: [
-              { id: 'choice-0', text: '傷明細の1行は、基準を超えた傷1件を表す。P-01が2行あるのは基準を超えた傷が2件あるため。製品数は検査対象一覧の5個を使い、P-02とP-05は傷が見つかったが基準内、P-04は傷がない。' },
-              { id: 'choice-1', text: '傷明細の1行は製品1個を表す。同じ製品番号が2回出るのは別々の製品なので、検査した製品は明細の3行分である。' },
-              { id: 'choice-2', text: '傷明細の1行は傷1件を表す。明細に出ない製品は検査されていないため、検査対象は明細にあるP-01とP-03の2個である。' },
-              { id: 'choice-3', text: '傷明細の1行は傷1件を表し、P-01が2行あるのは傷が2件あるため。明細にないP-02、P-04、P-05はいずれも傷が見つかっていない。' },
+              { id: 'choice-0', text: '明細の1行は検査した製品1個。P-01の2行は同じ製品を2回検査した記録。明細にないP-02・P-05の傷は基準内で、P-04には傷がない。検査総数は一覧の5個。' },
+              { id: 'choice-1', text: '明細の1行は基準を超えた傷1件。P-01の2行は該当する傷2件の記録。明細にないP-02・P-05の傷は基準内で、P-04には傷がない。検査総数は一覧の5個。' },
+              { id: 'choice-2', text: '明細の1行は基準を超えた傷1件。P-01の2行は該当する傷2件の記録。明細にないP-02・P-04・P-05は検査していない。検査総数は明細に現れる2個。' },
+              { id: 'choice-3', text: '明細の1行は基準を超えた傷1件。P-01の2行は該当する傷2件の記録。明細にないP-02・P-04・P-05は検査したが、どれも傷がなかった。検査総数は一覧の5個。' },
             ] },
-            reviewSectionRefs: ['data-types#types'],
+            reviewSectionRefs: ['data-types#observation-unit'],
           },
-          evaluation: { type: 'choice', correctChoiceId: 'choice-0' },
+          evaluation: { type: 'choice', correctChoiceId: 'choice-1' },
           solution: {
-            steps: ['検査対象一覧は製品1〜5の5個です。', '傷明細は基準を超えた傷だけを1件ずつ載せるため、P-01は2行、P-03は1行です。', 'P-02とP-05の傷は基準内、P-04には傷がありません。'],
-            explanation: '明細の行数は基準を超えた傷の数を表し、検査した製品数は表しません。観測単位と、どの記録を抽出した明細かを確認します。',
+            steps: [
+              '検査対象一覧から、検査した製品は5個です。',
+              '明細は基準を超えた傷だけを1件1行で載せるので、P-01は2行、P-03は1行です。',
+              '一覧と比べると、P-02とP-05の傷は基準内、P-04には傷がありません。',
+            ],
+            explanation: '明細の行数は基準を超えた傷の件数を表し、検査した製品数は表しません。明細を読むときは、1行が何か、どの条件で行を選んだかを確かめます。',
             choiceFeedback: [
-              { choiceId: 'choice-1', misconception: '製品番号が複数行に現れるのは、1製品に基準を超えた傷が複数あるためです。明細の行数から検査対象数は分かりません。', reviewSectionRefs: ['data-types#types'] },
-              { choiceId: 'choice-2', misconception: '明細は基準を超えた傷だけを載せています。検査対象の数は検査対象一覧から確認します。', reviewSectionRefs: ['data-types#types'] },
-              { choiceId: 'choice-3', misconception: 'この明細は基準を超えた傷だけを載せるため、P-02とP-05の傷は基準内であり、P-04は傷がありません。明細にない理由は同じとは限りません。', reviewSectionRefs: ['data-types#types'] },
+              { choiceId: 'choice-0', misconception: 'この選択肢は、明細の1行を製品と読んでいます。同じ製品番号が繰り返されるのは、1製品に基準を超えた傷が複数あるためです。', reviewSectionRefs: ['data-types#observation-unit'] },
+              { choiceId: 'choice-2', misconception: 'この選択肢は、明細に行がないことを「検査していない」と読んでいます。明細は基準を超えた傷だけを載せるので、検査対象は一覧で確かめます。', reviewSectionRefs: ['data-types#observation-unit'] },
+              { choiceId: 'choice-3', misconception: 'この選択肢は、明細に行がない理由をすべて同じとみなしています。一覧ではP-02とP-05にも傷が1件ずつあり、基準内のため明細に載っていません。', reviewSectionRefs: ['data-types#observation-unit'] },
             ],
           },
         },
@@ -667,14 +727,59 @@ const exerciseCatalog = {
     {
       lessonId: 'data-types',
       exerciseId: 'defect-aggregation',
-      revision: 1,
-      placement: { kind: 'section', sectionId: 'types' },
+      revision: 5,
+      placement: { kind: 'section', sectionId: 'counting' },
       generation: {
         kind: 'index',
         generatorId: 'data-types-cases',
         typeId: 'defect-aggregation',
         minimum: 0,
         maximum: 2,
+      },
+    },
+    {
+      lessonId: 'data-types',
+      exerciseId: 'classify-record',
+      revision: 5,
+      placement: { kind: 'section', sectionId: 'types' },
+      generation: {
+        kind: 'fixed',
+        question: {
+          display: {
+            prompt: '検査した5個をすべて、1製品1行で記録しました。適合状態コードは0＝適合、1＝不適合です。この問題の検査記録から、長さ、基準を超えた傷の件数、適合状態コードの分類と、コードの合計の意味を正しく説明しているものを選んでください。',
+            table: {
+              caption: '分類を確認する検査記録（1行＝製品1個）',
+              rowHeaderLabel: '製品番号',
+              columnLabels: ['長さ（mm・整数記録）', '基準を超えた傷（件）', '適合状態コード（0／1）'],
+              rows: [
+                { label: 'Q-01', values: [14, 0, 0] }, { label: 'Q-02', values: [11, 2, 1] },
+                { label: 'Q-03', values: [16, 1, 1] }, { label: 'Q-04', values: [15, 0, 0] },
+                { label: 'Q-05', values: [11, 3, 1] },
+              ],
+            },
+            response: { type: 'choice', choices: [
+              { id: 'choice-0', text: '長さは整数で記録した計数値、基準を超えた傷の件数は計数値、適合状態コードはカテゴリ。コードの合計3は不適合品数（3個）。' },
+              { id: 'choice-1', text: '長さは計量値、基準を超えた傷の件数は計数値、適合状態コードは数値なので計量値。コードの合計3は不適合品数（3個）。' },
+              { id: 'choice-2', text: '長さは計量値、基準を超えた傷の件数は計数値、適合状態コードはカテゴリ。コードの合計3は不適合数（3件）。' },
+              { id: 'choice-3', text: '長さは計量値、基準を超えた傷の件数は計数値、適合状態コードはカテゴリ。コードの合計3は不適合品数（3個）。' },
+            ] },
+            reviewSectionRefs: ['data-types#types'],
+          },
+          evaluation: { type: 'choice', correctChoiceId: 'choice-3' },
+          solution: {
+            steps: [
+              '長さは測った値です。整数mmへの丸めは記録の細かさを変えるだけです。',
+              '基準を超えた傷の件数は数えた値、適合状態コードは判定を表すカテゴリです。',
+              '適合状態コードの合計は 0 + 1 + 1 + 0 + 1 = 3 です。この表の各不適合品は1回ずつ1として現れるので、不適合品数は3個です。',
+            ],
+            explanation: 'この表では検査した全製品を1製品1行で記録しています。不適合品のQ-02、Q-03、Q-05はそれぞれ1回ずつ1として現れるため、合計3は検査全体の不適合品数3個を表します。',
+            choiceFeedback: [
+              { choiceId: 'choice-0', misconception: 'この選択肢は、記録の細かさで長さを分類しています。整数に丸めても、長さは測った量です。', reviewSectionRefs: ['data-types#types'] },
+              { choiceId: 'choice-1', misconception: 'この選択肢は、数字で書かれていることを量の根拠にしています。0/1は適合・不適合という判定を表すコードです。', reviewSectionRefs: ['data-types#types'] },
+              { choiceId: 'choice-2', misconception: 'この選択肢は、コードの合計を傷の件数と読んでいます。この表では、コードの合計は不適合品数（3個）です。不適合数は基準を超えた傷の列を合計した6件です。', reviewSectionRefs: ['data-types#types'] },
+            ],
+          },
+        },
       },
     },
     ...Object.entries(previewExerciseDefinitions).map(([exerciseId, definition]) => ({
@@ -708,7 +813,7 @@ const exerciseCatalog = {
 
 /** @type {LessonRegistry} */
 export const lessonRegistry = {
-  curriculumRevision: 3,
+  curriculumRevision: 4,
   officialSourceItemIds: Array.from({ length: 64 }, (_, index) => `SRC-${String(index + 1).padStart(4, '0')}`),
   sources: sourceDocuments,
   lessons,

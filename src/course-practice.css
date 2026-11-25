@@ -125,6 +125,10 @@
   font-size: 0.9375rem;
 }
 
+[data-exercise-id="classify-record"] .ds-practice-table-wrap table {
+  min-width: 23rem;
+}
+
 .ds-practice-table-wrap caption {
   padding-bottom: 0.25rem;
   color: var(--text-muted);

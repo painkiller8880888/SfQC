@@ -1,4 +1,5 @@
 import type { LessonDefinition } from '../lesson-contract.mjs'
+import { DataTypeFlow } from './data-type-flow'
 import { VarianceDeviationBars } from './variance-deviation-bars'
 import { InteractiveVarianceComparison, VarianceSimulation } from './interactive-variance-comparison'
 
@@ -15,6 +16,7 @@ export function FigureRef({ lesson, figureId }: Props) {
         : figure.figureId === 'FIG-DS-STANDARD-DEVIATION' ? 'sd' : 'variance'
     return <InteractiveVarianceComparison mode={mode} />
   }
+  if (figure.rendererRef === 'code:data-type-flow') return <DataTypeFlow description={figure.altText} />
   if (figure.rendererRef === 'code:variance-simulation') return <VarianceSimulation />
   if (figure.rendererRef === 'code:variance-deviation-bars') {
     return <VarianceDeviationBars description={figure.altText} />
