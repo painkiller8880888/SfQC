@@ -106,7 +106,7 @@
 - 教材データにある説明（例：`educationalPurpose`、`variables`、`axes`、`legend`、`altText`）と、画面で実際に描画される `rendererRef` の一致。
 - 図がコードから再現可能なこと。生成画像・生成アセットは使いません。
 
-操作はキーボードで行え、可視フォーカスがあり、操作対象が画面上で見え、マウス・タッチでも使えるようにします。既存の `altText` やARIA属性は保ちます。現行の[AGENTS.md](../AGENTS.md)に従い、スクリーンリーダー固有の追加開発・検証は受入条件にしません。
+操作はキーボードで行え、可視フォーカスがあり、操作対象が画面上で見え、マウス・タッチでも使えるようにします。既存の `altText` やARIA属性は保ちます。現行の[AGENTS.md](../../AGENTS.md)に従い、スクリーンリーダー固有の追加開発・検証は受入条件にしません。
 
 ## 4. 出典・クレジットを追跡する
 
@@ -139,8 +139,8 @@
 
 具体的には次を照合します。
 
-- 教材データの正本は [`src/lesson-registry.mjs`](../src/lesson-registry.mjs)。`lessonId`、`sectionId`、演習ID、図ID、教材参照は既存の外部リンクとして扱い、無断で変更しません。
-- 教材と演習の型・実行時検証は [`src/lesson-contract.d.mts`](../src/lesson-contract.d.mts)、[`src/lesson-contract.mjs`](../src/lesson-contract.mjs) と関連する契約テストで確認します。
+- 教材データの正本は [`src/lesson-registry.mjs`](../../src/lesson-registry.mjs)。`lessonId`、`sectionId`、演習ID、図ID、教材参照は既存の外部リンクとして扱い、無断で変更しません。
+- 教材と演習の型・実行時検証は [`src/lesson-contract.d.mts`](../../src/lesson-contract.d.mts)、[`src/lesson-contract.mjs`](../../src/lesson-contract.mjs) と関連する契約テストで確認します。
 - 本文中のlessonRef、節内の `exerciseSlot`、演習定義・採点・復習先は相互に実在性と整合を確認します。一般単元で使える `exerciseSlot` と、独立演習画面・保存履歴の現行対象範囲は別の話です。基本統計量の5カテゴリは現行例であって、全単元に同じ独立演習画面や履歴を義務づけません。範囲を広げるときはIssueで必要性と影響を記録します。
 
 ### 独立演習の初回有効判定（現行例）
@@ -155,7 +155,7 @@
 
 問題の再生成に失敗した場合は、現在の問題とその回答・フィードバック・集計状態を保ち、生成エラーを表示します。保存失敗時の扱いは上の保存・エラー処理契約に従います。
 - 本文中の `lessonId#sectionId` は教材内参照の表記であり、hash URLそのものとは限りません。実際のhash routeへの解決、復習stack、節参照を通る往復を維持します。手動の学習完了と自動採点・演習正答率は独立させます。
-- 学習状態、演習履歴、バックアップの形式・入力検証・保存失敗・破損データのエラー処理は、[`src/learning-state.mjs`](../src/learning-state.mjs)、[`src/practice-results.mjs`](../src/practice-results.mjs)、[`src/backup.mjs`](../src/backup.mjs) と関連テストに照らして保護します。正式リリース前の旧形式との後方互換性は、個別指示がない限り要件ではありません。現行データの整合性検証とエラー処理は引き続き必要です（[AGENTS.md](../AGENTS.md)）。
+- 学習状態、演習履歴、バックアップの形式・入力検証・保存失敗・破損データのエラー処理は、[`src/learning-state.mjs`](../../src/learning-state.mjs)、[`src/practice-results.mjs`](../../src/practice-results.mjs)、[`src/backup.mjs`](../../src/backup.mjs) と関連テストに照らして保護します。正式リリース前の旧形式との後方互換性は、個別指示がない限り要件ではありません。現行データの整合性検証とエラー処理は引き続き必要です（[AGENTS.md](../../AGENTS.md)）。
 
 ## 6. レビュー用チェックリスト
 
@@ -260,12 +260,12 @@ Issue [#113](https://github.com/painkiller8880888/SfQC/issues/113) での適用�
 
 このガイドラインの実装例・契約の照合先は次のとおりです。実装が変わった場合は最新の正本・validator・テストを確認してください。
 
-- Phase 1の目的・順序：[親Issue #108](https://github.com/painkiller8880888/SfQC/issues/108)、[Issue #109](https://github.com/painkiller8880888/SfQC/issues/109)、[Issue #110](https://github.com/painkiller8880888/SfQC/issues/110)、[Issue #111](https://github.com/painkiller8880888/SfQC/issues/111)。調査根拠は [Issue #109 調査報告](ISSUE_109_INVESTIGATION_REPORT.md)。
-- 教材・演習スキーマ：[Issue #110](https://github.com/painkiller8880888/SfQC/issues/110)、[lesson contract](../src/lesson-contract.mjs)、[型定義](../src/lesson-contract.d.mts)、[契約テスト](../scripts/lesson-contract.test.mjs)
-- 教材・目標・図・出典・節内配置の例：[lesson registry](../src/lesson-registry.mjs)
-- 一般教材の問題表示・採点：[Issue #111](https://github.com/painkiller8880888/SfQC/issues/111)、[lesson view](../src/lesson-view.tsx)、[question grading](../src/question-grading.mjs)
-- 基本統計量の例：[専用コース表示](../src/descriptive-statistics-course.tsx)、[演習の生成定義](../src/descriptive-statistics-preview-exercises.mjs)、[独立演習表示](../src/descriptive-statistics-exercise-preview.tsx)
-- 進捗・演習履歴・バックアップ：[learning state](../src/learning-state.mjs)、[practice results](../src/practice-results.mjs)、[backup](../src/backup.mjs)
-- 現行の開発・互換性・スクリーンリーダー対応範囲：[AGENTS.md](../AGENTS.md)
+- Phase 1の目的・順序：[親Issue #108](https://github.com/painkiller8880888/SfQC/issues/108)、[Issue #109](https://github.com/painkiller8880888/SfQC/issues/109)、[Issue #110](https://github.com/painkiller8880888/SfQC/issues/110)、[Issue #111](https://github.com/painkiller8880888/SfQC/issues/111)。調査根拠は [Issue #109 調査報告](../ISSUE_109_INVESTIGATION_REPORT.md)。
+- 教材・演習スキーマ：[Issue #110](https://github.com/painkiller8880888/SfQC/issues/110)、[lesson contract](../../src/lesson-contract.mjs)、[型定義](../../src/lesson-contract.d.mts)、[契約テスト](../../scripts/lesson-contract.test.mjs)
+- 教材・目標・図・出典・節内配置の例：[lesson registry](../../src/lesson-registry.mjs)
+- 一般教材の問題表示・採点：[Issue #111](https://github.com/painkiller8880888/SfQC/issues/111)、[lesson view](../../src/lesson-view.tsx)、[question grading](../../src/question-grading.mjs)
+- 基本統計量の例：[専用コース表示](../../src/descriptive-statistics-course.tsx)、[演習の生成定義](../../src/descriptive-statistics-preview-exercises.mjs)、[独立演習表示](../../src/descriptive-statistics-exercise-preview.tsx)
+- 進捗・演習履歴・バックアップ：[learning state](../../src/learning-state.mjs)、[practice results](../../src/practice-results.mjs)、[backup](../../src/backup.mjs)
+- 現行の開発・互換性・スクリーンリーダー対応範囲：[AGENTS.md](../../AGENTS.md)
 
 Phase 2で検証する説明順序・構成の例外、図表の採否、独立演習と履歴の適用範囲、共通スキーマや表示の不足は未決です。実教材で必要性と根拠を確認し、各単元のPRに変更・採否・検証結果を記録してください。#118では、その実績に基づきこの暫定v0を改訂または確定します。
