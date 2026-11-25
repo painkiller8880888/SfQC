@@ -233,7 +233,7 @@
 
 .ivc-bar-row {
   display: grid;
-  grid-template-columns: minmax(7.5rem, 11rem) minmax(0, 1fr) 4.5rem;
+  grid-template-columns: minmax(7.5rem, 11rem) minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.25rem 0.625rem;
   margin-block: 0.375rem;
@@ -242,7 +242,8 @@
 
 .ivc-bar {
   position: relative;
-  height: 0.875rem;
+  height: calc(0.875rem + 4px);
+  border: 2px solid var(--surface-subtle);
   border-radius: 0.5rem;
   outline: 1px solid var(--control-border);
   background: var(--surface-subtle);
@@ -252,7 +253,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 0;
-  border-radius: inherit;
+  border-radius: 0.375rem;
   background: var(--link);
 }
 
@@ -262,15 +263,16 @@
 
 .ivc-bar > b {
   position: absolute;
-  inset: -0.25rem auto -0.25rem;
+  inset-block: 0;
   width: 2px;
   outline: 1px solid var(--surface-subtle);
   background: var(--text);
 }
 
 .ivc-bar-row .num {
+  min-width: 8ch;
   text-align: right;
-  font-family: var(--font-num);
+  white-space: nowrap;
 }
 
 .ivc-simulation-last {
@@ -295,8 +297,18 @@
   }
 
   .ivc-bar-row {
-    grid-template-columns: minmax(6.5rem, 8rem) minmax(0, 1fr) 3.5rem;
+    grid-template-columns: minmax(0, 1fr) auto;
     column-gap: 0.35rem;
+  }
+
+  .ivc-bar-row .ivc-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .ivc-bar-row .num {
+    grid-column: 2;
+    grid-row: 1;
   }
 }
 

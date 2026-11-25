@@ -11,6 +11,7 @@ import {
   updateRouteHistoryState,
   validateRouteHistoryState,
   type NavigationIntent,
+  type RouteHistoryFrame,
   type RouteHistoryState,
 } from './route-history.mjs'
 import { exportLearningBackup, importLearningBackup, recheckLearningBackupImport, type LearningBackupImportResult } from './backup.mjs'
@@ -73,11 +74,15 @@ type MapUiState = {
   mobileDetailOpen: boolean
 }
 type MapListLocator = { href: string; text: string; cardTitle: string }
-type ExerciseReviewFocus = { exerciseId: string; linkIndex: number }
+type DisclosureReviewFocus = { href: string; linkIndex: number }
 type MapEntrySnapshot = MapUiState & {
   graphScrollTop: number
   graphScrollLeft: number
   listOrigin?: MapListLocator
+}
+
+function disclosureReviewLinks() {
+  return Array.from(document.querySelectorAll<HTMLAnchorElement>('details.course-details a[data-nav-intent="review"]'))
 }
 
 function emptyLearningState(): LearningState {
@@ -242,7 +247,9 @@ function App() {
   const judgementIdRef = useRef(0)
   const [pendingBackupImport, setPendingBackupImport] = useState<LearningBackupImportResult | null>(null)
   const keepJudgementsAfterRestoreRef = useRef(true)
-  const pendingReturnFocusRef = useRef<ExerciseReviewFocus | null>(null)
+  const pendingReturnFrameRef = useRef<RouteHistoryFrame | null>(null)
+  const disclosedReviewSourcesRef = useRef(new Map<string, DisclosureReviewFocus>())
+  const inlineReviewEntriesRef = useRef(new WeakMap<HTMLAnchorElement, Set<string>>())
   const practiceSnapshotRef = useRef<(() => PracticeScreenSnapshot) | null>(null)
   const practiceEntrySnapshotsRef = useRef(new Map<string, PracticeScreenSnapshot>())
   const savePracticeEntrySnapshot = (currentView: RouteView) => {
@@ -719,8 +726,18 @@ function App() {
       return false
     }
     savePracticeEntrySnapshot(currentView)
+    if (intent === 'review' && currentView.resolved.status === 'lesson' && sourceAnchor) {
+      if (sourceExerciseFocus) {
+        const entryIds = inlineReviewEntriesRef.current.get(sourceAnchor) ?? new Set<string>()
+        entryIds.add(currentState.entryId)
+        inlineReviewEntriesRef.current.set(sourceAnchor, entryIds)
+      }
+      const linkIndex = sourceAnchor.closest('details.course-details') ? disclosureReviewLinks().indexOf(sourceAnchor) : -1
+      if (linkIndex >= 0) disclosedReviewSourcesRef.current.set(currentState.entryId, { href: sourceAnchor.href, linkIndex })
+      else disclosedReviewSourcesRef.current.delete(currentState.entryId)
+    }
     const sourceFrame = intent === 'return' ? currentState.returnStack.at(-1) : undefined
-    pendingReturnFocusRef.current = sourceFrame?.focusTarget ?? null
+    pendingReturnFrameRef.current = sourceFrame ?? null
     if (sourceFrame?.route.kind === 'course-practice' && sourceFrame.entryId) {
       const snapshot = practiceEntrySnapshotsRef.current.get(sourceFrame.entryId)
       if (snapshot) practiceEntrySnapshotsRef.current.set(nextState.entryId, snapshot)
@@ -967,18 +984,43 @@ function App() {
       if (!isCurrent()) return
       const practiceWithoutSnapshot = viewAtSchedule.resolved.status === 'course-practice'
         && !practiceEntrySnapshotsRef.current.has(viewAtSchedule.historyState.entryId)
-      const navigation = practiceWithoutSnapshot ? 'normal' : viewAtSchedule.navigation
-      const returnLocator = navigation === 'return' ? pendingReturnFocusRef.current : null
+      let navigation = practiceWithoutSnapshot ? 'normal' : viewAtSchedule.navigation
+      const sourceFrame = navigation === 'return' ? pendingReturnFrameRef.current : null
+      const returnLocator = sourceFrame?.focusTarget
+      const sourceEntryId = sourceFrame?.entryId
+      let sectionHeading = sectionHeadingRef.current
       let returnTarget: HTMLAnchorElement | null = null
       if (returnLocator) {
         const returnCard = Array.from(document.querySelectorAll<HTMLElement>('[data-exercise-id]'))
           .find((card) => card.dataset.exerciseId === returnLocator.exerciseId)
         returnTarget = returnCard?.querySelectorAll<HTMLAnchorElement>('a[data-nav-intent="review"]')[returnLocator.linkIndex] ?? null
+        if (viewAtSchedule.resolved.status === 'lesson'
+          && !(returnTarget && sourceEntryId && inlineReviewEntriesRef.current.get(returnTarget)?.has(sourceEntryId))) {
+          const lessonId = viewAtSchedule.resolved.lesson.lessonId
+          const placement = lessonRegistry.exerciseCatalog?.definitions.find((definition) =>
+            definition.lessonId === lessonId && definition.exerciseId === returnLocator.exerciseId)?.placement
+          if (placement?.kind === 'section') {
+            sectionHeading = document.querySelector<HTMLHeadingElement>('#course-section-' + placement.sectionId) ?? sectionHeading
+          }
+          navigation = sectionHeading ? 'section' : 'normal'
+          returnTarget = null
+        }
+      } else if (sourceEntryId) {
+        const locator = disclosedReviewSourcesRef.current.get(sourceEntryId)
+        const link = locator && disclosureReviewLinks()[locator.linkIndex]
+        if (link && link.href === locator.href) {
+          let disclosure = link.closest<HTMLDetailsElement>('details.course-details')
+          while (disclosure) {
+            disclosure.open = true
+            disclosure = disclosure.parentElement?.closest<HTMLDetailsElement>('details.course-details') ?? null
+          }
+          returnTarget = link
+        }
       }
-      if (viewAtSchedule.navigation === 'return') pendingReturnFocusRef.current = null
+      if (viewAtSchedule.navigation === 'return') pendingReturnFrameRef.current = null
       applyRouteNavigationEffect(navigation, viewAtSchedule.historyState, {
         heading: headingRef.current,
-        sectionHeading: sectionHeadingRef.current,
+        sectionHeading,
         returnTarget,
         scrollTo: (x, y) => window.scrollTo(x, y),
       })

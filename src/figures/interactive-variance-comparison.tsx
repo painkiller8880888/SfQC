@@ -45,7 +45,7 @@ function FigureReadout({ mode, values, summaries }: {
       <thead><tr><th scope="col">いまの図の値</th><th scope="col">A</th><th scope="col">B</th></tr></thead>
       <tbody>
         {row('値 (mm)', values.A.join(', '), values.B.join(', '))}
-        {mode === 'mean' && row('平均 (mm)', formatValue(summaries.A.mean), formatValue(summaries.B.mean))}
+        {row('平均 (mm)', formatValue(summaries.A.mean), formatValue(summaries.B.mean))}
         {mode === 'deviation' && <>
           {row('偏差 (mm)', summaries.A.deviations.map(formatDeviation).join(', '), summaries.B.deviations.map(formatDeviation).join(', '))}
           {row('偏差の合計 (mm)', formatValue(summaries.A.deviations.reduce((sum, value) => sum + value, 0)), formatValue(summaries.B.deviations.reduce((sum, value) => sum + value, 0)))}
@@ -302,18 +302,18 @@ export function VarianceSimulation() {
       <i className={className} style={{ width: `${(value ?? 0) / scale * 100}%` }} />
       <b aria-hidden="true" style={{ left: `${trueVariance / scale * 100}%` }} />
     </div>
-    <span className="num">{value === null ? '—' : value.toFixed(2)}</span>
+    <span className="num">{value === null ? '—' : `${value.toFixed(2)} mm²`}</span>
   </div>
   return <section className="ivc-simulation" aria-label="復元抽出シミュレーション">
     <p>このロットの母分散は {trueVariance} mm² です。3本の測定値から偏差平方和 S を求め、n = 3 で割った値と、n − 1 = 2 で割った値を比べます。</p>
-    <div className="ivc-population" aria-label="ロットに含まれる寸法">{population.map((value) => <span key={value}>{value}</span>)}</div>
+    <div className="ivc-population" aria-label="ロットに含まれる寸法">{population.map((value) => <span key={value}>{value} mm</span>)}</div>
     <p>復元抽出では、順序も含めた3本の取り方が <strong>{possibleSamples}</strong> 通りあり、どれも同じ確率です。すべての取り方で計算して平均すると、n で割った値の期待値は <strong>{byN.toFixed(2)} mm²</strong>（丸め表示）、n − 1 で割った値の期待値は <strong>{byNMinusOne.toFixed(2)} mm²</strong> です。n − 1 で割った値の期待値は、このロットの母分散と一致します。</p>
     <p>棒の範囲は 0〜{scale} mm² で、縦線は母分散 {trueVariance} mm² を示します。</p>
     <div className="ivc-bars">{bar('n で割る', averageByN, 'ivc-bar-n')}{bar('n − 1 で割る', averageByNMinusOne, 'ivc-bar-n-minus-one')}</div>
     <p className="ivc-simulation-last" role="status" aria-live="polite">{result.count === 0
       ? 'まだ取り出していません。'
       : result.last
-        ? `直前の3本：${result.last.values.join(', ')}　n で割る ${result.last.byN.toFixed(2)}、n − 1 で割る ${result.last.byNMinusOne.toFixed(2)}（${result.count} 回の平均を表示中）`
+        ? `直前の3本：${result.last.values.map((value) => `${value} mm`).join('、')}　n で割る ${result.last.byN.toFixed(2)} mm²、n − 1 で割る ${result.last.byNMinusOne.toFixed(2)} mm²（${result.count} 回の平均を表示中）`
         : `${result.count} 回取り出した平均です。`}</p>
     <div className="ivc-simulation-actions">
       <button className="ds-button" type="button" onClick={() => run(1, true)}>3本取り出す</button>

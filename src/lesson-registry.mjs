@@ -432,7 +432,7 @@ const lessons = [
     ],
     sourceItemIds: ['SRC-0005'],
     sourceRefs: sourceRefsFor(['SRC-0005']),
-    revision: 6,
+    revision: 7,
     overview: [
       { kind: 'paragraph', parts: [{ kind: 'text', text: '同じ目標長さ 100 mm のシャフトを作るライン A と B から、3本ずつ測りました。平均は同じでも、散らばり方は同じでしょうか。4つの節を続けて読み、中心と散らばりを順に確かめます。' }] },
       { kind: 'table', caption: '測定した長さ（mm）', columns: ['ライン', '1本目', '2本目', '3本目'], rows: [['A', '98', '100', '102'], ['B', '99', '100', '101']] },
@@ -640,6 +640,14 @@ const lessons = [
   ]),
 ]
 
+const revisedStatisticsExercises = new Set([
+  'data-transformation-add-constant',
+  'data-transformation-unit',
+  'unbiased-variance-mean-and-sum',
+  'unbiased-variance-denominator',
+  'unbiased-variance-conditions',
+])
+
 /** @type {import('./lesson-contract.mjs').ExerciseCatalog} */
 const exerciseCatalog = {
   categories: descriptiveStatisticsExerciseCategories.map(({ id, title, typeIds }) => ({
@@ -730,7 +738,7 @@ const exerciseCatalog = {
     {
       lessonId: 'data-types',
       exerciseId: 'defect-aggregation',
-      revision: 6,
+      revision: 7,
       placement: { kind: 'section', sectionId: 'counting' },
       generation: {
         kind: 'index',
@@ -801,7 +809,7 @@ const exerciseCatalog = {
     ...descriptiveStatisticsExerciseCategories.flatMap(({ id: categoryId, typeIds }) => typeIds.map((exerciseId) => ({
       lessonId: 'descriptive-statistics',
       exerciseId,
-      revision: 2,
+      revision: revisedStatisticsExercises.has(exerciseId) ? 3 : 2,
       placement: { kind: /** @type {'category'} */ ('category'), categoryId },
       generation: {
         kind: /** @type {'seed'} */ ('seed'),

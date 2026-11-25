@@ -30,6 +30,8 @@ export const descriptiveStatisticsExerciseCategories: readonly {
   typeIds: readonly string[]
 }[]
 
+export function makeRepeatedEndpointMeasurements(mean: number, radius: number): number[]
+
 export function createDescriptiveStatisticsExercisePreviewState(
   categoryIndex: number,
   random?: () => number,

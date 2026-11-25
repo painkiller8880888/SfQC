@@ -97,18 +97,7 @@ const deviationWrong = [
   { text: '偏差の単位は、測定値の単位の2乗である。', why: '2乗の単位になるのは偏差平方和や分散です。偏差そのものは、測定値と同じ単位です。' },
   { text: '平均と等しい測定値の偏差は、1になる。', why: '平均と等しい測定値の偏差は 0 です。' },
 ]
-const varianceCorrect = [
-  { text: '母分散を推定する値で、偏差平方和を n − 1 で割って求める。', why: '不偏分散は、標本から母分散を見積もるために、偏差平方和 S を n − 1 で割って求めます。' },
-  { text: '母分散を推定する値で、1回の値は母分散と一致するとは限らない。', why: '不偏分散は標本から出した見積もりです。1回の値と母分散が一致する保証はありません。' },
-  { text: '測定値の組が変わると、不偏分散も変わりうる。', why: '不偏分散は測定値の組から計算します。異なる標本でも、平均からのずれの二乗和が等しければ同じ値になります。' },
-]
-const varianceWrong = [
-  { text: '母分散と必ず一致する値である。', why: '不偏分散は見積もりなので、母分散と必ず一致するわけではありません。' },
-  { text: '測った標本そのものの散らばりを表す値で、偏差平方和を n で割って求める。', why: 'これは標本内の分散の説明です。不偏分散は母分散の見積もりで、n − 1 で割ります。' },
-  { text: '標本の本数が増えるほど、必ず大きくなる値である。', why: '本数が増えても、必ず大きくなるわけではありません。' },
-  { text: '偏差の合計を n − 1 で割って求める。', why: '偏差の合計は常に 0 です。2乗してから足した偏差平方和を割ります。' },
-  { text: '単位は、測定値の単位と同じである。', why: '偏差を2乗しているので、単位は測定値の単位の2乗（mm² など）です。' },
-]
+const independentLotSampling = 'ロットから1個ずつ、毎回、他の抽出とは独立に等確率で選び、測るたびに元に戻します。'
 
 function firstMeanQuestion(random) {
   const c = context(random)
@@ -164,7 +153,7 @@ function firstTransformationQuestion(random) {
   return choiceQuestion(
     `${story}この前後で、平均・分散・標準偏差の変化について正しい説明はどれですか。`,
     answerChoice(`平均は ${amount} ${c.unit} ${movement}が、分散と標準偏差は変わらない。`,
-      'すべての値に同じ数を足したり引いたりすると、平均は同じだけ動きます。各値と平均の差（偏差）は変わりません。分散と標準偏差は偏差から作るので、どちらも変わりません。'),
+      '測定値を一律に動かすと、中心の位置だけが動き、散らばり方は保たれます。'),
     [
       answerChoice(`平均は ${amount} ${c.unit} ${movement}ので、分散と標準偏差も変わる。`,
         '平均の位置は動きますが、各値も平均と同じ量だけ動くので、分散と標準偏差は変わりません。', ['deviation', 'variance']),
@@ -174,6 +163,10 @@ function firstTransformationQuestion(random) {
         '分散と標準偏差は変わりません。平均は、すべての測定値に加えた量と同じだけ動きます。', ['mean']),
     ],
     ['deviation'], random,
+    [
+      `すべての測定値に同じ量を${add ? '足した' : '引いた'}ので、平均は ${amount} ${c.unit} ${movement}。`,
+      '測定値と平均が同じ量だけ動くので、差である偏差は変わりません。偏差から求める分散と標準偏差も変わりません。',
+    ],
   )
 }
 
@@ -211,13 +204,26 @@ function thirdTransformationQuestion(random) {
         '平均も長さを表すので、mm から cm に換算すると数値は 1/10 になります。', ['mean']),
     ],
     ['standard-deviation'], random,
-    [`平均は ${mmMean} mm ÷ 10 = ${mean} cm、標準偏差は ${mmSd} mm ÷ 10 = ${sd} cm に換算します。`],
+    [`平均は ${mmMean} mm × (1 cm / 10 mm) = ${mean} cm、標準偏差は ${mmSd} mm × (1 cm / 10 mm) = ${sd} cm に換算します。`],
   )
 }
 
 function firstVarianceQuestion(random) {
-  const correct = pick(random, varianceCorrect)
-  return choiceQuestion('同じ母集団から独立に測定値を得た標本について、不偏分散 V の正しい説明はどれですか。', correct, shuffle(random, varianceWrong).slice(0, 3), ['variance'], random)
+  return choiceQuestion(
+    `${independentLotSampling} n 個（n ≥ 2）の測定値からロット全体の分散を見積もります。不偏分散 V を求める式の分子と分母の組はどれですか。`,
+    answerChoice('分子は偏差平方和、分母は n − 1。',
+      '不偏分散 V は偏差平方和を n − 1 で割った値です。標本サイズと偏差平方和がともに等しい場合は、異なる標本でも V は等しくなります。'),
+    [
+      answerChoice('分子は偏差平方和、分母は n。', '偏差平方和を n で割ると標本内の分散です。独立な復元抽出で母分散を見積もる不偏分散 V では n − 1 で割ります。'),
+      answerChoice('分子は偏差の合計、分母は n − 1。', '二乗する前の偏差は足すと 0 です。分子は偏差を一つずつ二乗してから足します。'),
+      answerChoice('分子は偏差の合計、分母は n。', '分子には偏差を二乗して足した偏差平方和を使います。独立な復元抽出での不偏分散 V の分母は n − 1 です。'),
+    ],
+    ['variance'], random,
+    [
+      '偏差を一つずつ二乗して足し、偏差平方和を求めます。',
+      'このロットからの独立な復元抽出で母分散を見積もるので、偏差平方和を標本サイズ n から1を引いた数で割ります。',
+    ],
+  )
 }
 
 function secondVarianceQuestion(random) {
@@ -231,14 +237,14 @@ function secondVarianceQuestion(random) {
     type: 'numeric', unit: `${c.unit}²`, answer: decimalAnswer(variance), sections: ['variance'],
     prompt: whole
       ? `1ロットの ${count} 個すべての${c.noun}を測ったところ、偏差平方和 S は ${sumSquares} ${c.unit}² でした。このロットの分散は何 ${c.unit}² ですか。`
-      : `あるロットから等確率で1個ずつ取り出し、測るたびに元に戻します。${count} 個の${c.noun}の測定値の偏差平方和 S は ${sumSquares} ${c.unit}² でした。不偏分散で見積もった母分散は何 ${c.unit}² ですか。`,
+      : `${independentLotSampling}${count} 個の${c.noun}の測定値の偏差平方和 S は ${sumSquares} ${c.unit}² でした。不偏分散で見積もった母分散は何 ${c.unit}² ですか。`,
     steps: [
       whole ? `分母はロットの全個数 N = ${count} です。` : `分母は n − 1 = ${count} − 1 = ${divisor} です。`,
       `${sumSquares} ${c.unit}² ÷ ${divisor} = ${variance} ${c.unit}²`,
     ],
     explanation: whole
       ? 'ロットの全部を測っているので、偏差平方和を全個数で割って母分散を求めます。'
-      : '毎回ロットに戻して同じ条件で取り出すため、測定値は独立です。この標本の偏差平方和を n − 1 で割って、母分散を推定します。',
+      : '毎回、他の抽出とは独立に等確率で選んでいるため、偏差平方和を n − 1 で割った V の期待値はロット全体の母分散と一致します。ここで求めた V は1回の標本からの見積もりです。',
   }
 }
 
@@ -248,24 +254,24 @@ function thirdVarianceQuestion(random) {
   const variance = int(random, 2, 9)
   const value = `${variance} ${c.unit}²`
   return choiceQuestion(
-    `ロットから1個ずつ等確率で取り出し、毎回戻します。${count} 個の測定値から不偏分散 V を求めたところ、${value} でした。同じ方法で別の標本を取ると、V はどうなりえますか。`,
-    answerChoice('値が変わることも同じになることもある。その回の測定値のばらつきで決まるため。',
-      '不偏分散はその標本の偏差平方和から計算します。異なる標本でも偏差平方和が同じになることがあるので、V が変わるかどうかも、変化の向きも決まりません。'),
+    `${independentLotSampling}${count} 個の測定値から不偏分散 V を求めたところ、${value} でした。同じ方法で同じ個数の測定値を持つ別の標本を取ります。V の値と、その理由の組として正しいのはどれですか。`,
+    answerChoice(`V は ${value} と同じになることも、異なることもある。偏差平方和は標本によって変わりうるため。`,
+      '同じ標本サイズでは分母が等しいので、V の違いは偏差平方和の違いで決まります。異なる標本でも偏差平方和が等しい場合は、V は同じです。'),
     [
-      answerChoice(`必ず ${value} になる。同じロットで母分散が変わらないため。`,
+      answerChoice(`V は必ず ${value} と同じになる。偏差平方和は同じロットなら変わらないため。`,
         '母分散は同じでも、標本の偏差平方和は変わりえます。期待値が母分散に一致することと、1回の値が一致することは別です。'),
-      answerChoice(`必ず ${value} より大きくなる。次の標本ではばらつきが増えるため。`,
+      answerChoice(`V は必ず ${value} より大きくなる。偏差平方和は次の標本で大きくなるため。`,
         '毎回戻して独立に取り出すため、次の標本の測定値がより散らばるとは限りません。'),
-      answerChoice(`必ず ${value} より小さくなる。次の標本では測定値がまとまるため。`,
+      answerChoice(`V は必ず ${value} より小さくなる。偏差平方和は次の標本で小さくなるため。`,
         '毎回戻して独立に取り出すため、次の標本の測定値がよりまとまるとは限りません。'),
     ],
     ['variance'], random,
   )
 }
 
-function deviationSet(k) {
+export function makeRepeatedEndpointMeasurements(mean, radius) {
   // Both raw-data questions use five readings with repeated endpoints, unlike the lesson examples.
-  return [-k, -k, 0, k, k]
+  return [mean - radius, mean - radius, mean, mean + radius, mean + radius]
 }
 
 function fourthVarianceQuestion(random) {
@@ -275,10 +281,10 @@ function fourthVarianceQuestion(random) {
   if (k1 === k2) k2 = k2 === 4 ? 1 : k2 + 1
   const mean1 = c.base + int(random, -3, 3)
   const mean2 = mean1 + pick(random, [-4, -3, 3, 4])
-  const deviations1 = deviationSet(k1)
-  const deviations2 = deviationSet(k2)
-  const values1 = deviations1.map((value) => mean1 + value)
-  const values2 = deviations2.map((value) => mean2 + value)
+  const values1 = makeRepeatedEndpointMeasurements(mean1, k1)
+  const values2 = makeRepeatedEndpointMeasurements(mean2, k2)
+  const deviations1 = values1.map((value) => value - mean1)
+  const deviations2 = values2.map((value) => value - mean2)
   const answer = Math.abs(k1 - k2)
   return {
     type: 'numeric', unit: c.unit, answer: decimalAnswer(answer), sections: ['variance', 'standard-deviation'],
@@ -324,8 +330,8 @@ function fourthIntegratedQuestion(random) {
   const c = context(random)
   const count = 5
   const mean = c.base + int(random, -3, 3)
-  const deviations = deviationSet(2)
-  const values = deviations.map((value) => mean + value)
+  const values = makeRepeatedEndpointMeasurements(mean, 2)
+  const deviations = values.map((value) => value - mean)
   const error = int(random, 1, 4)
   const unit = c.unit
   const squareUnit = `${unit}²`

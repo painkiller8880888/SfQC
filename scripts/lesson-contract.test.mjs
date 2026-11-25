@@ -36,7 +36,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
   assert.ok(lesson(lessonRegistry, 'math-algebra-sigma').declaredSectionIds.includes('sigma'))
   assert.deepEqual(lesson(lessonRegistry, 'descriptive-statistics').declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
   assert.equal(lesson(lessonRegistry, 'descriptive-statistics').availability, 'included')
-  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 6)
+  assert.equal(lesson(lessonRegistry, 'descriptive-statistics').revision, 7)
   const expectedSections = new Map([
     ['data-types', ['observation-unit', 'counting', 'types']],
     ['math-arithmetic', ['operations']],
@@ -54,7 +54,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
       assert.equal(item.revision, 1)
       continue
     }
-    assert.equal(item.revision, item.lessonId === 'data-types' ? 9 : item.lessonId === 'descriptive-statistics' ? 6 : 2)
+    assert.equal(item.revision, item.lessonId === 'data-types' ? 9 : item.lessonId === 'descriptive-statistics' ? 7 : 2)
     assert.deepEqual(item.declaredSectionIds, sectionIds)
     assert.equal(item.sections.length, sectionIds.length)
     const paragraphs = item.sections.flatMap((section) => section.blocks
@@ -204,7 +204,7 @@ test('data-types uses a shared overview and places one exercise after each secti
 
   const definitions = lessonRegistry.exerciseCatalog.definitions.filter(({ lessonId }) => lessonId === 'data-types')
   assert.deepEqual(definitions.map(({ placement }) => placement.sectionId), dataTypes.declaredSectionIds)
-  assert.deepEqual(definitions.map(({ revision }) => revision), [5, 6, 5])
+  assert.deepEqual(definitions.map(({ revision }) => revision), [5, 7, 5])
   assert.deepEqual(definitions.map(({ generation }) => generation.kind), ['fixed', 'index', 'fixed'])
   assert.deepEqual(definitions[1].generation, {
     kind: 'index', generatorId: 'data-types-cases', typeId: 'defect-aggregation', minimum: 0, maximum: 2,
@@ -264,6 +264,7 @@ test('data-types cases reproduce two formats of the same inspection and a separa
   const sameInspection = generateLessonExercise('data-types', 'defect-aggregation', 1)
   const sameInspectionDisplay = getExerciseQuestionDisplay(sameInspection)
   assert.match(sameInspectionDisplay.prompt, /事例1と同じ6製品の検査結果/u)
+  assert.equal(sameInspectionDisplay.table.caption, '基準を超えた傷の明細')
   assert.deepEqual(sameInspectionDisplay.table.rows, [
     { label: '傷1', values: ['P-01'] }, { label: '傷2', values: ['P-01'] },
     { label: '傷3', values: ['P-01'] }, { label: '傷4', values: ['P-03'] },
@@ -395,7 +396,17 @@ test('basic statistics course covers the worked comparison, drills, code figures
 
   assert.equal(validateLessonRegistry(lessonRegistry), true)
   assert.deepEqual(descriptive.declaredSectionIds, ['mean', 'deviation', 'variance', 'standard-deviation'])
-  assert.equal(descriptive.revision, 6)
+  assert.equal(descriptive.revision, 7)
+  const revisedExercises = lessonRegistry.exerciseCatalog.definitions
+    .filter(({ lessonId, revision }) => lessonId === descriptive.lessonId && revision !== 2)
+    .map(({ exerciseId, revision }) => [exerciseId, revision])
+  assert.deepEqual(revisedExercises, [
+    ['data-transformation-add-constant', 3],
+    ['data-transformation-unit', 3],
+    ['unbiased-variance-mean-and-sum', 3],
+    ['unbiased-variance-denominator', 3],
+    ['unbiased-variance-conditions', 3],
+  ])
   assert.ok(courseText.includes('100 mm'))
   assert.ok(courseText.includes('偏差'))
   assert.ok(courseText.includes('偏差平方和'))

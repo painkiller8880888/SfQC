@@ -15,20 +15,18 @@ type PracticeQuestion = {
   state: DescriptiveStatisticsExercisePreviewState
   instance: ExerciseInstance | null
   error: string | null
-  initialAttempt?: ExerciseAttemptSnapshot | null
+  presentation: { attempt: ExerciseAttemptSnapshot | null; firstGrade: boolean | null }
 }
 
-export type PracticeScreenSnapshot = {
-  questions: PracticeQuestion[]
-  grades: (boolean | null)[]
-}
+export type PracticeScreenSnapshot = { questions: PracticeQuestion[] }
 
 function createPracticeQuestion(categoryIndex: number, state: DescriptiveStatisticsExercisePreviewState): PracticeQuestion {
+  const presentation = { attempt: null, firstGrade: null }
   try {
     const exerciseId = descriptiveStatisticsExerciseCategories[categoryIndex].typeIds[state.typeIndex]
-    return { state, instance: generateLessonExercise('descriptive-statistics', exerciseId, state.seed), error: null }
+    return { state, presentation, instance: generateLessonExercise('descriptive-statistics', exerciseId, state.seed), error: null }
   } catch {
-    return { state, instance: null, error: 'この問題を表示できません。' }
+    return { state, presentation, instance: null, error: 'この問題を表示できません。' }
   }
 }
 
@@ -41,17 +39,17 @@ export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirs
   const [questions, setQuestions] = useState(() => initialSnapshot?.questions
     ?? descriptiveStatisticsExerciseCategories.map((_, index) =>
       createPracticeQuestion(index, createDescriptiveStatisticsExercisePreviewState(index))))
-  const [grades, setGrades] = useState<(boolean | null)[]>(() => initialSnapshot?.grades
-    ?? Array(descriptiveStatisticsExerciseCategories.length).fill(null))
+  const [grades, setGrades] = useState(() => questions.map((question) => question.presentation.firstGrade))
   const questionListRef = useRef<HTMLDivElement>(null)
   const attemptRefs = useRef<((() => ExerciseAttemptSnapshot) | null)[]>([])
 
-  useImperativeHandle(snapshotRef, () => () => ({
-    questions: questions.map((question, index) => ({
-      ...question, initialAttempt: attemptRefs.current[index]?.() ?? null,
-    })),
-    grades,
-  }), [questions, grades])
+  useImperativeHandle(snapshotRef, () => () => {
+    // Returning creates another history entry for the same presented questions.
+    questions.forEach(({ presentation }, index) => {
+      presentation.attempt = attemptRefs.current[index]?.() ?? null
+    })
+    return { questions }
+  }, [questions])
 
   const nextQuestion = (categoryIndex: number, current: PracticeQuestion) => {
     try {
@@ -98,11 +96,13 @@ export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirs
           headingLevel={2}
           error={question.error}
           onFirstGrade={(isCorrect) => {
+            if (question.presentation.firstGrade !== null) return
+            question.presentation.firstGrade = isCorrect
             setGrades((current) => current.map((grade, index) => index === categoryIndex ? isCorrect : grade))
             onFirstGrade?.(descriptiveStatisticsExerciseCategories[categoryIndex].id, isCorrect)
           }}
           onRegenerate={() => regenerateOne(categoryIndex)}
-          initialAttempt={question.initialAttempt}
+          initialAttempt={question.presentation.attempt}
           attemptRef={(getAttempt) => { attemptRefs.current[categoryIndex] = getAttempt }}
           dataPracticeCategory={categoryIndex}
           dataPracticeType={question.state.typeIndex}

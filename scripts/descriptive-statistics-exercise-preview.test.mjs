@@ -5,6 +5,7 @@ import {
   descriptiveStatisticsExerciseCategories,
   generateDescriptiveStatisticsExercisePreviewQuestion,
   generateDescriptiveStatisticsExercisePreviewQuestionById,
+  makeRepeatedEndpointMeasurements,
   nextDescriptiveStatisticsExercisePreviewState,
 } from '../src/descriptive-statistics-exercise-preview-data.mjs'
 import { generateExerciseInstance, getExerciseGradingData, getExerciseQuestionDisplay } from '../src/lesson-contract.mjs'
@@ -12,6 +13,8 @@ import { lessonExerciseGenerators } from '../src/lesson-exercise-adapters.mjs'
 import { lessonRegistry } from '../src/lesson-registry.mjs'
 import { varianceSimulation } from '../src/figures/interactive-variance-comparison-data.mjs'
 import { descriptiveStatisticsExerciseBaseline } from './descriptive-statistics-exercise-baseline.fixture.mjs'
+
+const independentLotSampling = /毎回、他の抽出とは独立に等確率で選び、測るたびに元に戻します/u
 
 function questionFromInstance(instance) {
   const display = getExerciseQuestionDisplay(instance)
@@ -170,20 +173,33 @@ test('integrated calculation question presents one consistent mistake at each st
 test('raw-data exercises use five readings with repeated endpoints, excluding every worked dataset', () => {
   const { overview } = lessonRegistry.lessons.find(({ lessonId }) => lessonId === 'descriptive-statistics')
   const workedRows = overview.find(({ kind }) => kind === 'table').rows.map((row) => row.slice(1).map(Number))
-  assert.ok(workedRows.every((row) => row.length === 3))
-  assert.equal(varianceSimulation.population.length, 5)
-  assert.equal(new Set(varianceSimulation.population).size, 5)
-  // Both independent raw-data generators use [-k, -k, 0, k, k] plus a constant.
-  // Centering and reordering cannot change length or multiplicities for any seed.
-  for (const seed of [...Array.from({ length: 100 }, (_, index) => index), 0xffffffff]) {
-    const comparison = generateDescriptiveStatisticsExercisePreviewQuestion(3, 0, seed)
-    const diagnosis = generateDescriptiveStatisticsExercisePreviewQuestion(3, 2, seed)
-    const diagnosisMeasurements = diagnosis.calculation[0].match(/① 平均 = \(([^)]+)\)/u)[1].split(' + ').map(Number)
-    for (const measurements of [...comparison.table.rows.map(({ values }) => values), diagnosisMeasurements]) {
-      assert.equal(measurements.length, 5)
-      assert.equal(new Set(measurements).size, 3)
+  const multiset = (values) => values.toSorted((a, b) => a - b).join(',')
+  const workedMultisets = new Set([...workedRows, varianceSimulation.population].map(multiset))
+  // The constructor is shared by both raw-data generators. Their centers are
+  // within 7 units of the context base and their radii are integers from 1 to 4.
+  for (const base of [50, 100, 250, 500]) {
+    for (let mean = base - 7; mean <= base + 7; mean += 1) {
+      for (let radius = 1; radius <= 4; radius += 1) {
+        const values = makeRepeatedEndpointMeasurements(mean, radius)
+        assert.equal(values.length, 5)
+        const endpoints = [Math.min(...values), Math.max(...values)]
+        for (const endpoint of endpoints) assert.equal(values.filter((value) => value === endpoint).length, 2)
+        assert.equal(values.filter((value) => value === mean).length, 1)
+        assert.ok(!workedMultisets.has(multiset(values)), `worked data reappeared at mean=${mean}, radius=${radius}`)
+      }
     }
   }
+})
+
+test('equal squared-deviation sums yield equal sample variances when sample sizes also match', () => {
+  const summaries = [[99, 101], [99, 100, 101], [100, 102]].map((values) => {
+    const mean = values.reduce((total, value) => total + value, 0) / values.length
+    const squaredDeviationSum = values.reduce((total, value) => total + (value - mean) ** 2, 0)
+    return [squaredDeviationSum, squaredDeviationSum / (values.length - 1)]
+  })
+  assert.deepEqual(summaries, [[2, 2], [2, 1], [2, 2]])
+  const question = generateDescriptiveStatisticsExercisePreviewQuestion(2, 0, 1112)
+  assert.match(question.explanation, /標本サイズと偏差平方和がともに等しい場合/u)
 })
 
 test('all choice types explain each incorrect option and provide its own review links', () => {
@@ -203,9 +219,16 @@ test('all choice types explain each incorrect option and provide its own review 
         assert.deepEqual(questionFromInstance(instance), question)
         const display = getExerciseQuestionDisplay(instance)
         assert.ok(!Object.hasOwn(display, 'choiceFeedback') && !Object.hasOwn(display, 'steps'))
+        if (typeId === 'unbiased-variance-mean-and-sum') {
+          assert.match(question.prompt, independentLotSampling)
+          assert.equal(question.choices[question.answer], '分子は偏差平方和、分母は n − 1。')
+          assert.ok(question.choices.every((choice) => /^分子は.+、分母は.+。$/u.test(choice)))
+        }
         if (typeId === 'unbiased-variance-conditions') {
-          assert.match(question.prompt, /等確率.*毎回戻します/u)
-          assert.match(question.choices[question.answer], /変わることも同じになることもある/u)
+          assert.match(question.prompt, independentLotSampling)
+          assert.match(question.prompt, /同じ個数の測定値/u)
+          assert.match(question.choices[question.answer], /同じになることも、異なることもある/u)
+          assert.ok(question.choices.every((choice) => /^V は.+。偏差平方和は.+ため。$/u.test(choice)))
         }
         if (typeId === 'data-transformation-add-constant') {
           assert.ok(question.choices.every((choice) => ['平均', '分散', '標準偏差'].every((topic) => choice.includes(topic))))
@@ -231,7 +254,7 @@ test('individual regeneration changes the question type and validates its random
   assert.throws(() => nextDescriptiveStatisticsExercisePreviewState(0, first, () => Number.NaN), RangeError)
 })
 
-test('type IDs preserve baseline answers and the shared contract resolves revision 2 independently of order', () => {
+test('type IDs preserve baseline answers where unchanged and resolve independently of order', () => {
   for (const { categoryId, questions } of descriptiveStatisticsExerciseBaseline.questions) {
     const category = descriptiveStatisticsExerciseCategories.find((item) => item.id === categoryId)
     for (const { typeIndex, question: expected } of questions) {
@@ -239,11 +262,16 @@ test('type IDs preserve baseline answers and the shared contract resolves revisi
       const question = generateDescriptiveStatisticsExercisePreviewQuestionById(categoryId, typeId,
         descriptiveStatisticsExerciseBaseline.seed)
       assert.equal(question.type, expected.type)
-      assert.equal(question.answer, expected.answer)
       assert.deepEqual(question.sections, expected.sections)
       assert.deepEqual(question.table?.rows, expected.table?.rows)
       const instance = generateExerciseInstance(lessonRegistry, 'descriptive-statistics', typeId,
         descriptiveStatisticsExerciseBaseline.seed, lessonExerciseGenerators)
+      if (typeId === 'unbiased-variance-mean-and-sum') {
+        assert.equal(instance.revision, 3)
+        assert.equal(question.choices[question.answer], '分子は偏差平方和、分母は n − 1。')
+      } else {
+        assert.equal(question.answer, expected.answer)
+      }
       assert.deepEqual(questionFromInstance(instance), question)
     }
   }
@@ -383,7 +411,10 @@ test('numeric generators agree with displayed values, explanations, units, and n
           assert.equal(question.answer, String(expected))
           assert.equal(question.unit, `${unit}²`)
           assert.ok(question.steps.includes(`${sumOfSquares} ${unit}² ÷ ${divisor} = ${expected} ${unit}²`))
-          if (!wholeLot) assert.match(question.prompt, /等確率で1個ずつ.*測るたびに元に戻し/u)
+          if (!wholeLot) {
+            assert.match(question.prompt, independentLotSampling)
+            assert.match(question.explanation, /他の抽出とは独立に等確率.*期待値はロット全体の母分散と一致/u)
+          }
           denominatorBranches.add(wholeLot ? 'population-n' : 'sample-n-minus-one')
         } else if (typeId === 'comprehensive-variance-comparison') {
           assert.equal(question.table.rows.length, 2)
@@ -471,9 +502,10 @@ test('choice generators keep mathematical transformations, units, and explanatio
     const [, amount, unit] = added ?? subtracted
     const movement = added ? '増える' : '減る'
     assert.equal(translation.choices[translation.answer], `平均は ${amount} ${unit} ${movement}が、分散と標準偏差は変わらない。`)
-    assert.ok(translation.explanation.includes('平均は同じだけ動きます'))
-    assert.ok(translation.explanation.includes('各値と平均の差（偏差）は変わりません'))
-    assert.ok(translation.explanation.includes('分散と標準偏差は偏差から作るので、どちらも変わりません'))
+    assert.equal(translation.steps.length, 2)
+    assert.ok(translation.steps[0].includes(`平均は ${amount} ${unit} ${movement}`))
+    assert.match(translation.steps[1], /偏差は変わりません.*分散と標準偏差も変わりません/u)
+    assert.match(translation.explanation, /中心の位置だけが動き、散らばり方は保たれます/u)
     translationKinds.add(added ? 'addition' : 'subtraction')
 
     const conversion = questionFor(1, 2, seed)
@@ -483,7 +515,7 @@ test('choice generators keep mathematical transformations, units, and explanatio
     const meanCm = numberText(Number(meanText) / 10)
     const sdCm = numberText(Number(sdText) / 10)
     assert.equal(conversion.choices[conversion.answer], `平均 ${meanCm} cm、標準偏差 ${sdCm} cm`)
-    assert.ok(conversion.steps[0].includes(`${meanText} mm ÷ 10 = ${meanCm} cm、標準偏差は ${sdText} mm ÷ 10 = ${sdCm} cm`))
+    assert.ok(conversion.steps[0].includes(`${meanText} mm × (1 cm / 10 mm) = ${meanCm} cm、標準偏差は ${sdText} mm × (1 cm / 10 mm) = ${sdCm} cm`))
 
     const varianceRatio = questionFor(4, 0, seed)
     const ratioMatch = varianceRatio.prompt.match(/標準偏差 s が (\d+) (mm|g|mL) から (\d+) \2 になりました/u)

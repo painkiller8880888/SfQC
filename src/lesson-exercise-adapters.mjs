@@ -99,7 +99,7 @@ const defectAggregationCases = [
     sections: ['observation-unit', 'counting'],
     prompt: `事例1と同じ6製品の検査結果から、基準を超えた傷をすべて抜き出した明細です。${defectAggregationPrompt}`,
     table: {
-      caption: '基準を超えた傷の明細（1行＝傷1件）',
+      caption: '基準を超えた傷の明細',
       rowHeaderLabel: '傷番号',
       columnLabels: ['製品番号'],
       rows: [
