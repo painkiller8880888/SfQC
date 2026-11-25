@@ -1943,15 +1943,30 @@ test('the map opens the data-types explanation directly and its review link rest
     assert.equal(app.host.querySelector('.course-references summary').textContent, '出典')
     assert.equal(app.host.querySelectorAll('.course-references a').length, 3)
 
-    const fixedClassification = app.host.querySelector('#section-types [data-exercise-id="classify-record"]')
+    const typesSection = app.host.querySelector('#section-types')
+    const diagram = typesSection.querySelector('.data-type-flow [role="img"]')
+    assert.match(diagram.getAttribute('aria-label'), /種類・判定ならカテゴリ.*測った値は計量値、数えた値は計数値/u)
+    assert.deepEqual([...diagram.querySelectorAll('strong')].map((node) => node.textContent), ['カテゴリ', '計量値', '計数値'])
+    const diagramText = [...typesSection.querySelectorAll('.data-type-flow figcaption li')].map((node) => node.textContent)
+    assert.equal(diagramText.length, 2)
+    assert.match(diagramText[0], /種類や判定なら、カテゴリ/u)
+    assert.match(diagramText[1], /連続量.*計量値.*離散的.*計数値/u)
+
+    const fixedClassification = typesSection.querySelector('[data-exercise-id="classify-record"]')
+    const classificationTable = fixedClassification.querySelector('table')
+    assert.match(fixedClassification.querySelector('.ds-practice-prompt').textContent, /^検査した4個をすべて、1製品1行で記録しました。/u)
+    assert.equal(classificationTable.caption.textContent, '分類を確認する検査記録（1行＝製品1個）')
+    assert.equal(classificationTable.tBodies[0].rows.length, 4)
     assert.equal(fixedClassification.querySelector('details').open, false)
     assert.equal(fixedClassification.querySelectorAll('input[type="radio"]').length, 4)
 
     const unitSection = app.host.querySelector('#section-observation-unit')
     const observation = unitSection.querySelector('[data-exercise-id="identify-observation-unit"]')
-    assert.deepEqual([...unitSection.querySelectorAll('caption')].map((caption) => caption.textContent), [
-      '基準を超えた傷の明細（1行＝傷1件）', '検査対象の製品一覧（1行＝製品1個）', '基準を超えた傷の明細（1行＝傷1件）',
+    assert.deepEqual([...observation.querySelectorAll('caption')].map((caption) => caption.textContent), [
+      '検査対象の製品一覧（1行＝製品1個）', '基準を超えた傷の明細',
     ])
+    assert.equal(unitSection.querySelector('.course-table-wrap caption').textContent, '基準を超えた傷の明細（1行＝傷1件）')
+    assert.deepEqual([...observation.querySelectorAll('table')].map((table) => table.tBodies[0].rows.length), [5, 3])
     assert.equal(observation.querySelector('details').open, false)
     assert.equal(observation.querySelector('.ds-practice-question-heading a').getAttribute('href'), '#/lesson/data-types/observation-unit')
 
@@ -1984,6 +1999,18 @@ test('the map opens the data-types explanation directly and its review link rest
     await answer('choice-0')
     assert.match(card.querySelector('.ds-exercise-feedback').textContent, /^正解です/u)
     assert.equal(card.querySelector('details').open, true)
+
+    await click(buttonFor(card, '別の問題'))
+    assert.match(card.querySelector('.ds-practice-prompt').textContent, /事例1と同じ6製品/u)
+    assert.deepEqual(tableRows(), [['傷1', 'P-01'], ['傷2', 'P-01'], ['傷3', 'P-01'], ['傷4', 'P-03']])
+    assert.equal(card.querySelector('input[type="radio"]:checked'), null)
+    await answer('choice-0')
+    assert.match(card.querySelector('.ds-exercise-misconception').textContent, /P-01の3行は同じ製品/u)
+    assert.deepEqual([...card.querySelectorAll('.ds-exercise-review-links a')].map((anchor) => anchor.getAttribute('href')), [
+      '#/lesson/data-types/observation-unit', '#/lesson/data-types/counting',
+    ])
+    await answer('choice-3')
+    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /^正解です/u)
 
     await click(buttonFor(card, '別の問題'))
     assert.equal(caption(), '基準を超えた傷の明細（1行＝傷1件）')
@@ -2023,7 +2050,7 @@ test('the map opens the data-types explanation directly and its review link rest
     assert.equal(card.querySelector('details').open, true)
     assert.equal(card.querySelectorAll('.ds-exercise-steps li').length, 2)
     await click(buttonFor(card, '別の問題'))
-    assert.equal(caption(), '製品ごとの検査記録（1行＝製品1個）', '0 → 1 → 0 returns to the first case')
+    assert.equal(caption(), '製品ごとの検査記録（1行＝製品1個）', '0 → 1 → 2 → 0 returns to the first case')
     assert.equal(window.localStorage.getItem(LEARNING_STATE_KEY), learningState)
     assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), practiceResults)
   } finally {

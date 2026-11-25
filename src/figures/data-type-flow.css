@@ -1,0 +1,110 @@
+.data-type-flow {
+  container: data-type-flow / inline-size;
+  margin: 1rem 0;
+}
+
+.data-type-flow-chart {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.data-type-flow-node,
+.data-type-flow-branch,
+.data-type-flow-split {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  align-content: start;
+}
+
+.data-type-flow-node {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.data-type-flow-question {
+  background: var(--surface-selected);
+  font-weight: 700;
+}
+
+.data-type-flow-split {
+  gap: 0.75rem;
+  padding-inline-start: 0.65rem;
+  border-inline-start: 1px solid var(--border);
+}
+
+.data-type-flow-label {
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.data-type-flow-category { border-inline-start: 0.25rem solid var(--accent); }
+.data-type-flow-measure { border-inline-start: 0.25rem solid var(--link); }
+.data-type-flow-count { border-inline-start: 0.25rem solid var(--success); }
+
+.data-type-flow-description {
+  margin-block-start: 0.75rem;
+}
+
+.data-type-flow-description ol {
+  margin-block: 0.25rem 0;
+  padding-inline-start: 1.5rem;
+}
+
+@container data-type-flow (min-width: 33rem) {
+  .data-type-flow-chart {
+    gap: 0;
+    text-align: center;
+  }
+
+  .data-type-flow-chart > .data-type-flow-question {
+    justify-self: center;
+    width: min(100%, 23rem);
+  }
+
+  .data-type-flow-split {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 1rem;
+    padding: 1.15rem 0 0;
+    border: 0;
+  }
+
+  .data-type-flow-quantity {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .data-type-flow-split::before,
+  .data-type-flow-split::after,
+  .data-type-flow-branch::before {
+    content: '';
+    position: absolute;
+  }
+
+  .data-type-flow-split::before {
+    inset-block-start: 0.6rem;
+    inset-inline: calc((100% - 1rem) / 6) calc((100% - 1rem) / 3);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .data-type-flow-quantity::before {
+    inset-inline: calc((100% - 1rem) / 4);
+  }
+
+  .data-type-flow-split::after,
+  .data-type-flow-branch::before {
+    inset-inline-start: 50%;
+    height: 0.6rem;
+    border-inline-start: 1px solid var(--border);
+  }
+
+  .data-type-flow-split::after { inset-block-start: 0; }
+  .data-type-flow-branch { position: relative; }
+  .data-type-flow-branch::before { inset-block-start: -0.55rem; }
+}

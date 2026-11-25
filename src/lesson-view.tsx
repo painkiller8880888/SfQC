@@ -162,22 +162,24 @@ function ExerciseQuestionBody({ formId, display, grading, registry, onFirstGrade
     }
   }
 
-  const tableRows = display.table?.rows
-  const tableColumnCount = tableRows ? Math.max(0, ...tableRows.map((row) => row.values.length)) : 0
+  const tables = Array.isArray(display.table) ? display.table : display.table ? [display.table] : []
   const statusText = feedback?.text ?? (latestGrade === null ? '' : latestGrade
     ? '正解です。解説で考え方を確認できます。' : '違います。考え直すか、解説を確認してください。')
 
   return <>
     <p className="ds-practice-prompt">{display.prompt}</p>
-    {tableRows && <div className="ds-practice-table-wrap" tabIndex={0}><table>
-      {(tableCaption ?? display.table?.caption) && <caption>{tableCaption ?? display.table?.caption}</caption>}
-      <thead><tr><th scope="col">{tableRowHeaderLabel ?? display.table?.rowHeaderLabel ?? ''}</th>{Array.from({ length: tableColumnCount }, (_, index) => <th scope="col" key={index}>
-        {tableColumnLabel?.(index) ?? display.table?.columnLabels?.[index] ?? String(index + 1)}
-      </th>)}</tr></thead>
-      <tbody>{tableRows.map((row, rowIndex) => <tr key={rowIndex}>
-        <th scope="row">{row.label}</th>{row.values.map((value, index) => <td className={typeof value === 'number' ? 'num' : undefined} key={index}>{value}</td>)}
-      </tr>)}</tbody>
-    </table></div>}
+    {tables.map((table, tableIndex) => {
+      const caption = tableCaption ?? table.caption
+      return <div className="ds-practice-table-wrap" tabIndex={0} key={tableIndex}><table>
+        {caption && <caption>{caption}</caption>}
+        <thead><tr><th scope="col">{tableRowHeaderLabel ?? table.rowHeaderLabel ?? ''}</th>{table.rows[0].values.map((_, index) => <th scope="col" key={index}>
+          {tableColumnLabel?.(index) ?? table.columnLabels?.[index] ?? String(index + 1)}
+        </th>)}</tr></thead>
+        <tbody>{table.rows.map((row, rowIndex) => <tr key={rowIndex}>
+          <th scope="row">{row.label}</th>{row.values.map((value, index) => <td className={typeof value === 'number' ? 'num' : undefined} key={index}>{value}</td>)}
+        </tr>)}</tbody>
+      </table></div>
+    })}
     {display.calculations && <div className="ds-practice-calculation" aria-label="計算過程">
       {display.calculations.map((calculation, index) => <p key={index}>{calculation}</p>)}
     </div>}

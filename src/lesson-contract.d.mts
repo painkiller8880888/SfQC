@@ -114,17 +114,19 @@ export type SourceDefinition = {
   citations: { sourceItemId: string; location: string }[]
 }
 
+type ExerciseTable = {
+  caption?: string
+  rowHeaderLabel?: string
+  columnLabels?: string[]
+  rows: Array<{ label: string; values: Array<number | string> }>
+}
+
 export type ExerciseQuestionDisplay = {
   prompt: string
   response:
     | { type: 'numeric'; fields: Array<{ id: string; label: string; unit: string; roundingDigits: number; roundingInstruction?: string }> }
     | { type: 'choice'; choices: Array<{ id: string; text: string }> }
-  table?: {
-    caption?: string
-    rowHeaderLabel?: string
-    columnLabels?: string[]
-    rows: Array<{ label: string; values: Array<number | string> }>
-  }
+  table?: ExerciseTable | ExerciseTable[]
   calculations?: string[]
   reviewSectionRefs: LessonRef[]
 }
