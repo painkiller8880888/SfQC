@@ -54,7 +54,7 @@ test('fixture and the six included lessons satisfy the contract and keep other l
       assert.equal(item.revision, 1)
       continue
     }
-    assert.equal(item.revision, item.lessonId === 'data-types' ? 7 : item.lessonId === 'descriptive-statistics' ? 5 : 2)
+    assert.equal(item.revision, item.lessonId === 'data-types' ? 8 : item.lessonId === 'descriptive-statistics' ? 5 : 2)
     assert.deepEqual(item.declaredSectionIds, sectionIds)
     assert.equal(item.sections.length, sectionIds.length)
     const paragraphs = item.sections.flatMap((section) => section.blocks
@@ -193,10 +193,10 @@ test('data-types uses a shared overview and places one exercise after each secti
   assert.equal(typesBlocks.find(({ kind }) => kind === 'formula').parts[0].text, '不適合品数 = 1 + 0 + 1 + 0 = 2 個')
   assert.ok(typesBlocks.some(({ kind, parts }) => kind === 'paragraph' && /カテゴリのコード.*離散的な計数値/u.test(parts[0].text)))
   const codeExplanation = typesBlocks.find(({ kind, parts }) => kind === 'paragraph' && parts[0].text.includes('0/1の合計'))
-  assert.match(codeExplanation.parts[0].text, /不適合品数と一致するとは限りません。.*複数.*重複.*過大/u)
+  assert.match(codeExplanation.parts[0].text, /明細の行数は不適合品数と一致するとは限りません。.*製品番号を重複なく数えます/u)
   assert.match(codeExplanation.parts[0].text, /0\/1の合計は常に、集計した行にある1の個数です。.*過不足なく1回ずつ1.*全製品を1製品1行.*この条件/u)
   const details = typesBlocks.find(({ kind }) => kind === 'details')
-  assert.match(details.blocks[0].parts[0].text, /集計した行にある1の個数.*記録から漏れると.*少なくなり.*複数行.*多くなります/u)
+  assert.match(details.blocks[0].parts[0].text, /記録から漏れると過少計上の原因.*複数行で1と記録すると過大計上の原因.*漏れと重複.*数が打ち消し合い、合計だけでは誤りに気づけない/u)
   assert.equal(dataTypes.references.length, 3)
   assert.ok(dataTypes.references.every(({ details }) => details.includes('2026-11-20')))
   assert.ok(lesson(lessonRegistry, 'population-sample').commonPrerequisites.includes('data-types#observation-unit'))
@@ -204,7 +204,7 @@ test('data-types uses a shared overview and places one exercise after each secti
 
   const definitions = lessonRegistry.exerciseCatalog.definitions.filter(({ lessonId }) => lessonId === 'data-types')
   assert.deepEqual(definitions.map(({ placement }) => placement.sectionId), dataTypes.declaredSectionIds)
-  assert.deepEqual(definitions.map(({ revision }) => revision), [4, 5, 4])
+  assert.deepEqual(definitions.map(({ revision }) => revision), [4, 5, 5])
   assert.deepEqual(definitions.map(({ generation }) => generation.kind), ['fixed', 'index', 'fixed'])
   assert.deepEqual(definitions[1].generation, {
     kind: 'index', generatorId: 'data-types-cases', typeId: 'defect-aggregation', minimum: 0, maximum: 2,
@@ -243,7 +243,7 @@ test('the fixed data-types exercises contain their own tables and the inspection
   assert.equal(nonconformities, 6)
   const { solution } = getExerciseGradingData(classificationInstance)
   assert.match(solution.steps.at(-1), /0 \+ 1 \+ 1 \+ 0 \+ 1 = 3.*不適合品数は3個/u)
-  assert.match(solution.explanation, /集計した行にある1の個数.*過不足なく1回ずつ1.*不適合品数3個/u)
+  assert.match(solution.explanation, /全製品を1製品1行.*Q-02、Q-03、Q-05.*1回ずつ1.*不適合品数3個/u)
   assert.match(solution.choiceFeedback.find(({ choiceId }) => choiceId === 'choice-2').misconception,
     /コードの合計は不適合品数（3個）.*不適合数は.*6件/u)
 })
