@@ -1954,9 +1954,9 @@ test('the map opens the data-types explanation directly and its review link rest
 
     const fixedClassification = typesSection.querySelector('[data-exercise-id="classify-record"]')
     const classificationTable = fixedClassification.querySelector('table')
-    assert.match(fixedClassification.querySelector('.ds-practice-prompt').textContent, /^検査した4個をすべて、1製品1行で記録しました。/u)
+    assert.match(fixedClassification.querySelector('.ds-practice-prompt').textContent, /^検査した5個をすべて、1製品1行で記録しました。適合状態コードは0＝適合、1＝不適合です。/u)
     assert.equal(classificationTable.caption.textContent, '分類を確認する検査記録（1行＝製品1個）')
-    assert.equal(classificationTable.tBodies[0].rows.length, 4)
+    assert.deepEqual([...classificationTable.tBodies[0].rows].map((row) => row.cells[0].textContent), ['Q-01', 'Q-02', 'Q-03', 'Q-04', 'Q-05'])
     assert.equal(fixedClassification.querySelector('details').open, false)
     assert.equal(fixedClassification.querySelectorAll('input[type="radio"]').length, 4)
 
