@@ -227,7 +227,7 @@ test('all choice types explain each incorrect option and provide its own review 
         if (typeId === 'unbiased-variance-conditions') {
           assert.match(question.prompt, independentLotSampling)
           assert.match(question.prompt, /同じ個数の測定値/u)
-          assert.match(question.choices[question.answer], /同じになることも、異なることもある/u)
+          assert.match(question.choices[question.answer], /同じ場合も異なる場合もある/u)
           assert.ok(question.choices.every((choice) => /^V は.+。偏差平方和は.+ため。$/u.test(choice)))
         }
         if (typeId === 'data-transformation-add-constant') {
@@ -238,6 +238,29 @@ test('all choice types explain each incorrect option and provide its own review 
     }
   }
   assert.equal(covered.size, 8)
+})
+
+test('variance comparison has balanced option lengths for every possible displayed value', () => {
+  const remainingValues = new Set()
+  for (const unit of ['mm', 'g', 'mL']) {
+    for (let variance = 2; variance <= 9; variance += 1) remainingValues.add(`${variance} ${unit}²`)
+  }
+  // Every option uses the same value once. Sample size does not appear in the options
+  // and shuffling changes only their order, so the displayed value covers every length case.
+  for (let index = 0; index < 256 && remainingValues.size > 0; index += 1) {
+    const seed = Math.imul(index, 0x9e3779b9) >>> 0
+    const question = generateDescriptiveStatisticsExercisePreviewQuestion(2, 2, seed)
+    const [, countText, value] = question.prompt.match(/(\d+) 個の測定値から不偏分散 V を求めたところ、([^。]+) でした/u)
+    assert.ok(question.choices.every((choice) => choice.split(value).length === 2))
+    const lengths = question.choices.map((choice) => choice.length)
+    assert.ok(Math.max(...lengths) > lengths[question.answer], `correct option is longest for ${value}`)
+    assert.ok(Math.max(...lengths) - Math.min(...lengths) <= 1, `lengths diverge for ${value}`)
+    assert.equal(question.steps.length, 2)
+    assert.ok(question.steps[0].includes(`n − 1 = ${countText} − 1 = ${Number(countText) - 1}`))
+    assert.match(question.steps[1], /分子の偏差平方和を比べます/u)
+    remainingValues.delete(value)
+  }
+  assert.deepEqual([...remainingValues], [])
 })
 
 test('individual regeneration changes the question type and validates its random source', () => {
@@ -272,6 +295,7 @@ test('type IDs preserve baseline answers where unchanged and resolve independent
       } else {
         assert.equal(question.answer, expected.answer)
       }
+      if (typeId === 'unbiased-variance-conditions') assert.equal(instance.revision, 4)
       assert.deepEqual(questionFromInstance(instance), question)
     }
   }

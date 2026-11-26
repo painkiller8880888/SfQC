@@ -43,11 +43,12 @@ export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirs
   const questionListRef = useRef<HTMLDivElement>(null)
   const attemptRefs = useRef<((() => ExerciseAttemptSnapshot) | null)[]>([])
 
+  const saveAttempt = (categoryIndex: number) => {
+    questions[categoryIndex].presentation.attempt = attemptRefs.current[categoryIndex]?.() ?? null
+  }
   useImperativeHandle(snapshotRef, () => () => {
     // Returning creates another history entry for the same presented questions.
-    questions.forEach(({ presentation }, index) => {
-      presentation.attempt = attemptRefs.current[index]?.() ?? null
-    })
+    questions.forEach((_, index) => saveAttempt(index))
     return { questions }
   }, [questions])
 
@@ -65,12 +66,16 @@ export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirs
 
   const regenerateOne = (categoryIndex: number) => {
     const result = nextQuestion(categoryIndex, questions[categoryIndex])
+    if (result.regenerated) saveAttempt(categoryIndex)
     setQuestions((current) => current.map((question, index) => index === categoryIndex ? result.question : question))
     if (result.regenerated) setGrades((current) => current.map((grade, index) => index === categoryIndex ? null : grade))
   }
 
   const regenerateAll = () => {
     const results = questions.map((question, index) => nextQuestion(index, question))
+    results.forEach((result, index) => {
+      if (result.regenerated) saveAttempt(index)
+    })
     setQuestions(results.map((result) => result.question))
     setGrades((current) => current.map((grade, index) => results[index].regenerated ? null : grade))
     questionListRef.current?.scrollIntoView?.({ block: 'start' })

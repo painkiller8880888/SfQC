@@ -405,7 +405,7 @@ test('basic statistics course covers the worked comparison, drills, code figures
     ['data-transformation-unit', 3],
     ['unbiased-variance-mean-and-sum', 3],
     ['unbiased-variance-denominator', 3],
-    ['unbiased-variance-conditions', 3],
+    ['unbiased-variance-conditions', 4],
   ])
   assert.ok(courseText.includes('100 mm'))
   assert.ok(courseText.includes('偏差'))

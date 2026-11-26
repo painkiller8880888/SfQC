@@ -39,16 +39,18 @@ function InlineExercise({ exerciseId, registry }: {
     onRegenerate={canRegenerate ? regenerate : undefined} regenerateLabel="別の問題" />
 }
 
-export function DescriptiveStatisticsCourse({ lesson, activeSectionId, sectionHeadingRef, sectionReturn, registry = lessonRegistry }: {
+export function DescriptiveStatisticsCourse({ lesson, activeSectionId, sectionHeadingRef, sectionReturn, exerciseResetKeys, registry = lessonRegistry }: {
   lesson: IncludedLessonDefinition
   activeSectionId: string
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
   sectionReturn?: ReactNode
+  exerciseResetKeys?: Readonly<Record<string, number>>
   registry?: LessonRegistry
 }) {
   return <LessonCourse lesson={lesson} activeSectionId={activeSectionId} sectionHeadingRef={sectionHeadingRef} registry={registry}
     sectionReturn={sectionReturn}
-    renderExercise={(exerciseId) => <InlineExercise exerciseId={exerciseId} registry={registry} />}>
+    exerciseResetKeys={exerciseResetKeys}
+    renderExercise={(exerciseId, key) => <InlineExercise key={key} exerciseId={exerciseId} registry={registry} />}>
     <p className="lesson-actions"><a href={routeToHash({ kind: 'course-practice', courseId: lesson.lessonId })}>5分野の演習へ</a></p>
   </LessonCourse>
 }

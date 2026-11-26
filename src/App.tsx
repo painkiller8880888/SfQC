@@ -85,6 +85,18 @@ function disclosureReviewLinks() {
   return Array.from(document.querySelectorAll<HTMLAnchorElement>('details.course-details a[data-nav-intent="review"]'))
 }
 
+function revealReviewLink(link: HTMLAnchorElement) {
+  const rect = link.getBoundingClientRect()
+  if (rect.height === 0) return
+  const header = document.querySelector<HTMLElement>('.app-shell > .site-header')
+  const headerBottom = header && ['fixed', 'sticky'].includes(window.getComputedStyle(header).position)
+    ? Math.max(0, Math.min(window.innerHeight, header.getBoundingClientRect().bottom)) : 0
+  const top = headerBottom + 8
+  const delta = rect.top < top ? rect.top - top
+    : rect.bottom > window.innerHeight - 8 ? rect.bottom - window.innerHeight + 8 : 0
+  if (delta) window.scrollBy({ top: delta, behavior: 'instant' })
+}
+
 function emptyLearningState(): LearningState {
   return {
     schemaVersion: 2,
@@ -249,7 +261,9 @@ function App() {
   const keepJudgementsAfterRestoreRef = useRef(true)
   const pendingReturnFrameRef = useRef<RouteHistoryFrame | null>(null)
   const disclosedReviewSourcesRef = useRef(new Map<string, DisclosureReviewFocus>())
-  const inlineReviewEntriesRef = useRef(new WeakMap<HTMLAnchorElement, Set<string>>())
+  const inlineReviewEntriesRef = useRef(new WeakMap<HTMLElement, Set<string>>())
+  const reviewEntryByReturnEntryRef = useRef(new Map<string, string>())
+  const [exerciseResetKeys, setExerciseResetKeys] = useState<Readonly<Record<string, number>>>({})
   const practiceSnapshotRef = useRef<(() => PracticeScreenSnapshot) | null>(null)
   const practiceEntrySnapshotsRef = useRef(new Map<string, PracticeScreenSnapshot>())
   const savePracticeEntrySnapshot = (currentView: RouteView) => {
@@ -728,9 +742,14 @@ function App() {
     savePracticeEntrySnapshot(currentView)
     if (intent === 'review' && currentView.resolved.status === 'lesson' && sourceAnchor) {
       if (sourceExerciseFocus) {
-        const entryIds = inlineReviewEntriesRef.current.get(sourceAnchor) ?? new Set<string>()
-        entryIds.add(currentState.entryId)
-        inlineReviewEntriesRef.current.set(sourceAnchor, entryIds)
+        const sourceForm = sourceExercise?.querySelector('form')
+        // A regenerated exercise can retain its heading link but has a new form.
+        for (const node of [sourceAnchor, sourceForm]) {
+          if (!node) continue
+          const entryIds = inlineReviewEntriesRef.current.get(node) ?? new Set<string>()
+          entryIds.add(currentState.entryId)
+          inlineReviewEntriesRef.current.set(node, entryIds)
+        }
       }
       const linkIndex = sourceAnchor.closest('details.course-details') ? disclosureReviewLinks().indexOf(sourceAnchor) : -1
       if (linkIndex >= 0) disclosedReviewSourcesRef.current.set(currentState.entryId, { href: sourceAnchor.href, linkIndex })
@@ -738,6 +757,7 @@ function App() {
     }
     const sourceFrame = intent === 'return' ? currentState.returnStack.at(-1) : undefined
     pendingReturnFrameRef.current = sourceFrame ?? null
+    if (sourceFrame) reviewEntryByReturnEntryRef.current.set(nextState.entryId, currentState.entryId)
     if (sourceFrame?.route.kind === 'course-practice' && sourceFrame.entryId) {
       const snapshot = practiceEntrySnapshotsRef.current.get(sourceFrame.entryId)
       if (snapshot) practiceEntrySnapshotsRef.current.set(nextState.entryId, snapshot)
@@ -928,8 +948,16 @@ function App() {
       const structuralState = validateRouteHistoryState(rawState, hash)
       const signature = structuralState ? hash + '\u0000' + structuralState.entryId : hash + '\u0000invalid'
       if (signature === lastHandledRef.current) return
-      savePracticeEntrySnapshot(viewRef.current)
-      const next = resolveRouteView(hash, rawState, structuralState ? 'restore' : 'normal', ++navigationIdRef.current)
+      const previous = viewRef.current
+      savePracticeEntrySnapshot(previous)
+      const frame = previous.historyState.returnStack.at(-1)
+      const reviewReturn = structuralState && frame?.entryId && frame.routeHash === structuralState.routeHash
+        && (frame.entryId === structuralState.entryId
+          || reviewEntryByReturnEntryRef.current.get(structuralState.entryId) === previous.historyState.entryId)
+        && (frame.focusTarget || disclosedReviewSourcesRef.current.has(frame.entryId))
+      const cause = reviewReturn ? 'return' : structuralState ? 'restore' : 'normal'
+      pendingReturnFrameRef.current = reviewReturn ? frame : null
+      const next = resolveRouteView(hash, rawState, cause, ++navigationIdRef.current)
       if (next.stateNeedsRepair) {
         try {
           window.history.replaceState(next.historyState, '', browserUrl(hash))
@@ -994,12 +1022,17 @@ function App() {
         const returnCard = Array.from(document.querySelectorAll<HTMLElement>('[data-exercise-id]'))
           .find((card) => card.dataset.exerciseId === returnLocator.exerciseId)
         returnTarget = returnCard?.querySelectorAll<HTMLAnchorElement>('a[data-nav-intent="review"]')[returnLocator.linkIndex] ?? null
-        if (viewAtSchedule.resolved.status === 'lesson'
-          && !(returnTarget && sourceEntryId && inlineReviewEntriesRef.current.get(returnTarget)?.has(sourceEntryId))) {
+        const form = returnCard?.querySelector('form')
+        const hasOriginalPresentation = returnTarget && form && sourceEntryId
+          && [returnTarget, form].every((node) => inlineReviewEntriesRef.current.get(node)?.has(sourceEntryId))
+        if (viewAtSchedule.resolved.status === 'lesson' && !hasOriginalPresentation) {
           const lessonId = viewAtSchedule.resolved.lesson.lessonId
+          const exerciseId = returnLocator.exerciseId
           const placement = lessonRegistry.exerciseCatalog?.definitions.find((definition) =>
-            definition.lessonId === lessonId && definition.exerciseId === returnLocator.exerciseId)?.placement
+            definition.lessonId === lessonId && definition.exerciseId === exerciseId)?.placement
           if (placement?.kind === 'section') {
+            const key = lessonId + ':' + exerciseId
+            setExerciseResetKeys((current) => ({ ...current, [key]: viewAtSchedule.navigationId }))
             sectionHeading = document.querySelector<HTMLHeadingElement>('#course-section-' + placement.sectionId) ?? sectionHeading
           }
           navigation = sectionHeading ? 'section' : 'normal'
@@ -1024,7 +1057,12 @@ function App() {
         returnTarget,
         scrollTo: (x, y) => window.scrollTo(x, y),
       })
-      if (viewAtSchedule.navigation === 'restore' && screenForRoute(viewAtSchedule.route) === 'map') {
+      if (returnTarget) {
+        const target = returnTarget
+        restoreFrame = window.requestAnimationFrame(() => {
+          if (isCurrent() && document.activeElement === target) revealReviewLink(target)
+        })
+      } else if (viewAtSchedule.navigation === 'restore' && screenForRoute(viewAtSchedule.route) === 'map') {
         restoreFrame = window.requestAnimationFrame(() => {
           if (!isCurrent()) return
           const snapshot = mapEntrySnapshotsRef.current.get(viewAtSchedule.historyState.entryId)
@@ -1185,6 +1223,7 @@ function App() {
         sectionId={view.route.sectionId}
         sectionHeadingRef={sectionHeadingRef}
         sectionReturn={sectionReturn}
+        exerciseResetKeys={exerciseResetKeys}
       />
     </>
   }
@@ -1199,6 +1238,7 @@ function App() {
       activeSectionId={view.route.sectionId}
       sectionHeadingRef={sectionHeadingRef}
       sectionReturn={sectionReturn}
+      exerciseResetKeys={exerciseResetKeys}
     />
   }
 

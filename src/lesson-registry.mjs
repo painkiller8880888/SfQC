@@ -640,12 +640,12 @@ const lessons = [
   ]),
 ]
 
-const revisedStatisticsExercises = new Set([
-  'data-transformation-add-constant',
-  'data-transformation-unit',
-  'unbiased-variance-mean-and-sum',
-  'unbiased-variance-denominator',
-  'unbiased-variance-conditions',
+const statisticsExerciseRevisions = new Map([
+  ['data-transformation-add-constant', 3],
+  ['data-transformation-unit', 3],
+  ['unbiased-variance-mean-and-sum', 3],
+  ['unbiased-variance-denominator', 3],
+  ['unbiased-variance-conditions', 4],
 ])
 
 /** @type {import('./lesson-contract.mjs').ExerciseCatalog} */
@@ -809,7 +809,7 @@ const exerciseCatalog = {
     ...descriptiveStatisticsExerciseCategories.flatMap(({ id: categoryId, typeIds }) => typeIds.map((exerciseId) => ({
       lessonId: 'descriptive-statistics',
       exerciseId,
-      revision: revisedStatisticsExercises.has(exerciseId) ? 3 : 2,
+      revision: statisticsExerciseRevisions.get(exerciseId) ?? 2,
       placement: { kind: /** @type {'category'} */ ('category'), categoryId },
       generation: {
         kind: /** @type {'seed'} */ ('seed'),

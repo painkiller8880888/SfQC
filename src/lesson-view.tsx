@@ -383,12 +383,13 @@ function LessonExerciseSlot({ exerciseId, lesson, registry, exerciseGenerators }
     registry={registry} error={question.error} onRegenerate={canRegenerate ? regenerate : undefined} regenerateLabel="別の問題" />
 }
 
-function LessonBlock({ block, lesson, registry, exerciseGenerators, renderExercise }: {
+function LessonBlock({ block, lesson, registry, exerciseGenerators, exerciseResetKeys, renderExercise }: {
   block: IncludedLessonDefinition['sections'][number]['blocks'][number]
   lesson: IncludedLessonDefinition
   registry: LessonRegistry
   exerciseGenerators: Readonly<Record<string, ExerciseGenerator>>
-  renderExercise?: (exerciseId: string) => ReactNode
+  exerciseResetKeys?: Readonly<Record<string, number>>
+  renderExercise?: (exerciseId: string, key: string) => ReactNode
 }) {
   if (block.kind === 'paragraph') return <p className="lesson-paragraph">
     {block.parts.map((part, index) => part.kind === 'text'
@@ -422,9 +423,11 @@ function LessonBlock({ block, lesson, registry, exerciseGenerators, renderExerci
         : <td key={cellIndex} className={quantityCellClass(cell, block.columns[cellIndex])}>{cell}</td>)}</tr>)}</tbody>
     </table>
   </div>
-  if (block.kind === 'details') return <details className="course-details"><summary>{block.summary}</summary>{block.blocks.map((child, index) => <LessonBlock key={index} block={child} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} renderExercise={renderExercise} />)}</details>
-  if (renderExercise) return renderExercise(block.exerciseId)
-  return <LessonExerciseSlot key={`${lesson.lessonId}:${block.exerciseId}`} exerciseId={block.exerciseId} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />
+  if (block.kind === 'details') return <details className="course-details"><summary>{block.summary}</summary>{block.blocks.map((child, index) => <LessonBlock key={index} block={child} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} exerciseResetKeys={exerciseResetKeys} renderExercise={renderExercise} />)}</details>
+  const exerciseKey = lesson.lessonId + ':' + block.exerciseId
+  const key = exerciseKey + ':' + (exerciseResetKeys?.[exerciseKey] ?? 0)
+  if (renderExercise) return renderExercise(block.exerciseId, key)
+  return <LessonExerciseSlot key={key} exerciseId={block.exerciseId} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />
 }
 
 export function getLessonAccuracyDisplay(lesson: LessonDefinition, progress: CourseProgress | null) {
@@ -586,17 +589,18 @@ export function LessonMap({ registry = lessonRegistry, progress, manualProgress,
   </div>
 }
 
-export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, sectionReturn, registry, exerciseGenerators = lessonExerciseGenerators, renderExercise, children }: {
+export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, sectionReturn, registry, exerciseGenerators = lessonExerciseGenerators, exerciseResetKeys, renderExercise, children }: {
   lesson: IncludedLessonDefinition
   activeSectionId: string | null
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
   sectionReturn?: ReactNode
   registry: LessonRegistry
   exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
-  renderExercise?: (exerciseId: string) => ReactNode
+  exerciseResetKeys?: Readonly<Record<string, number>>
+  renderExercise?: (exerciseId: string, key: string) => ReactNode
   children?: ReactNode
 }) {
-  const blockProps = { lesson, registry, exerciseGenerators, renderExercise }
+  const blockProps = { lesson, registry, exerciseGenerators, exerciseResetKeys, renderExercise }
   return <section className="lesson-panel lesson-course" aria-labelledby="course-title">
     <p className="lesson-context"><a href="#/map">学習マップ</a> / {lesson.title}</p>
     <h2 id="course-title" tabIndex={-1}>{lesson.title}</h2>
@@ -624,16 +628,17 @@ export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, secti
   </section>
 }
 
-export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, sectionReturn, registry = lessonRegistry, exerciseGenerators = lessonExerciseGenerators }: {
+export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, sectionReturn, registry = lessonRegistry, exerciseGenerators = lessonExerciseGenerators, exerciseResetKeys }: {
   lesson: IncludedLessonDefinition
   sectionId: string | null
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
   sectionReturn?: ReactNode
   registry?: LessonRegistry
   exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
+  exerciseResetKeys?: Readonly<Record<string, number>>
 }) {
   if (lesson.overview) return <LessonCourse key={lesson.lessonId} lesson={lesson} activeSectionId={sectionId}
-    sectionHeadingRef={sectionHeadingRef} sectionReturn={sectionReturn} registry={registry} exerciseGenerators={exerciseGenerators} />
+    sectionHeadingRef={sectionHeadingRef} sectionReturn={sectionReturn} registry={registry} exerciseGenerators={exerciseGenerators} exerciseResetKeys={exerciseResetKeys} />
 
   const section = sectionId ? lesson.sections.find((item) => item.sectionId === sectionId) : undefined
   const currentRef = section ? `${lesson.lessonId}#${section.sectionId}` : undefined
@@ -643,7 +648,7 @@ export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, secti
       <h2 id="route-lesson-title" ref={sectionHeadingRef} tabIndex={-1}>解説</h2>
       {sectionReturn}
       <div className="lesson-body">
-        {section.blocks.map((block, index) => <LessonBlock key={index} block={block} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />)}
+        {section.blocks.map((block, index) => <LessonBlock key={index} block={block} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} exerciseResetKeys={exerciseResetKeys} />)}
       </div>
     </> : <>
       <h2 id="route-lesson-title" ref={sectionHeadingRef} tabIndex={-1}>学習目標</h2>
