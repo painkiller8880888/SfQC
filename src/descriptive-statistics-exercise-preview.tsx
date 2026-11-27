@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { ExerciseQuestionCard } from './lesson-view'
+import { useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { ExerciseQuestionCard, type ExerciseAttemptSnapshot } from './lesson-view'
 import type { ExerciseInstance } from './lesson-contract.mjs'
 import { generateLessonExercise } from './lesson-exercise-adapters.mjs'
 import {
@@ -15,25 +15,41 @@ type PracticeQuestion = {
   state: DescriptiveStatisticsExercisePreviewState
   instance: ExerciseInstance | null
   error: string | null
+  attempt: ExerciseAttemptSnapshot | null
+  presentation: { firstGrade: boolean | null }
 }
 
+export type PracticeScreenSnapshot = { questions: PracticeQuestion[] }
+
 function createPracticeQuestion(categoryIndex: number, state: DescriptiveStatisticsExercisePreviewState): PracticeQuestion {
+  const presentation = { firstGrade: null }
   try {
     const exerciseId = descriptiveStatisticsExerciseCategories[categoryIndex].typeIds[state.typeIndex]
-    return { state, instance: generateLessonExercise('descriptive-statistics', exerciseId, state.seed), error: null }
+    return { state, attempt: null, presentation, instance: generateLessonExercise('descriptive-statistics', exerciseId, state.seed), error: null }
   } catch {
-    return { state, instance: null, error: 'この問題を表示できません。' }
+    return { state, attempt: null, presentation, instance: null, error: 'この問題を表示できません。' }
   }
 }
 
-export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirstGrade }: {
+export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirstGrade, initialSnapshot, snapshotRef }: {
   currentLessonHref: string
   onFirstGrade?: (categoryId: string, isCorrect: boolean) => void
+  initialSnapshot?: PracticeScreenSnapshot
+  snapshotRef?: Ref<() => PracticeScreenSnapshot>
 }) {
-  const [questions, setQuestions] = useState(() => descriptiveStatisticsExerciseCategories.map((_, index) =>
-    createPracticeQuestion(index, createDescriptiveStatisticsExercisePreviewState(index))))
-  const [grades, setGrades] = useState<(boolean | null)[]>(() => Array(descriptiveStatisticsExerciseCategories.length).fill(null))
+  const [questions, setQuestions] = useState(() => initialSnapshot?.questions
+    ?? descriptiveStatisticsExerciseCategories.map((_, index) =>
+      createPracticeQuestion(index, createDescriptiveStatisticsExercisePreviewState(index))))
+  const [grades, setGrades] = useState(() => questions.map((question) => question.presentation.firstGrade))
   const questionListRef = useRef<HTMLDivElement>(null)
+  const attemptRefs = useRef<((() => ExerciseAttemptSnapshot) | null)[]>([])
+
+  useImperativeHandle(snapshotRef, () => () => ({
+    // Return entries share the first grade for a question; they keep their own answer and feedback.
+    questions: questions.map((question, index) => ({
+      ...question, attempt: attemptRefs.current[index]?.() ?? null,
+    })),
+  }), [questions])
 
   const nextQuestion = (categoryIndex: number, current: PracticeQuestion) => {
     try {
@@ -80,13 +96,14 @@ export function DescriptiveStatisticsExercisePreview({ currentLessonHref, onFirs
           headingLevel={2}
           error={question.error}
           onFirstGrade={(isCorrect) => {
+            if (question.presentation.firstGrade !== null) return
+            question.presentation.firstGrade = isCorrect
             setGrades((current) => current.map((grade, index) => index === categoryIndex ? isCorrect : grade))
             onFirstGrade?.(descriptiveStatisticsExerciseCategories[categoryIndex].id, isCorrect)
           }}
           onRegenerate={() => regenerateOne(categoryIndex)}
-          tableCaption="ラインごとに測った値"
-          tableRowHeaderLabel="ライン"
-          tableColumnLabel={(index) => `${index + 1}個目`}
+          initialAttempt={question.attempt}
+          attemptRef={(getAttempt) => { attemptRefs.current[categoryIndex] = getAttempt }}
           dataPracticeCategory={categoryIndex}
           dataPracticeType={question.state.typeIndex}
           dataPracticeSeed={question.state.seed}

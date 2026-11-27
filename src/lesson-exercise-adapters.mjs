@@ -27,10 +27,10 @@ function adaptQuestion(definition, source) {
       solution: {
         ...(source.steps ? { steps: source.steps } : {}),
         explanation: source.solution ?? source.explanation,
-        ...(source.choiceFeedback ? { choiceFeedback: source.choiceFeedback.map(({ choiceIndex, misconception }) => ({
+        ...(source.choiceFeedback ? { choiceFeedback: source.choiceFeedback.map(({ choiceIndex, misconception, sections = source.sections }) => ({
           choiceId: `choice-${choiceIndex}`,
           misconception,
-          ...(source.sections ? { reviewSectionRefs: source.sections.map((sectionId) => `${definition.lessonId}#${sectionId}`) } : {}),
+          ...(sections ? { reviewSectionRefs: sections.map((sectionId) => `${definition.lessonId}#${sectionId}`) } : {}),
         })) } : {}),
       },
     }
@@ -54,15 +54,18 @@ function adaptQuestion(definition, source) {
       })),
     }
   }
-  return { display, evaluation, solution: { explanation: source.solution ?? source.explanation } }
+  return { display, evaluation, solution: {
+    ...(source.steps ? { steps: source.steps } : {}),
+    explanation: source.solution ?? source.explanation,
+  } }
 }
 
-const defectAggregationPrompt = '不適合品数と不適合数の組と、その数え方として正しいものを選んでください。'
+const defectAggregationPrompt = '基準を超えた傷1件を不適合1件、その傷が1件以上ある製品を不適合品とします。不適合品数と不適合数の組と、その数え方として正しいものを選んでください。'
 
 const defectAggregationCases = [
   {
     sections: ['counting'],
-    prompt: defectAggregationPrompt,
+    prompt: `P-01〜P-06の6製品をすべて検査し、見つかった傷と基準を超えた傷を製品ごとに漏れなく記録しました。${defectAggregationPrompt}`,
     table: {
       caption: '製品ごとの検査記録（1行＝製品1個）',
       rowHeaderLabel: '製品番号',
@@ -78,7 +81,7 @@ const defectAggregationCases = [
       '不適合品2個、不適合4件。基準を超えた傷が1件以上ある製品を数え、基準を超えた傷の列を合計する。',
       '不適合品4個、不適合4件。見つかった傷が1件以上ある製品を数え、基準を超えた傷の列を合計する。',
       '不適合品2個、不適合8件。基準を超えた傷が1件以上ある製品を数え、見つかった傷の列を合計する。',
-      '不適合品4個、不適合2件。基準を超えた傷の列を合計し、基準を超えた傷が1件以上ある製品を数える。',
+      '不適合品4個、不適合2件。不適合品は基準を超えた傷の合計、不適合はその傷がある製品の数で求める。',
     ],
     answer: 0,
     steps: [
@@ -94,9 +97,9 @@ const defectAggregationCases = [
   },
   {
     sections: ['observation-unit', 'counting'],
-    prompt: `事例1と同じ6製品の検査結果から、基準を超えた傷だけを抜き出した明細です。${defectAggregationPrompt}`,
+    prompt: `事例1と同じ6製品の検査結果から、基準を超えた傷をすべて抜き出した明細です。${defectAggregationPrompt}`,
     table: {
-      caption: '基準を超えた傷の明細（1行＝傷1件）',
+      caption: '基準を超えた傷の明細',
       rowHeaderLabel: '傷番号',
       columnLabels: ['製品番号'],
       rows: [
@@ -125,16 +128,16 @@ const defectAggregationCases = [
   },
   {
     sections: ['observation-unit'],
-    prompt: `検査対象は P-01〜P-05 の5個です。基準を超えた傷だけを抜き出した明細を示します。${defectAggregationPrompt}`,
+    prompt: `検査対象は P-01〜P-05 の5個です。この5個で基準を超えた傷をすべて載せた明細です。${defectAggregationPrompt}`,
     table: {
-      caption: '基準を超えた傷の明細（1行＝傷1件）',
+      caption: '基準を超えた傷の明細',
       rowHeaderLabel: '傷番号',
       columnLabels: ['製品番号'],
       rows: [{ label: '傷1', values: ['P-01'] }, { label: '傷2', values: ['P-03'] }],
     },
     type: 'choice',
     choices: [
-      '不適合品2個、不適合2件。明細の1行は製品1個を表すので、2行を不適合品2個として数える。',
+      '不適合品2個、不適合2件。明細の各行を製品1個として数え、傷の件数は明細の行数で求める。',
       '不適合品5個、不適合2件。検査対象の製品数を不適合品数とし、明細の行を数える。',
       '不適合品2個、不適合2件。製品番号を重複なく数えると2個、明細の行を数えると2件になる。',
       '不適合品2個、不適合5件。製品番号を重複なく数え、検査対象の製品数を不適合数とする。',

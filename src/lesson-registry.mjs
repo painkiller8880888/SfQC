@@ -315,7 +315,7 @@ const lessons = [
     optionalReviews: [],
     sourceItemIds: ['SRC-0001'],
     sourceRefs: sourceRefsFor(['SRC-0001']),
-    revision: 8,
+    revision: 9,
     overview: [
       { kind: 'paragraph', parts: [{ kind: 'text', text: '検査で基準を超える傷が3件見つかりました。しかし不適合品は2個です。なぜでしょうか？' }] },
       { kind: 'paragraph', parts: [{ kind: 'text', text: '製品10個を検査し、製品ごとに見つかった傷と、検査前に決めた基準を超えた傷を記録しました。' }] },
@@ -432,11 +432,11 @@ const lessons = [
     ],
     sourceItemIds: ['SRC-0005'],
     sourceRefs: sourceRefsFor(['SRC-0005']),
-    revision: 5,
+    revision: 7,
     overview: [
       { kind: 'paragraph', parts: [{ kind: 'text', text: '同じ目標長さ 100 mm のシャフトを作るライン A と B から、3本ずつ測りました。平均は同じでも、散らばり方は同じでしょうか。4つの節を続けて読み、中心と散らばりを順に確かめます。' }] },
       { kind: 'table', caption: '測定した長さ（mm）', columns: ['ライン', '1本目', '2本目', '3本目'], rows: [['A', '98', '100', '102'], ['B', '99', '100', '101']] },
-      { kind: 'paragraph', parts: [{ kind: 'text', text: '平均だけでは区別できない2つのラインを、偏差・分散・標準偏差で比べます。図の点は動かせます。操作結果はこのページだけに表示され、保存されません。' }] },
+      { kind: 'paragraph', parts: [{ kind: 'text', text: 'まず平均で中心を確かめ、偏差で平均からのずれを読みます。次に範囲と分散で散らばりを比べ、最後に標準偏差を元の長さの単位で読みます。図の点は動かせます。操作結果はこのページだけに表示され、保存されません。' }] },
     ],
     sections: [
       {
@@ -461,7 +461,7 @@ const lessons = [
           { kind: 'paragraph', parts: [{ kind: 'text', text: 'A の 98 mm は、平均 100 mm からどちらへ、どれだけ外れているでしょう。値から平均を引いた符号付きの差が偏差です。' }] },
           { kind: 'figureRef', figureId: 'FIG-DS-DEVIATION' },
           { kind: 'formula', parts: [{ kind: 'mathText', text: 'A：98 − 100 = −2; 100 − 100 = 0; 102 − 100 = +2 (mm); B：99 − 100 = −1; 100 − 100 = 0; 101 − 100 = +1 (mm)' }] },
-          { kind: 'paragraph', parts: [{ kind: 'text', text: 'A の偏差は ±2 mm、B は ±1 mm です。偏差の単位は元の測定値と同じです。ところが偏差を全部足すと、正と負が打ち消し合って両方とも 0 mm になります。偏差の和だけでは散らばりを比べられません。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: 'A の偏差は −2、0、+2 mm、B は −1、0、+1 mm です。偏差が 0 mm の測定値は、平均と同じ長さです。偏差の単位は元の測定値と同じです。ところが偏差を全部足すと、正と負が打ち消し合って両方とも 0 mm になります。偏差の和だけでは散らばりを比べられません。' }] },
           { kind: 'details', summary: '記号と条件', blocks: [
             { kind: 'paragraph', parts: [{ kind: 'text', text: '母集団の偏差は xᵢ − μ、標本の偏差は xᵢ − x̄ と書きます。偏差の合計が 0 になるのは、平均が偏差の合計を 0 にする位置として決まるためです。' }] },
           ] },
@@ -472,19 +472,22 @@ const lessons = [
         sectionId: 'variance',
         title: '範囲と分散',
         blocks: [
-          { kind: 'paragraph', parts: [{ kind: 'text', text: '正と負を打ち消さずに、3本分のずれを1つの数にするにはどうすればよいでしょう。偏差を二乗すると負の値も正になり、その合計は偏差平方和 S と呼ばれます。単位は mm² です。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: 'A と B の長さは、それぞれどれだけ散らばっていますか。まず最大値から最小値を引いて範囲を求めます。' }] },
+          { kind: 'formula', parts: [{ kind: 'mathText', text: '範囲 A：102 mm − 98 mm = 4 mm、B：101 mm − 99 mm = 2 mm' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '範囲は両端の2点だけを使います。3本すべてのずれを使うには、正と負が打ち消し合わないよう偏差を二乗します。その合計を偏差平方和 S といい、単位は mm² です。' }] },
           { kind: 'figureRef', figureId: 'FIG-DS-VARIANCE' },
           { kind: 'formula', parts: [{ kind: 'mathText', text: 'A：(-2)² + 0² + (+2)² = 8 mm²; B：(-1)² + 0² + (+1)² = 2 mm²' }] },
           { kind: 'heading', level: 3, text: '全部を測るか、標本から見積もるか' },
-          { kind: 'paragraph', parts: [{ kind: 'text', text: '母集団全体を測ったときの母分散は、偏差平方和を個数 N で割ります。測った標本そのものを記述する分散は n で割ります。標本から母分散を見積もる不偏分散 V は n − 1 で割ります。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: '調べたい対象全体が母集団です。例えば有限のロットなら、そのロットの全製品が母集団です。母集団全体を測ったときの母分散は、偏差平方和を個数 N で割ります。測った標本そのものを記述する分散は n で割ります。同じ母集団から独立に得た標本で母分散を見積もるときは、n − 1 で割る不偏分散 V を使います。' }] },
           { kind: 'formula', parts: [{ kind: 'mathText', text: '母分散：σ² = Σ(xᵢ − μ)²/N; 標本内の分散：Σ(xᵢ − x̄)²/n; 不偏分散：V = Σ(xᵢ − x̄)²/(n − 1)' }] },
-          { kind: 'paragraph', parts: [{ kind: 'text', text: 'A と B はどちらも3本の標本なので、不偏分散は A が 8 ÷ 2 = 4 mm²、B が 2 ÷ 2 = 1 mm² です。V は見積もりであり、標本が変われば値も変わります。n − 1 で割ると標本から出した値の平均が母分散と一致するのは、同じ母集団から独立に取り出した標本で母分散が有限のときです。' }] },
+          { kind: 'paragraph', parts: [{ kind: 'text', text: 'A と B はどちらも3本の標本です。n − 1 で割った V は A が 8 ÷ 2 = 4 mm²、B が 2 ÷ 2 = 1 mm² です。標本が変わると V も変わりえますが、異なる標本で同じ値になることもあります。' }] },
           { kind: 'details', summary: 'n − 1 で割ると母分散に合うのか確かめる', blocks: [
+            { kind: 'paragraph', parts: [{ kind: 'text', text: 'ここでは、ライン A・B の例とは別の小さなロットを使います。1本取るたびに元に戻し、どの製品も同じ確率で独立に取り出します。試行を重ねると、n と n − 1 で割った値の平均が、それぞれの期待値にどう近づくかを観察できます。' }] },
             { kind: 'figureRef', figureId: 'FIG-DS-SIMULATION' },
-            { kind: 'paragraph', parts: [{ kind: 'text', text: 'この小さなロットでは母分散が分かっています。復元抽出の試行結果を集計し、n で割る場合と n − 1 で割る場合の平均を比べます。' }] },
           ] },
           { kind: 'details', summary: '分散の使い分けと注意', blocks: [
-            { kind: 'paragraph', parts: [{ kind: 'text', text: '標本から不偏分散を計算するときは n ≥ 2 が必要です。1回の見積もりが母分散に近いことは保証しません。最大値 − 最小値は範囲といい、両端の2点だけを使います。分散は全ての偏差を使うため、極端な値の影響を受けやすい尺度です。' }] },
+            { kind: 'paragraph', parts: [{ kind: 'text', text: 'n ≥ 2 のとき、分散が有限の同じ母集団から独立に取った標本では、n − 1 で割った V の期待値が母分散に一致します。有限ロットなら、取った製品を毎回戻して等確率で引き直す方法が、この条件を満たします。1回の V や有限回の平均が母分散と一致する保証はありません。' }] },
+            { kind: 'paragraph', parts: [{ kind: 'text', text: '一方、N 個の有限ロットから同じ製品を戻さずに単純無作為抽出すると、標本内の値は独立ではありません。このとき V の期待値は、N で割って定義した母分散の N ÷ (N − 1) 倍です。分散が 0 の場合を除き、母分散には一致しません。' }] },
             { kind: 'lessonRef', label: '総和記号 Σ の読み方', targetRef: 'math-algebra-sigma#sigma' },
           ] },
           { kind: 'exerciseSlot', exerciseId: 'variance' },
@@ -533,16 +536,16 @@ const lessons = [
         kind: 'diagram',
         figureId: 'FIG-DS-SIMULATION',
         rendererRef: 'code:variance-simulation',
-        educationalPurpose: 'n と n−1 で割った分散の標本間平均を比較する。',
-        legend: [{ label: '試行平均', meaning: '復元抽出した標本の分散の平均。' }],
-        altText: 'ロットから復元抽出し、n と n−1 で割る方法の平均を数値と進捗バーで比較する。',
+        educationalPurpose: '独立な復元抽出を重ね、n と n − 1 で割った分散の平均がそれぞれの期待値にどう近づくかを観察する。',
+        legend: [{ label: '試行平均', meaning: '同じロットから独立に復元抽出した標本の分散の平均。' }],
+        altText: 'ライン A・B の例とは別のロットから独立に復元抽出し、n と n − 1 で割る方法の試行平均を数値と棒で比較する。',
       },
     ]),
     references: [
-      { title: 'JSA「3級のレベル表」Ver.20150130.2', url: 'https://webdesk.jsa.or.jp/', details: 'p.1「基本統計量とグラフ」。本文・表・図・設問は転載・翻案していません。本文確認日・到達確認日：2026-11-11。' },
-      { title: 'JSA「4級のレベル表」Ver.20150130.2', url: 'https://webdesk.jsa.or.jp/', details: 'p.1「平均とばらつき」「平均と範囲」。本文・表・図・設問は転載・翻案していません。本文確認日・到達確認日：2026-11-11。' },
-      { title: 'OpenStax, Introductory Statistics 2e, §2.7 (2023)', url: 'https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data', details: '用語と式の照合に使用。参照のみで本文・図・問題は転載・翻案していません。CC BY-NC-SA 4.0。本文確認日・到達確認日：2026-11-11。' },
-      { title: 'Wikipedia「自由度」', url: 'https://ja.wikipedia.org/wiki/%E8%87%AA%E7%94%B1%E5%BA%A6', details: 'n − 1 の導出の参考資料。QC検定の対象外となるため本文では導出を扱いません。' },
+      { title: 'JSA「3級のレベル表」Ver.20150130.2, p.1', url: 'https://webdesk.jsa.or.jp/pdf/qc/md_4609.pdf#page=1', details: '「基本統計量とグラフ」の出題範囲を照合。確認日：2026-11-25。' },
+      { title: 'JSA「4級のレベル表」Ver.20150130.2, p.1', url: 'https://webdesk.jsa.or.jp/pdf/qc/md_4610.pdf#page=1', details: '「平均とばらつきの概念」「平均と範囲」の出題範囲を照合。確認日：2026-11-25。' },
+      { title: 'OpenStax, Introductory Statistics 2e, §2.7 (2023)', url: 'https://openstax.org/books/introductory-statistics-2e/pages/2-7-measures-of-the-spread-of-the-data', details: '用語と式の照合に使用。例と設問は独自に作成しました。CC BY-NC-SA 4.0。本文確認日・到達確認日：2026-11-11。' },
+      { title: 'Wikipedia「自由度」§統計学', url: 'https://ja.wikipedia.org/wiki/%E8%87%AA%E7%94%B1%E5%BA%A6#%E7%B5%B1%E8%A8%88%E5%AD%A6', details: '分散の計算に関わる自由度の補足資料。確認日：2026-11-25。' },
     ],
     credit: '配色：Solarized by Ethan Schoonover (Copyright (c) 2011; MIT License).',
   },
@@ -637,6 +640,14 @@ const lessons = [
   ]),
 ]
 
+const statisticsExerciseRevisions = new Map([
+  ['data-transformation-add-constant', 3],
+  ['data-transformation-unit', 3],
+  ['unbiased-variance-mean-and-sum', 3],
+  ['unbiased-variance-denominator', 3],
+  ['unbiased-variance-conditions', 4],
+])
+
 /** @type {import('./lesson-contract.mjs').ExerciseCatalog} */
 const exerciseCatalog = {
   categories: descriptiveStatisticsExerciseCategories.map(({ id, title, typeIds }) => ({
@@ -673,13 +684,13 @@ const exerciseCatalog = {
     {
       lessonId: 'data-types',
       exerciseId: 'identify-observation-unit',
-      revision: 4,
+      revision: 5,
       placement: { kind: 'section', sectionId: 'observation-unit' },
       generation: {
         kind: 'fixed',
         question: {
           display: {
-            prompt: '一覧には検査した製品をすべて載せています。2つの表を読み、明細の1行が表すもの、製品番号が重複する理由、明細にない製品、検査総数について正しいものを選んでください。',
+            prompt: '一覧には検査した製品をすべて載せ、明細には基準を超えた傷をすべて載せています。2つの表を読み、明細の1行が表すもの、製品番号が重複する理由、明細にない製品、検査総数について正しいものを選んでください。',
             table: [
               {
                 caption: '検査対象の製品一覧（1行＝製品1個）',
@@ -727,7 +738,7 @@ const exerciseCatalog = {
     {
       lessonId: 'data-types',
       exerciseId: 'defect-aggregation',
-      revision: 5,
+      revision: 7,
       placement: { kind: 'section', sectionId: 'counting' },
       generation: {
         kind: 'index',
@@ -785,7 +796,7 @@ const exerciseCatalog = {
     ...Object.entries(previewExerciseDefinitions).map(([exerciseId, definition]) => ({
       lessonId: 'descriptive-statistics',
       exerciseId,
-      revision: 1,
+      revision: 3,
       placement: { kind: /** @type {'section'} */ ('section'), sectionId: exerciseId },
       generation: {
         kind: /** @type {'index'} */ ('index'),
@@ -798,7 +809,7 @@ const exerciseCatalog = {
     ...descriptiveStatisticsExerciseCategories.flatMap(({ id: categoryId, typeIds }) => typeIds.map((exerciseId) => ({
       lessonId: 'descriptive-statistics',
       exerciseId,
-      revision: 1,
+      revision: statisticsExerciseRevisions.get(exerciseId) ?? 2,
       placement: { kind: /** @type {'category'} */ ('category'), categoryId },
       generation: {
         kind: /** @type {'seed'} */ ('seed'),

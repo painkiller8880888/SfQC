@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { summarizeMeasurements } from '../src/figures/interactive-variance-comparison-data.mjs'
+import { measurementRange, standardDeviationPlotRange, summarizeMeasurements, varianceSimulation } from '../src/figures/interactive-variance-comparison-data.mjs'
 import {
   chart,
   mean,
@@ -91,4 +91,30 @@ test('interactive variance comparison statistics match the three guided states a
   closeTo(allEqual.standardDeviation, 0)
   closeTo(bounds.mean, 2)
   closeTo(bounds.variance, 2 / 3)
+})
+
+test('the standard-deviation axis contains the full band at every selectable measurement', () => {
+  const { minimum, maximum } = measurementRange
+  const { minimum: plotMinimum, maximum: plotMaximum } = standardDeviationPlotRange
+  for (let first = minimum; first <= maximum; first += 1) {
+    for (let second = minimum; second <= maximum; second += 1) {
+      for (let third = minimum; third <= maximum; third += 1) {
+        const { mean, sumOfSquaredDeviations } = summarizeMeasurements([first, second, third])
+        const spread = Math.sqrt(sumOfSquaredDeviations / 2)
+        assert.ok(plotMinimum <= mean - spread && mean + spread <= plotMaximum)
+      }
+    }
+  }
+})
+
+test('simulation expectations and bar range include every ordered sample with replacement', () => {
+  const { population, count, trueVariance, byN, byNMinusOne, scale } = varianceSimulation
+  assert.equal(count, population.length ** 3)
+  assert.equal(trueVariance, 2)
+  closeTo(byN, 4 / 3)
+  closeTo(byNMinusOne, trueVariance)
+  assert.equal(scale, 6)
+  const widestSample = summarizeMeasurements([98, 98, 102])
+  closeTo(widestSample.sumOfSquaredDeviations / 2, 16 / 3)
+  assert.ok(widestSample.sumOfSquaredDeviations / 2 < scale)
 })

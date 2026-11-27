@@ -6,12 +6,11 @@ export function resolveRouteView(hash, rawState, navigationCause, navigationId) 
   const route = resolveRoute(hash)
   const historyState = validateRouteHistoryState(rawState, hash)
   const resolved = resolveRouteData(route)
-  const courseSection = resolved.status === 'lesson' && resolved.section !== null && resolved.lesson.overview !== undefined
+  const courseSection = resolved.status === 'lesson' && resolved.section !== null
+    && (route.kind === 'course-lesson' || resolved.lesson.overview !== undefined)
   const stateNeedsRepair = historyState === null
-  const openSection = stateNeedsRepair && (
-    (navigationCause === 'initial' && (route.kind === 'course-lesson' || courseSection))
-    || (navigationCause === 'normal' && courseSection)
-  )
+  const openSection = courseSection && (navigationCause === 'normal'
+    || (navigationCause === 'initial' && stateNeedsRepair))
   const navigation = openSection ? 'section'
     : stateNeedsRepair && navigationCause !== 'initial' ? 'normal'
       : navigationCause

@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
+import { useId, useImperativeHandle, useRef, useState, type FormEvent, type ReactNode, type Ref, type RefObject } from 'react'
 import { lessonRegistry } from './lesson-registry.mjs'
 import {
   getExerciseGradingData,
@@ -79,8 +79,19 @@ function exerciseReviewLabel(targetRef: string, registry: LessonRegistry) {
     : lessonRefLabel(targetRef, registry)
 }
 
+export type ExerciseAttemptSnapshot = {
+  answers: Record<string, string>
+  selectedChoiceId: string
+  latestGrade: boolean | null
+  feedback: { kind: string; text: string } | null
+  choiceFeedback: { misconception: string; reviewSectionRefs?: string[] } | null
+  solutionOpen: boolean
+}
+
 type ExerciseQuestionCardProps = {
   instance: ExerciseInstance | null
+  initialAttempt?: ExerciseAttemptSnapshot | null
+  attemptRef?: Ref<() => ExerciseAttemptSnapshot>
   title: string
   headingLevel?: 2 | 3 | 4
   exerciseId?: string
@@ -89,33 +100,39 @@ type ExerciseQuestionCardProps = {
   onFirstGrade?: (correct: boolean) => void
   onRegenerate?: () => void
   regenerateLabel?: string
-  tableCaption?: string
-  tableRowHeaderLabel?: string
-  tableColumnLabel?: (index: number) => string
   dataPracticeCategory?: number
   dataPracticeType?: number
   dataPracticeSeed?: number
   className?: string
 }
 
-function ExerciseQuestionBody({ formId, display, grading, registry, onFirstGrade, tableCaption, tableRowHeaderLabel, tableColumnLabel }: {
+function quantityCellClass(value: number | string, columnLabel?: string) {
+  if (columnLabel?.includes('コード') || columnLabel?.endsWith('番号')) return undefined
+  return typeof value === 'number' || /^[−+-]?\d+(?:\.\d+)?(?:\s*(?:mm²?|件|個))?$/u.test(value) ? 'num' : undefined
+}
+
+function ExerciseQuestionBody({ formId, display, grading, registry, onFirstGrade, initialAttempt, attemptRef }: {
   formId: string
+  initialAttempt?: ExerciseAttemptSnapshot | null
+  attemptRef?: Ref<() => ExerciseAttemptSnapshot>
   display: ExerciseQuestionDisplay
   grading: ReturnType<typeof getExerciseGradingData>
   registry: LessonRegistry
   onFirstGrade?: (correct: boolean) => void
-  tableCaption?: string
-  tableRowHeaderLabel?: string
-  tableColumnLabel?: (index: number) => string
 }) {
   const id = useId()
   const detailsRef = useRef<HTMLDetailsElement>(null)
-  const firstGradeSent = useRef(false)
-  const [answers, setAnswers] = useState<Record<string, string>>({})
-  const [selectedChoiceId, setSelectedChoiceId] = useState('')
-  const [latestGrade, setLatestGrade] = useState<boolean | null>(null)
-  const [feedback, setFeedback] = useState<{ kind: string; text: string } | null>(null)
-  const [choiceFeedback, setChoiceFeedback] = useState<{ misconception: string; reviewSectionRefs?: string[] } | null>(null)
+  const [answers, setAnswers] = useState<Record<string, string>>(initialAttempt?.answers ?? {})
+  const [selectedChoiceId, setSelectedChoiceId] = useState(initialAttempt?.selectedChoiceId ?? '')
+  const [latestGrade, setLatestGrade] = useState(initialAttempt?.latestGrade ?? null)
+  const [feedback, setFeedback] = useState(initialAttempt?.feedback ?? null)
+  const [choiceFeedback, setChoiceFeedback] = useState(initialAttempt?.choiceFeedback ?? null)
+  const firstGradeSent = useRef(latestGrade !== null)
+
+  useImperativeHandle(attemptRef, () => () => ({
+    answers, selectedChoiceId, latestGrade, feedback, choiceFeedback,
+    solutionOpen: detailsRef.current?.open ?? false,
+  }), [answers, selectedChoiceId, latestGrade, feedback, choiceFeedback])
 
   const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -168,18 +185,17 @@ function ExerciseQuestionBody({ formId, display, grading, registry, onFirstGrade
 
   return <>
     <p className="ds-practice-prompt">{display.prompt}</p>
-    {tables.map((table, tableIndex) => {
-      const caption = tableCaption ?? table.caption
-      return <div className="ds-practice-table-wrap" tabIndex={0} key={tableIndex}><table>
-        {caption && <caption>{caption}</caption>}
-        <thead><tr><th scope="col">{tableRowHeaderLabel ?? table.rowHeaderLabel ?? ''}</th>{table.rows[0].values.map((_, index) => <th scope="col" key={index}>
-          {tableColumnLabel?.(index) ?? table.columnLabels?.[index] ?? String(index + 1)}
+    {tables.map((table, tableIndex) => <div className="ds-practice-table-wrap" tabIndex={0} key={tableIndex}>
+      <table>
+        {table.caption && <caption>{table.caption}</caption>}
+        <thead><tr><th scope="col">{table.rowHeaderLabel ?? ''}</th>{table.rows[0].values.map((_, index) => <th scope="col" key={index}>
+          {table.columnLabels?.[index] ?? String(index + 1)}
         </th>)}</tr></thead>
         <tbody>{table.rows.map((row, rowIndex) => <tr key={rowIndex}>
-          <th scope="row">{row.label}</th>{row.values.map((value, index) => <td className={typeof value === 'number' ? 'num' : undefined} key={index}>{value}</td>)}
+          <th scope="row">{row.label}</th>{row.values.map((value, index) => <td key={index} className={quantityCellClass(value, table.columnLabels?.[index])}>{value}</td>)}
         </tr>)}</tbody>
-      </table></div>
-    })}
+      </table>
+    </div>)}
     {display.calculations && <div className="ds-practice-calculation" aria-label="計算過程">
       {display.calculations.map((calculation, index) => <p key={index}>{calculation}</p>)}
     </div>}
@@ -213,7 +229,7 @@ function ExerciseQuestionBody({ formId, display, grading, registry, onFirstGrade
         {index > 0 && '・'}<LessonReference targetRef={targetRef} registry={registry} />
       </span>)}</p> : null}
     </>}
-    <details ref={detailsRef}>
+    <details ref={detailsRef} open={initialAttempt?.solutionOpen}>
       <summary>解説を見る</summary>
       {grading.solution.steps?.length ? <ol className="ds-exercise-steps">{grading.solution.steps.map((step, index) => <li key={index}>{step}</li>)}</ol> : null}
       <p className="ds-exercise-solution">{grading.solution.explanation}</p>
@@ -222,7 +238,7 @@ function ExerciseQuestionBody({ formId, display, grading, registry, onFirstGrade
 }
 
 export function ExerciseQuestionCard({ instance, title, headingLevel = 2, exerciseId, registry = lessonRegistry,
-  error, onFirstGrade, onRegenerate, regenerateLabel = 'この問題を入れ替える', tableCaption, tableRowHeaderLabel, tableColumnLabel,
+  initialAttempt, attemptRef, error, onFirstGrade, onRegenerate, regenerateLabel = 'この問題を入れ替える',
   dataPracticeCategory, dataPracticeType, dataPracticeSeed, className = '' }: ExerciseQuestionCardProps) {
   const id = useId()
   let display: ExerciseQuestionDisplay | null = null
@@ -252,7 +268,7 @@ export function ExerciseQuestionCard({ instance, title, headingLevel = 2, exerci
     {questionError && <p className="ds-exercise-error" role="status">{questionError}</p>}
     {instance && display && grading
       ? <ExerciseQuestionBody key={instance.instanceId} formId={`${id}-form`} display={display} grading={grading}
-        registry={registry} onFirstGrade={onFirstGrade} tableCaption={tableCaption} tableRowHeaderLabel={tableRowHeaderLabel} tableColumnLabel={tableColumnLabel} />
+        registry={registry} onFirstGrade={onFirstGrade} initialAttempt={initialAttempt} attemptRef={attemptRef} />
       : !questionError && <p className="ds-exercise-error">この問題を表示できません。</p>}
     <div className="ds-exercise-actions">
       {instance && display && grading && <button className="ds-button ds-button-primary" type="submit" form={`${id}-form`}>答え合わせ</button>}
@@ -332,23 +348,39 @@ function MathText({ text }: { text: string }) {
   return <>{parts}</>
 }
 
-function LessonExerciseSlot({ exerciseId, lesson, registry, exerciseGenerators }: {
+export type InlineExerciseSnapshot = {
+  cursor: number | undefined
+  instance: ExerciseInstance | null
+  error: string | null
+  attempt?: ExerciseAttemptSnapshot | null
+}
+export type InlineExerciseHistory = {
+  snapshot?: InlineExerciseSnapshot
+  snapshotRef: Ref<() => InlineExerciseSnapshot>
+}
+
+function LessonExerciseSlot({ exerciseId, lesson, registry, exerciseGenerators, history }: {
   exerciseId: string
   lesson: IncludedLessonDefinition
   registry: LessonRegistry
   exerciseGenerators: Readonly<Record<string, ExerciseGenerator>>
+  history?: InlineExerciseHistory
 }) {
-  type QuestionState = { cursor: number | undefined; instance: ExerciseInstance | null; error: string | null }
   const definition = registry.exerciseCatalog?.definitions.find((item) => item.lessonId === lesson.lessonId && item.exerciseId === exerciseId)
   const generation = definition?.generation
   const initialInput = generation?.kind === 'fixed' ? undefined : generation?.minimum
-  const [question, setQuestion] = useState<QuestionState>(() => {
+  const [question, setQuestion] = useState<InlineExerciseSnapshot>(() => {
+    if (history?.snapshot) return history.snapshot
     try {
       return { cursor: initialInput, instance: generateLessonExercise(lesson.lessonId, exerciseId, initialInput, registry, exerciseGenerators), error: null }
     } catch {
       return { cursor: initialInput, instance: null, error: 'この問題を表示できません。' }
     }
   })
+  const attemptRef = useRef<(() => ExerciseAttemptSnapshot) | null>(null)
+  useImperativeHandle(history?.snapshotRef, () => () => ({
+    ...question, attempt: attemptRef.current?.() ?? null,
+  }), [question])
   const canRegenerate = generation && generation.kind !== 'fixed' && generation.maximum > generation.minimum
   const regenerate = () => {
     if (!canRegenerate) return
@@ -364,15 +396,18 @@ function LessonExerciseSlot({ exerciseId, lesson, registry, exerciseGenerators }
   }
 
   return <ExerciseQuestionCard instance={question.instance} exerciseId={exerciseId} title="確認問題" headingLevel={4}
-    registry={registry} error={question.error} onRegenerate={canRegenerate ? regenerate : undefined} regenerateLabel="別の問題" />
+    registry={registry} error={question.error} onRegenerate={canRegenerate ? regenerate : undefined} regenerateLabel="別の問題"
+    initialAttempt={question.attempt} attemptRef={attemptRef} />
 }
 
-function LessonBlock({ block, lesson, registry, exerciseGenerators, renderExercise }: {
+function LessonBlock({ block, lesson, registry, exerciseGenerators, exerciseResetKeys, inlineExerciseHistory, renderExercise }: {
   block: IncludedLessonDefinition['sections'][number]['blocks'][number]
   lesson: IncludedLessonDefinition
   registry: LessonRegistry
   exerciseGenerators: Readonly<Record<string, ExerciseGenerator>>
-  renderExercise?: (exerciseId: string) => ReactNode
+  exerciseResetKeys?: Readonly<Record<string, number>>
+  inlineExerciseHistory?: (key: string) => InlineExerciseHistory
+  renderExercise?: (exerciseId: string, key: string, history?: InlineExerciseHistory) => ReactNode
 }) {
   if (block.kind === 'paragraph') return <p className="lesson-paragraph">
     {block.parts.map((part, index) => part.kind === 'text'
@@ -397,10 +432,21 @@ function LessonBlock({ block, lesson, registry, exerciseGenerators, renderExerci
   </p>
   if (block.kind === 'figureRef') return <FigureRef lesson={lesson} figureId={block.figureId} />
   if (block.kind === 'heading') return <h3>{block.text}</h3>
-  if (block.kind === 'table') return <div className="course-table-wrap" tabIndex={0}><table><caption>{block.caption}</caption><thead><tr>{block.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => cellIndex === 0 ? <th scope="row" key={cellIndex}>{cell}</th> : <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
-  if (block.kind === 'details') return <details className="course-details"><summary>{block.summary}</summary>{block.blocks.map((child, index) => <LessonBlock key={index} block={child} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} renderExercise={renderExercise} />)}</details>
-  if (renderExercise) return renderExercise(block.exerciseId)
-  return <LessonExerciseSlot key={`${lesson.lessonId}:${block.exerciseId}`} exerciseId={block.exerciseId} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />
+  if (block.kind === 'table') return <div className="course-table-wrap" tabIndex={0}>
+    <table>
+      <caption>{block.caption}</caption>
+      <thead><tr>{block.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead>
+      <tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => cellIndex === 0
+        ? <th scope="row" key={cellIndex}>{cell}</th>
+        : <td key={cellIndex} className={quantityCellClass(cell, block.columns[cellIndex])}>{cell}</td>)}</tr>)}</tbody>
+    </table>
+  </div>
+  if (block.kind === 'details') return <details className="course-details"><summary>{block.summary}</summary>{block.blocks.map((child, index) => <LessonBlock key={index} block={child} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} exerciseResetKeys={exerciseResetKeys} inlineExerciseHistory={inlineExerciseHistory} renderExercise={renderExercise} />)}</details>
+  const exerciseKey = lesson.lessonId + ':' + block.exerciseId
+  const key = exerciseKey + ':' + (exerciseResetKeys?.[exerciseKey] ?? 0)
+  const history = inlineExerciseHistory?.(exerciseKey)
+  if (renderExercise) return renderExercise(block.exerciseId, key, history)
+  return <LessonExerciseSlot key={key} exerciseId={block.exerciseId} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} history={history} />
 }
 
 export function getLessonAccuracyDisplay(lesson: LessonDefinition, progress: CourseProgress | null) {
@@ -562,17 +608,19 @@ export function LessonMap({ registry = lessonRegistry, progress, manualProgress,
   </div>
 }
 
-export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, sectionReturn, registry, exerciseGenerators = lessonExerciseGenerators, renderExercise, children }: {
+export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, sectionReturn, registry, exerciseGenerators = lessonExerciseGenerators, exerciseResetKeys, inlineExerciseHistory, renderExercise, children }: {
   lesson: IncludedLessonDefinition
   activeSectionId: string | null
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
   sectionReturn?: ReactNode
   registry: LessonRegistry
   exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
-  renderExercise?: (exerciseId: string) => ReactNode
+  exerciseResetKeys?: Readonly<Record<string, number>>
+  inlineExerciseHistory?: (key: string) => InlineExerciseHistory
+  renderExercise?: (exerciseId: string, key: string, history?: InlineExerciseHistory) => ReactNode
   children?: ReactNode
 }) {
-  const blockProps = { lesson, registry, exerciseGenerators, renderExercise }
+  const blockProps = { lesson, registry, exerciseGenerators, exerciseResetKeys, inlineExerciseHistory, renderExercise }
   return <section className="lesson-panel lesson-course" aria-labelledby="course-title">
     <p className="lesson-context"><a href="#/map">学習マップ</a> / {lesson.title}</p>
     <h2 id="course-title" tabIndex={-1}>{lesson.title}</h2>
@@ -600,16 +648,19 @@ export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, secti
   </section>
 }
 
-export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, sectionReturn, registry = lessonRegistry, exerciseGenerators = lessonExerciseGenerators }: {
+export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, sectionReturn, registry = lessonRegistry, exerciseGenerators = lessonExerciseGenerators, exerciseResetKeys, inlineExerciseHistory }: {
   lesson: IncludedLessonDefinition
   sectionId: string | null
   sectionHeadingRef: RefObject<HTMLHeadingElement | null>
   sectionReturn?: ReactNode
   registry?: LessonRegistry
   exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
+  exerciseResetKeys?: Readonly<Record<string, number>>
+  inlineExerciseHistory?: (key: string) => InlineExerciseHistory
 }) {
   if (lesson.overview) return <LessonCourse key={lesson.lessonId} lesson={lesson} activeSectionId={sectionId}
-    sectionHeadingRef={sectionHeadingRef} sectionReturn={sectionReturn} registry={registry} exerciseGenerators={exerciseGenerators} />
+    sectionHeadingRef={sectionHeadingRef} sectionReturn={sectionReturn} registry={registry} exerciseGenerators={exerciseGenerators} exerciseResetKeys={exerciseResetKeys}
+    inlineExerciseHistory={inlineExerciseHistory} />
 
   const section = sectionId ? lesson.sections.find((item) => item.sectionId === sectionId) : undefined
   const currentRef = section ? `${lesson.lessonId}#${section.sectionId}` : undefined
@@ -619,7 +670,7 @@ export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, secti
       <h2 id="route-lesson-title" ref={sectionHeadingRef} tabIndex={-1}>解説</h2>
       {sectionReturn}
       <div className="lesson-body">
-        {section.blocks.map((block, index) => <LessonBlock key={index} block={block} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} />)}
+        {section.blocks.map((block, index) => <LessonBlock key={index} block={block} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} exerciseResetKeys={exerciseResetKeys} inlineExerciseHistory={inlineExerciseHistory} />)}
       </div>
     </> : <>
       <h2 id="route-lesson-title" ref={sectionHeadingRef} tabIndex={-1}>学習目標</h2>

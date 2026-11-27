@@ -11,12 +11,16 @@ function getParameters(id, index) {
   if (!Number.isInteger(index) || index < 0 || index >= definition.count) {
     throw new RangeError(`Preview exercise index must be an integer from 0 to ${definition.count - 1}`)
   }
-  if (id === 'standard-deviation') return { m: 95 + Math.floor(index / 6), d: index % 6 + 1 }
-  return {
-    m: 95 + Math.floor(index / 25),
-    a: Math.floor(index / 5) % 5 + 1,
-    b: index % 5 + 1,
+  // At a mean of 100 mm, symmetric spreads of 1 and 2 mm reproduce the worked examples.
+  if (id === 'standard-deviation') {
+    const m = 95 + Math.floor(index / 6)
+    const d = index % 6 + 1
+    return { m: m === 100 && d <= 2 ? 106 : m, d }
   }
+  const m = 95 + Math.floor(index / 25)
+  const a = Math.floor(index / 5) % 5 + 1
+  const b = index % 5 + 1
+  return { m: m === 100 && a === b && a <= 2 ? 106 : m, a, b }
 }
 
 function makeMeasurements({ m, a, b }) {
@@ -37,6 +41,15 @@ function decimalAnswer(value) {
   return String(value)
 }
 
+function varianceSteps({ values, mean, deviations, sumOfSquares, variance }) {
+  return [
+    `平均 = (${values.join(' + ')}) mm ÷ 3 = ${mean} mm`,
+    `偏差は ${joinMm(deviations.map(formatDeviation))}`,
+    `S = ${deviations.map((deviation) => `(${formatDeviation(deviation)} mm)²`).join(' + ')} = ${sumOfSquares} mm²`,
+    `V = ${sumOfSquares} mm² ÷ (3 − 1) = ${variance} mm²`,
+  ]
+}
+
 export function generateDescriptiveStatisticsPreviewExercise(id, index) {
   const parameters = getParameters(id, index)
 
@@ -46,8 +59,10 @@ export function generateDescriptiveStatisticsPreviewExercise(id, index) {
     return {
       prompt: `別のライン C から3本を測ったところ、${joinMm(values)} でした。平均は何 mm ですか。`,
       fields: [{ label: '平均', unit: 'mm' }],
+      sections: [id],
       answers: [decimalAnswer(parameters.m)],
-      solution: `${values.join(' + ')} = ${total}、${total} ÷ 3 = ${parameters.m} mm`,
+      steps: [`(${values.join(' + ')}) mm = ${total} mm`, `${total} mm ÷ 3 = ${parameters.m} mm`],
+      solution: '測定値の合計を測定した本数で割ると、平均が求まります。',
     }
   }
 
@@ -56,8 +71,10 @@ export function generateDescriptiveStatisticsPreviewExercise(id, index) {
     return {
       prompt: `別のライン D の平均は ${parameters.m} mm でした。測った3本は ${joinMm(values)} です。それぞれの偏差（値 − 平均）を求めてください。`,
       fields: [1, 2, 3].map((number) => ({ label: `${number}本目`, unit: 'mm' })),
+      sections: [id],
       answers: deviations.map(decimalAnswer),
-      solution: `${values.map((value, index) => `${value} − ${parameters.m} = ${formatDeviation(deviations[index])}`).join('　')}　(mm)`,
+      steps: values.map((value, index) => `${index + 1}本目：${value} mm − ${parameters.m} mm = ${formatDeviation(deviations[index])} mm`),
+      solution: '偏差は、測定値が平均からどちらへどれだけ離れているかを表します。偏差が 0 mm のとき、測定値は平均と同じです。',
     }
   }
 
@@ -68,8 +85,10 @@ export function generateDescriptiveStatisticsPreviewExercise(id, index) {
     return {
       prompt: `別のライン E から3本を測ったところ、${joinMm(values)} でした。偏差平方和 S と、n − 1 で割る不偏分散 V を求めてください。`,
       fields: [{ label: 'S', unit: 'mm²' }, { label: 'V', unit: 'mm²' }],
+      sections: [id],
       answers: [sumOfSquares, variance].map(decimalAnswer),
-      solution: `平均 = ${values.reduce((sum, value) => sum + value, 0)} ÷ 3 = ${parameters.m} mm。偏差は ${deviations.map(formatDeviation).join('、')}。S = ${deviations.map((deviation) => `(${formatDeviation(deviation)})²`).join(' + ')} = ${deviations.map((deviation) => deviation ** 2).join(' + ')} = ${sumOfSquares} mm²。V = ${sumOfSquares} ÷ 2 = ${variance} mm²`,
+      steps: varianceSteps({ values, mean: parameters.m, deviations, sumOfSquares, variance }),
+      solution: '偏差平方和 S は、平均からのずれを二乗して足した値です。S を n − 1 で割ると不偏分散 V が求まります。',
     }
   }
 
@@ -80,8 +99,13 @@ export function generateDescriptiveStatisticsPreviewExercise(id, index) {
   return {
     prompt: `別のライン F から3本を測ったところ、${joinMm(values)} でした。n − 1 で割った不偏分散から求める標準偏差 s は何 mm ですか。`,
     fields: [{ label: 's', unit: 'mm' }],
+    sections: [id],
     answers: [decimalAnswer(d)],
-    solution: `平均 = ${m} mm、偏差は −${d}、0、+${d}。S = ${sumOfSquares} mm²、V = ${sumOfSquares} ÷ 2 = ${variance} mm²、s = √${variance} = ${d} mm`,
+    steps: [
+      ...varianceSteps({ values, mean: m, deviations: [-d, 0, d], sumOfSquares, variance }),
+      `s = √(${variance} mm²) = ${d} mm`,
+    ],
+    solution: '不偏分散の平方根を取ると標準偏差が求まります。単位が測定値と同じ mm に戻るので、平均の周りの散らばりを長さとして読めます。',
   }
 }
 
