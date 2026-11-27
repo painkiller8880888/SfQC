@@ -310,9 +310,7 @@ function App() {
     if (reviewReturn && exerciseId) {
       const key = next.resolved.lesson.lessonId + ':' + exerciseId
       const source = snapshots?.get(key)
-      const live = inlineExerciseSnapshotRefs.current.get(key)?.()
-      // When opening a return entry, check the question still shown on the shared lesson canvas.
-      if (!source?.instance || (!entrySnapshots && live && live.instance !== source.instance)) {
+      if (!source?.instance || !source.attempt) {
         const previous = viewRef.current
         const sameLesson = previous.resolved.status === 'lesson' && previous.resolved.lesson === next.resolved.lesson
         const fresh = new Map(sameLesson ? inlineEntrySnapshotsRef.current.get(previous.historyState.entryId) : snapshots)

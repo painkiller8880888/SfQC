@@ -2361,45 +2361,120 @@ test('Back to an exercise section without a snapshot starts a fresh question aft
   }
 })
 
-test('return starts the initial case when another presentation has reused the source link', async () => {
+test('explicit return restores the saved data-types case after replacement on the review entry', async () => {
   const counting = '#/lesson/data-types/counting'
+  const observation = '#/lesson/data-types/observation-unit'
   const app = await createHarness({ url: testDocumentUrl(counting) })
   const { window } = app.dom
-  const scrollTargets = []
-  window.HTMLElement.prototype.scrollIntoView = function () { scrollTargets.push(this) }
   const exercise = () => app.host.querySelector('[data-exercise-id="defect-aggregation"]')
   const selected = () => app.host.querySelector('[data-exercise-id="classify-record"] input:checked')
-  const reviewLink = (card) => card.querySelector('.ds-practice-question-heading a[href="#/lesson/data-types/observation-unit"]')
+  const reviewLink = () => exercise().querySelector('.ds-practice-question-heading a[href="' + observation + '"]')
+  const assertOriginalCase = () => {
+    assert.equal(window.location.hash, counting)
+    assert.equal(exercise().querySelectorAll('tbody tr').length, 4)
+    assert.equal(exercise().querySelector('input:checked')?.value, 'choice-0')
+    assert.match(exercise().querySelector('.ds-exercise-feedback').textContent, /違います/u)
+    assert.match(exercise().querySelector('.ds-exercise-misconception').textContent, /P-01の3行/u)
+    assert.equal(exercise().querySelector('details').open, true)
+    assert.equal(window.document.activeElement, reviewLink())
+  }
 
   try {
+    await settleEffects(window)
+    const originalEntry = window.history.state.entryId
     await click(app.host.querySelector('[data-exercise-id="classify-record"] input[value="choice-0"]'))
     const unrelatedAnswer = selected()
     assert.ok(unrelatedAnswer)
-    const card = exercise()
-    await click(buttonFor(card, '別の問題'))
-    assert.equal(card.querySelectorAll('tbody tr').length, 4)
-    await click(card.querySelector('input[value="choice-0"]'))
-    await act(async () => card.querySelector('form').dispatchEvent(
+    await click(buttonFor(exercise(), '別の問題'))
+    await click(exercise().querySelector('input[value="choice-0"]'))
+    await act(async () => exercise().querySelector('form').dispatchEvent(
       new window.Event('submit', { bubbles: true, cancelable: true }),
     ))
-    assert.match(card.querySelector('.ds-exercise-feedback').textContent, /違います/u)
-    const source = reviewLink(card)
+    await click(exercise().querySelector('details summary'))
+    const source = reviewLink()
     await click(source)
     await settleEffects(window)
+    assert.equal(window.location.hash, observation)
+    const reviewEntry = window.history.state.entryId
     await click(buttonFor(exercise(), '別の問題'))
     assert.equal(exercise().querySelectorAll('tbody tr').length, 2)
-    assert.equal(reviewLink(exercise()), source, 'the unchanged anchor now belongs to a replacement question')
+    assert.equal(reviewLink(), source, 'the replacement question uses the same anchor')
 
-    await click(app.host.querySelector('.return-navigation a[data-nav-intent="return"]'))
+    await click(linkFor(app.host, '演習に戻る'))
     await settleEffects(window)
-    const heading = app.host.querySelector('#course-section-counting')
-    assert.equal(window.location.hash, counting)
-    assert.equal(window.document.activeElement, heading)
-    assert.equal(scrollTargets.at(-1), heading)
-    assert.equal(exercise().querySelectorAll('tbody tr').length, 6)
+    assert.notEqual(window.history.state.entryId, originalEntry)
+    assertOriginalCase()
+    assert.equal(selected(), unrelatedAnswer)
+
+    await waitForHistory(window, 'back')
+    await settleEffects(window)
+    assert.equal(window.location.hash, observation)
+    assert.equal(window.history.state.entryId, reviewEntry)
+    assert.equal(exercise().querySelectorAll('tbody tr').length, 2)
     assert.equal(exercise().querySelector('input:checked'), null)
-    assert.equal(exercise().querySelector('.ds-exercise-feedback').textContent, '')
-    assert.equal(selected(), unrelatedAnswer, 'only the lost source exercise starts again')
+    await waitForHistory(window, 'back')
+    await settleEffects(window)
+    assert.equal(window.history.state.entryId, originalEntry)
+    assertOriginalCase()
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null)
+  } finally {
+    await app.close()
+  }
+})
+
+test('explicit return restores the saved mean exercise after replacement on the same review URL', async () => {
+  const mean = '#/course/descriptive-statistics/lesson/mean'
+  const app = await createHarness({ url: testDocumentUrl(mean) })
+  const { window } = app.dom
+  const exercise = () => app.host.querySelector('.course-inline-exercise[data-exercise-id="mean"]')
+  const input = () => exercise().querySelector('input')
+  const prompt = () => exercise().querySelector('.ds-practice-prompt').textContent
+  const reviewLink = () => exercise().querySelector('.ds-practice-question-heading a[data-nav-intent="review"]')
+  const initialQuestion = generateDescriptiveStatisticsPreviewExercise('mean', previewExerciseDefinitions.mean.initialIndex)
+  const answer = initialQuestion.answers[0]
+  const assertOriginalQuestion = () => {
+    assert.equal(window.location.hash, mean)
+    assert.equal(prompt(), initialQuestion.prompt)
+    assert.equal(input().value, answer)
+    assert.match(exercise().querySelector('.ds-exercise-feedback').textContent, /正解です/u)
+    assert.equal(exercise().querySelector('details').open, true)
+    assert.equal(window.document.activeElement, reviewLink())
+  }
+
+  try {
+    await settleEffects(window)
+    const originalEntry = window.history.state.entryId
+    await changeTextInput(window, input(), answer)
+    await act(async () => exercise().querySelector('form').dispatchEvent(
+      new window.Event('submit', { bubbles: true, cancelable: true }),
+    ))
+    await click(reviewLink())
+    await settleEffects(window)
+    assert.equal(window.location.hash, mean)
+    assert.equal(window.document.activeElement.id, 'course-section-mean')
+    const reviewEntry = window.history.state.entryId
+    assert.notEqual(reviewEntry, originalEntry)
+    await click(buttonFor(exercise(), '別の問題'))
+    const replacement = prompt()
+    assert.notEqual(replacement, initialQuestion.prompt)
+    assert.equal(input().value, '')
+    assert.equal(exercise().querySelector('details').open, false)
+
+    await click(linkFor(app.host, '演習に戻る'))
+    await settleEffects(window)
+    assert.notEqual(window.history.state.entryId, originalEntry)
+    assertOriginalQuestion()
+
+    await waitForHistory(window, 'back')
+    await settleEffects(window)
+    assert.equal(window.history.state.entryId, reviewEntry)
+    assert.equal(prompt(), replacement)
+    assert.equal(input().value, '')
+    await waitForHistory(window, 'back')
+    await settleEffects(window)
+    assert.equal(window.history.state.entryId, originalEntry)
+    assertOriginalQuestion()
+    assert.equal(window.localStorage.getItem(PRACTICE_RESULTS_KEY), null)
   } finally {
     await app.close()
   }
