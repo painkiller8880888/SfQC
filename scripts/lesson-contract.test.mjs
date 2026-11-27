@@ -401,6 +401,10 @@ test('basic statistics course covers the worked comparison, drills, code figures
     .filter(({ lessonId, revision }) => lessonId === descriptive.lessonId && revision !== 2)
     .map(({ exerciseId, revision }) => [exerciseId, revision])
   assert.deepEqual(revisedExercises, [
+    ['mean', 3],
+    ['deviation', 3],
+    ['variance', 3],
+    ['standard-deviation', 3],
     ['data-transformation-add-constant', 3],
     ['data-transformation-unit', 3],
     ['unbiased-variance-mean-and-sum', 3],

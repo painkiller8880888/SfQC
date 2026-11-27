@@ -355,7 +355,6 @@ export type InlineExerciseSnapshot = {
   attempt?: ExerciseAttemptSnapshot | null
 }
 export type InlineExerciseHistory = {
-  exerciseId: string
   snapshot?: InlineExerciseSnapshot
   snapshotRef: Ref<() => InlineExerciseSnapshot>
 }
@@ -407,8 +406,8 @@ function LessonBlock({ block, lesson, registry, exerciseGenerators, exerciseRese
   registry: LessonRegistry
   exerciseGenerators: Readonly<Record<string, ExerciseGenerator>>
   exerciseResetKeys?: Readonly<Record<string, number>>
-  inlineExerciseHistory?: InlineExerciseHistory
-  renderExercise?: (exerciseId: string, key: string) => ReactNode
+  inlineExerciseHistory?: (key: string) => InlineExerciseHistory
+  renderExercise?: (exerciseId: string, key: string, history?: InlineExerciseHistory) => ReactNode
 }) {
   if (block.kind === 'paragraph') return <p className="lesson-paragraph">
     {block.parts.map((part, index) => part.kind === 'text'
@@ -445,8 +444,8 @@ function LessonBlock({ block, lesson, registry, exerciseGenerators, exerciseRese
   if (block.kind === 'details') return <details className="course-details"><summary>{block.summary}</summary>{block.blocks.map((child, index) => <LessonBlock key={index} block={child} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} exerciseResetKeys={exerciseResetKeys} inlineExerciseHistory={inlineExerciseHistory} renderExercise={renderExercise} />)}</details>
   const exerciseKey = lesson.lessonId + ':' + block.exerciseId
   const key = exerciseKey + ':' + (exerciseResetKeys?.[exerciseKey] ?? 0)
-  const history = inlineExerciseHistory?.exerciseId === block.exerciseId ? inlineExerciseHistory : undefined
-  if (renderExercise) return renderExercise(block.exerciseId, key)
+  const history = inlineExerciseHistory?.(exerciseKey)
+  if (renderExercise) return renderExercise(block.exerciseId, key, history)
   return <LessonExerciseSlot key={key} exerciseId={block.exerciseId} lesson={lesson} registry={registry} exerciseGenerators={exerciseGenerators} history={history} />
 }
 
@@ -617,8 +616,8 @@ export function LessonCourse({ lesson, activeSectionId, sectionHeadingRef, secti
   registry: LessonRegistry
   exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
   exerciseResetKeys?: Readonly<Record<string, number>>
-  inlineExerciseHistory?: InlineExerciseHistory
-  renderExercise?: (exerciseId: string, key: string) => ReactNode
+  inlineExerciseHistory?: (key: string) => InlineExerciseHistory
+  renderExercise?: (exerciseId: string, key: string, history?: InlineExerciseHistory) => ReactNode
   children?: ReactNode
 }) {
   const blockProps = { lesson, registry, exerciseGenerators, exerciseResetKeys, inlineExerciseHistory, renderExercise }
@@ -657,7 +656,7 @@ export function LessonRouteContent({ lesson, sectionId, sectionHeadingRef, secti
   registry?: LessonRegistry
   exerciseGenerators?: Readonly<Record<string, ExerciseGenerator>>
   exerciseResetKeys?: Readonly<Record<string, number>>
-  inlineExerciseHistory?: InlineExerciseHistory
+  inlineExerciseHistory?: (key: string) => InlineExerciseHistory
 }) {
   if (lesson.overview) return <LessonCourse key={lesson.lessonId} lesson={lesson} activeSectionId={sectionId}
     sectionHeadingRef={sectionHeadingRef} sectionReturn={sectionReturn} registry={registry} exerciseGenerators={exerciseGenerators} exerciseResetKeys={exerciseResetKeys}

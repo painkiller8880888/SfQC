@@ -59,6 +59,7 @@ export function generateDescriptiveStatisticsPreviewExercise(id, index) {
     return {
       prompt: `別のライン C から3本を測ったところ、${joinMm(values)} でした。平均は何 mm ですか。`,
       fields: [{ label: '平均', unit: 'mm' }],
+      sections: [id],
       answers: [decimalAnswer(parameters.m)],
       steps: [`(${values.join(' + ')}) mm = ${total} mm`, `${total} mm ÷ 3 = ${parameters.m} mm`],
       solution: '測定値の合計を測定した本数で割ると、平均が求まります。',
@@ -70,6 +71,7 @@ export function generateDescriptiveStatisticsPreviewExercise(id, index) {
     return {
       prompt: `別のライン D の平均は ${parameters.m} mm でした。測った3本は ${joinMm(values)} です。それぞれの偏差（値 − 平均）を求めてください。`,
       fields: [1, 2, 3].map((number) => ({ label: `${number}本目`, unit: 'mm' })),
+      sections: [id],
       answers: deviations.map(decimalAnswer),
       steps: values.map((value, index) => `${index + 1}本目：${value} mm − ${parameters.m} mm = ${formatDeviation(deviations[index])} mm`),
       solution: '偏差は、測定値が平均からどちらへどれだけ離れているかを表します。偏差が 0 mm のとき、測定値は平均と同じです。',
@@ -83,6 +85,7 @@ export function generateDescriptiveStatisticsPreviewExercise(id, index) {
     return {
       prompt: `別のライン E から3本を測ったところ、${joinMm(values)} でした。偏差平方和 S と、n − 1 で割る不偏分散 V を求めてください。`,
       fields: [{ label: 'S', unit: 'mm²' }, { label: 'V', unit: 'mm²' }],
+      sections: [id],
       answers: [sumOfSquares, variance].map(decimalAnswer),
       steps: varianceSteps({ values, mean: parameters.m, deviations, sumOfSquares, variance }),
       solution: '偏差平方和 S は、平均からのずれを二乗して足した値です。S を n − 1 で割ると不偏分散 V が求まります。',
@@ -96,6 +99,7 @@ export function generateDescriptiveStatisticsPreviewExercise(id, index) {
   return {
     prompt: `別のライン F から3本を測ったところ、${joinMm(values)} でした。n − 1 で割った不偏分散から求める標準偏差 s は何 mm ですか。`,
     fields: [{ label: 's', unit: 'mm' }],
+    sections: [id],
     answers: [decimalAnswer(d)],
     steps: [
       ...varianceSteps({ values, mean: m, deviations: [-d, 0, d], sumOfSquares, variance }),

@@ -23,6 +23,7 @@ test('preview exercises reproduce the four reviewed seed questions and calculati
     mean: {
       prompt: '別のライン C から3本を測ったところ、98 mm、103 mm、102 mm でした。平均は何 mm ですか。',
       fields: [{ label: '平均', unit: 'mm' }],
+      sections: ['mean'],
       answers: ['101'],
       steps: ['(98 + 103 + 102) mm = 303 mm', '303 mm ÷ 3 = 101 mm'],
       solution: '測定値の合計を測定した本数で割ると、平均が求まります。',
@@ -30,6 +31,7 @@ test('preview exercises reproduce the four reviewed seed questions and calculati
     deviation: {
       prompt: '別のライン D の平均は 102 mm でした。測った3本は 100 mm、106 mm、100 mm です。それぞれの偏差（値 − 平均）を求めてください。',
       fields: [{ label: '1本目', unit: 'mm' }, { label: '2本目', unit: 'mm' }, { label: '3本目', unit: 'mm' }],
+      sections: ['deviation'],
       answers: ['-2', '4', '-2'],
       steps: ['1本目：100 mm − 102 mm = −2 mm', '2本目：106 mm − 102 mm = +4 mm', '3本目：100 mm − 102 mm = −2 mm'],
       solution: '偏差は、測定値が平均からどちらへどれだけ離れているかを表します。偏差が 0 mm のとき、測定値は平均と同じです。',
@@ -37,6 +39,7 @@ test('preview exercises reproduce the four reviewed seed questions and calculati
     variance: {
       prompt: '別のライン E から3本を測ったところ、97 mm、101 mm、102 mm でした。偏差平方和 S と、n − 1 で割る不偏分散 V を求めてください。',
       fields: [{ label: 'S', unit: 'mm²' }, { label: 'V', unit: 'mm²' }],
+      sections: ['variance'],
       answers: ['14', '7'],
       steps: [
         '平均 = (97 + 101 + 102) mm ÷ 3 = 100 mm',
@@ -49,6 +52,7 @@ test('preview exercises reproduce the four reviewed seed questions and calculati
     'standard-deviation': {
       prompt: '別のライン F から3本を測ったところ、97 mm、100 mm、103 mm でした。n − 1 で割った不偏分散から求める標準偏差 s は何 mm ですか。',
       fields: [{ label: 's', unit: 'mm' }],
+      sections: ['standard-deviation'],
       answers: ['3'],
       steps: [
         '平均 = (97 + 100 + 103) mm ÷ 3 = 100 mm',
@@ -96,6 +100,8 @@ test('every generated question is distinct from the worked examples and exposes 
       assert.ok(exercise.solution.length)
       assert.equal(exercise.fields.length, exercise.answers.length)
       assert.equal(display.prompt, exercise.prompt)
+      assert.deepEqual(display.reviewSectionRefs, [`descriptive-statistics#${id}`])
+      assert.equal(instance.revision, 3)
       assert.equal(evaluation.type, 'numeric')
       assert.deepEqual(evaluation.answers.map(({ expected }) => expected), exercise.answers)
       assert.equal(solution.explanation, exercise.solution)

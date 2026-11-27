@@ -796,7 +796,7 @@ const exerciseCatalog = {
     ...Object.entries(previewExerciseDefinitions).map(([exerciseId, definition]) => ({
       lessonId: 'descriptive-statistics',
       exerciseId,
-      revision: 2,
+      revision: 3,
       placement: { kind: /** @type {'section'} */ ('section'), sectionId: exerciseId },
       generation: {
         kind: /** @type {'index'} */ ('index'),
